@@ -83,28 +83,31 @@ the top of `bin/dianoia.dart`.
 ```dart
 import 'package:dianoia/dianoia.dart';
 
-NativeKernels.load(null); // the kernels the build hook compiled
-final model = await Lfm3Model.load(
-  modelDir,
-  weights: WeightFormat.q4,
-  q8CachePath: '$modelDir/lfm3-q4.cache',
-  gpu: true,
-);
-final session = ChatSession(
-  model,
-  Lfm3Tokenizer.load(modelDir),
+// The GPU where it can run the model, the CPU kernels otherwise.
+final model = await LocalModel.load(modelDir);
+final chat = model.chat(
   system: 'Answer briefly.',
   tools: tools, // OpenAI-style function definitions
 );
-await session.warmUp(); // the system prompt and tools, once
+await chat.warmUp(); // the system prompt and tools, once
 
-final turn = await session.send(
+final turn = await chat.send(
   {'role': 'user', 'content': 'Hi!'},
   onText: (text) => true, // the reply so far; return false to stop
 );
 print(turn.reply.content);
 print(turn.reply.toolCalls);
 ```
+
+`send` throws `ContextLengthExceeded`, leaving the conversation as it was,
+once a conversation outgrows `model.contextLength` (2048 tokens by
+default); `chat.clear()` starts over. Conversations share the model's
+state, and one generates at a time.
+
+`package:dianoia/dianoia.dart` is the API for apps. The engine's internals
+(the forward pass, kernels and their tuning, quantization, file formats)
+are in `package:dianoia/lab.dart`, which the command-line tool and the
+benchmarks use and which may change without notice.
 
 `example/example.dart` is a complete tool round trip, and `example/` is a
 Flutter chat app that streams replies on an iPhone or Android phone (see
@@ -141,9 +144,9 @@ state, logit and token to match byte for byte.
 
 | Symptom | Cause and fix |
 |---|---|
-| `the native kernels are not built for this platform` | The target is not arm64 macOS, iOS or Android. Use `WeightFormat.f32` (Dart only) or one of those targets. |
-| `the GPU is unavailable` | No Metal device, or no Vulkan 1.2 device with buffer device addresses. Run without `gpu: true`. |
-| `--max-seq=N is too long for GPU attention` | GPU attention keeps one score per key in threadgroup memory. Lower `maxSeq`. |
+| `dianoia has no native kernels for ...` | The target is not arm64 macOS, iOS or Android. The quantized weights need the native kernels. |
+| `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. |
+| `--max-seq=N is too long for GPU attention` | GPU attention keeps one score per key in threadgroup memory. Lower `contextLength`. |
 | Edited C or Metal code has no effect | Hook outputs are cached under `.dart_tool/`; delete `.dart_tool/hooks_runner` and run again. |
 | `test/shaders_test.dart` fails | A shader changed without its SPIR-V. Run `tool/compile_shaders.sh`. |
 

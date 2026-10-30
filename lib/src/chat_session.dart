@@ -47,6 +47,20 @@ final class ChatTurn {
   int get newTokens => promptTokens - reusedTokens;
 }
 
+/// A conversation that no longer fits the model's context: start a new one
+/// ([ChatSession.clear]) or load the model with a longer context.
+final class ContextLengthExceeded implements Exception {
+  const ContextLengthExceeded(this.promptTokens, this.contextLength);
+
+  final int promptTokens;
+  final int contextLength;
+
+  @override
+  String toString() =>
+      'ContextLengthExceeded: the prompt has $promptTokens tokens and the '
+      'context holds $contextLength';
+}
+
 final class ChatSession {
   ChatSession(
     this.model,
@@ -120,18 +134,30 @@ final class ChatSession {
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
   /// Observer work, [onText]'s included, counts in the generation timings.
+  ///
+  /// Throws [ContextLengthExceeded], and leaves the conversation as it was,
+  /// when the prompt leaves no room in the context for a reply.
   Future<ChatTurn> send(
     Map<String, Object?> message, {
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
   }) async {
+    final ids = promptIds([...messages, message]);
+    if (ids.length >= model.maxSeq) {
+      throw ContextLengthExceeded(ids.length, model.maxSeq);
+    }
     messages.add(message);
-    final ids = promptIds(messages);
     final sw = Stopwatch()..start();
-    final reused = await model.prefill(
-      ids,
-      checkpoints: _startsWith(ids, prefix) ? [prefix.length] : const [],
-    );
+    final int reused;
+    try {
+      reused = await model.prefill(
+        ids,
+        checkpoints: _startsWith(ids, prefix) ? [prefix.length] : const [],
+      );
+    } catch (_) {
+      messages.removeLast();
+      rethrow;
+    }
     final prefillSeconds = sw.elapsedMicroseconds / 1e6;
     if (keepPromptLogits) promptLogits = Float32List.fromList(model.logits);
     onLogits?.call(model.logits);

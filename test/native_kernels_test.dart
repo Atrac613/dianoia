@@ -4,7 +4,7 @@ import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:dianoia/dianoia.dart';
+import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
 
 /// Where hook/build.dart compiles the kernels.

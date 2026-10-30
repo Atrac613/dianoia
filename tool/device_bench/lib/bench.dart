@@ -27,7 +27,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:dianoia/dianoia.dart';
+import 'package:dianoia/lab.dart';
 import 'gpu_sustained.dart';
 
 const _androidPackage = 'com.noguwo.dartllmlab.lfm3_bench';

@@ -1,7 +1,6 @@
 // Streaming and stopping a reply. Needs a Q4 model bundle (config.json,
 // tokenizer.json, model.safetensors, lfm3-q4.cache) in DIANOIA_LFM3_DIR, and
 // the native kernels; skipped otherwise.
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:dianoia/dianoia.dart';
@@ -14,20 +13,8 @@ void main() {
     late ChatSession session;
 
     setUpAll(() async {
-      NativeKernels.load(null);
-      final model = await Lfm3Model.load(
-        _modelDir!,
-        maxSeq: 512,
-        weights: WeightFormat.q4,
-        q8CachePath: '$_modelDir/lfm3-q4.cache',
-        gpu: Abi.current() == Abi.macosArm64,
-      );
-      session = ChatSession(
-        model,
-        Lfm3Tokenizer.load(_modelDir!),
-        system: 'Answer briefly.',
-        maxNew: 48,
-      );
+      final model = await LocalModel.load(_modelDir!, contextLength: 512);
+      session = model.chat(system: 'Answer briefly.', maxNewTokens: 48);
       await session.warmUp();
     });
 
@@ -63,6 +50,18 @@ void main() {
 
       // The conversation goes on from the stopped reply.
       final next = await session.send({'role': 'user', 'content': 'Thanks!'});
+      expect(next.reusedTokens, greaterThan(session.prefix.length));
+    });
+
+    test('a prompt past the context throws and changes nothing', () async {
+      await session.send({'role': 'user', 'content': 'Hello.'});
+      final before = [...session.messages];
+      await expectLater(
+        session.send({'role': 'user', 'content': 'word ' * 600}),
+        throwsA(isA<ContextLengthExceeded>()),
+      );
+      expect(session.messages, before);
+      final next = await session.send({'role': 'user', 'content': 'Hi.'});
       expect(next.reusedTokens, greaterThan(session.prefix.length));
     });
   }, skip: _modelDir == null ? 'set DIANOIA_LFM3_DIR to a Q4 bundle' : false);

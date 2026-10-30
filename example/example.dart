@@ -3,24 +3,15 @@
 //   dart run example/example.dart MODEL_DIR
 //
 // MODEL_DIR holds config.json, tokenizer.json, model.safetensors and the Q4
-// cache lfm3-q4.cache, as written by `dianoia import-gguf` (or the full
-// checkpoint, whose cache is then built on the first run).
+// cache lfm3-q4.cache, as written by `dianoia import-gguf`.
 import 'dart:io';
 
 import 'package:dianoia/dianoia.dart';
 
 Future<void> main(List<String> args) async {
-  final modelDir = args.single;
-  NativeKernels.load(null);
-  final model = await Lfm3Model.load(
-    modelDir,
-    weights: WeightFormat.q4,
-    q8CachePath: '$modelDir/lfm3-q4.cache',
-    gpu: true,
-  );
-  final session = ChatSession(
-    model,
-    Lfm3Tokenizer.load(modelDir),
+  final model = await LocalModel.load(args.single);
+  stdout.writeln('${model.backend.name} ready');
+  final session = model.chat(
     system: 'Answer briefly. Call a tool for live information.',
     tools: [
       {

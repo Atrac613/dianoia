@@ -8,8 +8,9 @@ model and the graph; native code does only arithmetic.
 
 ## Working Rules
 
-- Treat `lib/dianoia.dart` as the public API surface; keep implementation
-  under `lib/src/`.
+- `lib/dianoia.dart` is the public API for apps and stays small;
+  `lib/lab.dart` exports the internals for the CLI, benchmarks and tests.
+  Keep implementation under `lib/src/`.
 - Native sources live in `src/` and are compiled by `hook/build.dart` into
   the code asset `package:dianoia/kernels`. Do not add platform build files
   (podspec, CMakeLists.txt) for the kernels.

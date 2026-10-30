@@ -14,10 +14,6 @@ const _system =
     'You are a helpful assistant running entirely on this device. '
     'Answer concisely, in the language the user writes in.';
 
-/// GPU attention holds one score per key in threadgroup memory, so the
-/// context stays well inside what phone GPUs offer.
-const _maxSeq = 2048;
-
 /// The worker isolate's entry point.
 Future<void> runChatWorker((SendPort, ModelLocation) args) async {
   final (out, location) = args;
@@ -40,8 +36,9 @@ Future<void> runChatWorker((SendPort, ModelLocation) args) async {
       return;
     }
     out.send(const WorkerProgress('Loading the model…'));
-    NativeKernels.load(null);
-    (session, backend) = await _open(dir);
+    final model = await LocalModel.load(dir);
+    backend = model.backend.name.toUpperCase();
+    session = model.chat(system: _system);
     await session.warmUp();
   } catch (e) {
     out.send(WorkerFailed('$e'));
@@ -64,39 +61,12 @@ Future<void> runChatWorker((SendPort, ModelLocation) args) async {
   out.send(WorkerReady(commands.sendPort, backend));
 }
 
-/// The model on the GPU, or on the CPU kernels where there is no usable GPU.
-Future<(ChatSession, String)> _open(String dir) async {
-  Future<Lfm3Model> load({required bool gpu}) => Lfm3Model.load(
-    dir,
-    maxSeq: _maxSeq,
-    weights: WeightFormat.q4,
-    q8CachePath: '$dir/lfm3-q4.cache',
-    gpu: gpu,
-  );
-  var backend = 'GPU';
-  Lfm3Model model;
-  try {
-    model = await load(gpu: true);
-  } on StateError {
-    backend = 'CPU';
-    model = await load(gpu: false);
-  }
-  final session = ChatSession(
-    model,
-    Lfm3Tokenizer.load(dir),
-    system: _system,
-    maxNew: 512,
-  );
-  return (session, backend);
-}
-
 Future<void> _reply(
   ChatSession session,
   String text,
   SendPort out,
   bool Function() stopRequested,
 ) async {
-  final before = session.messages.length;
   try {
     final turn = await session.send(
       {'role': 'user', 'content': text},
@@ -117,17 +87,15 @@ Future<void> _reply(
             : 0,
       ),
     );
-  } catch (e) {
-    // Leave the conversation as it was before this message.
-    session.messages.removeRange(before, session.messages.length);
+  } on ContextLengthExceeded {
     out.send(
-      ReplyFailed(
-        e is StateError && '$e'.contains('maxSeq')
-            ? 'The conversation is longer than the model\'s context '
-                  '($_maxSeq tokens). Start a new chat.'
-            : '$e',
+      const ReplyFailed(
+        'The conversation no longer fits the model\'s context. '
+        'Start a new chat.',
       ),
     );
+  } catch (e) {
+    out.send(ReplyFailed('$e'));
   }
 }
 

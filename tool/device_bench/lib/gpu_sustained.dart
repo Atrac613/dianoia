@@ -3,7 +3,7 @@ library;
 
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:dianoia/dianoia.dart';
+import 'package:dianoia/lab.dart';
 
 Future<Map<String, Object?>> runGpuSustained(
   Lfm3Model model,

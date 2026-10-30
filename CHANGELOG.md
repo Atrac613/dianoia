@@ -13,3 +13,11 @@
 - Add the on-device benchmark (`tool/device_bench/`). On an iPhone 15 Pro
   Max and a Pixel 8 its results equal dart-llm-lab's.
 - Link libm into the Android kernels.
+- Give apps `LocalModel`: it finds the bundle's weights, loads the native
+  kernels and falls back from the GPU to the CPU kernels on its own.
+  `package:dianoia/dianoia.dart` now exports only `LocalModel`,
+  `InferenceBackend`, `ChatSession`, `ChatTurn`, `ContextLengthExceeded`
+  and the tool-call types; everything else moved to
+  `package:dianoia/lab.dart`.
+- `ChatSession.send` throws `ContextLengthExceeded` when the prompt leaves
+  no room for a reply, and leaves the conversation unchanged when it fails.

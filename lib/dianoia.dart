@@ -1,23 +1,20 @@
-/// On-device LLM inference orchestrated in Dart: tokenizer, chat template,
-/// tool-call parsing and the LFM3 forward pass, on native CPU kernels and a
-/// Metal or Vulkan GPU layer compiled by the package's build hook.
+/// On-device LLM inference orchestrated in Dart, on native CPU kernels and
+/// a Metal or Vulkan GPU layer compiled by the package's build hook.
+///
+/// Load a model bundle with [LocalModel.load] and talk to it through a
+/// [ChatSession] from [LocalModel.chat]:
+///
+/// ```dart
+/// final model = await LocalModel.load(dir);
+/// final chat = model.chat(system: 'Answer briefly.');
+/// final turn = await chat.send({'role': 'user', 'content': 'Hi!'});
+/// print(turn.reply.content);
+/// ```
+///
+/// `package:dianoia/lab.dart` exposes the engine's internals.
 library;
 
-export 'src/chat_bench.dart';
-export 'src/chat_session.dart';
-export 'src/chat_template.dart';
-export 'src/config.dart';
-export 'src/executor.dart';
-export 'src/linear.dart';
-export 'src/gguf.dart';
-export 'src/matmul.dart';
-export 'src/gpu.dart';
-export 'src/model.dart';
-export 'src/native.dart';
-export 'src/ops.dart';
-export 'src/q8_cache.dart';
-export 'src/quant.dart';
-export 'src/safetensors.dart';
-export 'src/shard.dart';
-export 'src/tokenizer.dart';
+export 'src/chat_session.dart'
+    show ChatSession, ChatTurn, ContextLengthExceeded;
+export 'src/local_model.dart';
 export 'src/tool_calls.dart';

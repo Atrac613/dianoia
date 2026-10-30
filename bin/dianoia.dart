@@ -66,7 +66,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:dianoia/dianoia.dart';
+import 'package:dianoia/lab.dart';
 
 /// Parses `--key=value` and bare `--flag` (stored as "true").
 Map<String, String> _parseFlags(List<String> args) {
