@@ -104,6 +104,12 @@ once a conversation outgrows `model.contextLength` (2048 tokens by
 default); `chat.clear()` starts over. Conversations share the model's
 state, and one generates at a time.
 
+`await model.close()` gives back the model's GPU memory and its mappings
+of the bundle's files; its conversations then throw `StateError`. The GPU
+layer is process-wide, so keep every GPU model of a process in one isolate:
+two isolates encoding GPU work at once corrupt each other's command
+buffers, and Metal aborts the process.
+
 `package:dianoia/dianoia.dart` is the API for apps. The engine's internals
 (the forward pass, kernels and their tuning, quantization, file formats)
 are in `package:dianoia/lab.dart`, which the command-line tool and the

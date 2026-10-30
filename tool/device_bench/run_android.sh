@@ -27,6 +27,27 @@ PY="$LAB/venv/bin/python"
 DART="${DART:-dart}"
 CLI="$ROOT/build/cli/bundle/bin/dianoia"
 [[ -x "$PY" ]] || { echo "missing $PY (run the lab's scripts/setup.sh)" >&2; exit 1; }
+
+# LIFECYCLE_CYCLES=N: the app only loads, uses and closes the model N times
+# (lib/lifecycle_check.dart); print what it recorded and stop.
+lifecycle_report() {
+  "$PY" - "$1" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+rows = r.get("lifecycle", [])
+for row in rows:
+    print(f"  cycle {row['cycle']}: {row['buffers_open']} GPU buffers open, "
+          f"{row['buffers_closed']} after close, footprint {row['footprint_mb']:.0f} MB, "
+          f"{row['seconds']:.1f} s")
+if rows:
+    settled, later = rows[0], rows[1:]
+    leaked = any(row["buffers_closed"] != settled["buffers_closed"] for row in later)
+    growth = later[-1]["footprint_mb"] - settled["footprint_mb"] if later else 0
+    print(f"buffers after close stay at {settled['buffers_closed']}: {'NO' if leaked else 'yes'}; "
+          f"footprint {growth:+.0f} MB after cycle 0; "
+          f"closed model refuses to run: {r.get('closed_model_refused')}")
+PY
+}
 GPU_SUSTAINED_SECONDS="${GPU_SUSTAINED_SECONDS:-0}"
 [[ "$GPU_SUSTAINED_SECONDS" =~ ^(0|[1-9][0-9]*)$ && "$GPU_SUSTAINED_SECONDS" -le 3600 ]] || {
   echo "GPU_SUSTAINED_SECONDS must be 0..3600" >&2; exit 2;
@@ -107,7 +128,7 @@ for c in tools long; do
 done
 cp "$ROOT/example/tool_cases.json" "$staging/"
 # SKIP_CPU=1 measures the GPU only, for quicker GPU work.
-printf '{"bundle": "%s", "weights": "%s", "skip_cpu": %s, "q8_vector_acceptance": %s, "q8_vector_default_acceptance": %s, "gpu_sustained_seconds": %s}\n' "$BUNDLE" "$WEIGHTS" \
+printf '{"bundle": "%s", "weights": "%s", "lifecycle_cycles": %s, "skip_cpu": %s, "q8_vector_acceptance": %s, "q8_vector_default_acceptance": %s, "gpu_sustained_seconds": %s}\n' "$BUNDLE" "$WEIGHTS" "${LIFECYCLE_CYCLES:-0}" \
   "$([[ "${SKIP_CPU:-0}" == 1 ]] && echo true || echo false)" \
   "$([[ "${Q8_VECTOR_ACCEPTANCE:-0}" == 1 ]] && echo true || echo false)" \
   "$([[ "${Q8_VECTOR_DEFAULT_ACCEPTANCE:-0}" == 1 ]] && echo true || echo false)" \
@@ -157,6 +178,10 @@ if [[ -z "$finished" ]]; then
   exit 1
 fi
 thermal_after="$(thermal)"
+if [[ "${LIFECYCLE_CYCLES:-0}" -gt 0 ]]; then
+  lifecycle_report "$OUT/latest.json"
+  exit 0
+fi
 rm -rf "${OUT:?}"/cpu_tools "${OUT:?}"/gpu_tools "${OUT:?}"/gpu_long
 if [[ "${Q8_VECTOR_ACCEPTANCE:-0}" == 1 ]]; then
   rm -rf "${OUT:?}"/scalar_tools "${OUT:?}"/scalar_long

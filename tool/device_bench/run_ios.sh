@@ -23,6 +23,27 @@ DART="${DART:-dart}"
 CLI="$ROOT/build/cli/bundle/bin/dianoia"
 [[ -x "$PY" ]] || { echo "missing $PY (run the lab's scripts/setup.sh)" >&2; exit 1; }
 
+# LIFECYCLE_CYCLES=N: the app only loads, uses and closes the model N times
+# (lib/lifecycle_check.dart); print what it recorded and stop.
+lifecycle_report() {
+  "$PY" - "$1" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+rows = r.get("lifecycle", [])
+for row in rows:
+    print(f"  cycle {row['cycle']}: {row['buffers_open']} GPU buffers open, "
+          f"{row['buffers_closed']} after close, footprint {row['footprint_mb']:.0f} MB, "
+          f"{row['seconds']:.1f} s")
+if rows:
+    settled, later = rows[0], rows[1:]
+    leaked = any(row["buffers_closed"] != settled["buffers_closed"] for row in later)
+    growth = later[-1]["footprint_mb"] - settled["footprint_mb"] if later else 0
+    print(f"buffers after close stay at {settled['buffers_closed']}: {'NO' if leaked else 'yes'}; "
+          f"footprint {growth:+.0f} MB after cycle 0; "
+          f"closed model refuses to run: {r.get('closed_model_refused')}")
+PY
+}
+
 BUNDLE_ID=com.noguwo.dartllmlab.lfm3Bench
 WEIGHTS="${WEIGHTS:-q8}"
 MODEL="$LAB/models/LFM3-1.7B"
@@ -73,7 +94,8 @@ xcrun devicectl device copy to "${container[@]}" --source "$staging/ref" --desti
 cp "$ROOT/example/tool_cases.json" "$staging/tool_cases.json"
 xcrun devicectl device copy to "${container[@]}" --source "$staging/tool_cases.json" \
   --destination Documents/tool_cases.json >/dev/null
-printf '{"bundle": "%s", "weights": "%s"}\n' "$BUNDLE" "$WEIGHTS" >"$staging/bench_config.json"
+printf '{"bundle": "%s", "weights": "%s", "lifecycle_cycles": %s}\n' "$BUNDLE" "$WEIGHTS" \
+  "${LIFECYCLE_CYCLES:-0}" >"$staging/bench_config.json"
 xcrun devicectl device copy to "${container[@]}" --source "$staging/bench_config.json" \
   --destination Documents/bench_config.json >/dev/null
 
@@ -108,6 +130,10 @@ for _ in $(seq 1 120); do
   fi
 done
 [[ -n "$finished" ]] || { echo "no finished record after 30 min" >&2; exit 1; }
+if [[ "${LIFECYCLE_CYCLES:-0}" -gt 0 ]]; then
+  lifecycle_report "$OUT/latest.json"
+  exit 0
+fi
 for d in gpu_tools gpu_long cpu_tools; do
   xcrun devicectl device copy from "${container[@]}" --source "Documents/out/$WEIGHTS/$d" --destination "$OUT/$d" >/dev/null
 done

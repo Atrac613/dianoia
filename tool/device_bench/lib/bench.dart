@@ -29,6 +29,7 @@ import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
 import 'gpu_sustained.dart';
+import 'lifecycle_check.dart';
 
 const _androidPackage = 'com.noguwo.dartllmlab.lfm3_bench';
 
@@ -112,6 +113,15 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   );
 
   final sw = Stopwatch();
+  final cycles = (config['lifecycle_cycles'] as num?)?.toInt() ?? 0;
+  if (cycles > 0) {
+    await lifecycleCheck(record, modelDir, cycles, log, save);
+    record['seconds'] =
+        DateTime.now().difference(started).inMilliseconds / 1000;
+    save(finished: true);
+    log('Done (lifecycle) in ${record['seconds']} s.');
+    return record;
+  }
   final toolCases = File('$docs/tool_cases.json');
   if (!Platform.isIOS) {
     record['device'] = _linuxDeviceFacts();

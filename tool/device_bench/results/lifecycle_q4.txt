@@ -1,0 +1,17 @@
+# 2026-10-30T02:30:22Z LIFECYCLE_CYCLES=5, LFM3-1.7B-QAD-Q4 on the GPU
+## iPhone 15 Pro Max (Metal)
+  cycle 0: 52 GPU buffers open, 0 after close, footprint 325 MB, 2.4 s
+  cycle 1: 52 GPU buffers open, 0 after close, footprint 316 MB, 1.5 s
+  cycle 2: 52 GPU buffers open, 0 after close, footprint 334 MB, 1.6 s
+  cycle 3: 52 GPU buffers open, 0 after close, footprint 331 MB, 1.3 s
+  cycle 4: 52 GPU buffers open, 0 after close, footprint 337 MB, 1.3 s
+  cycle 5: 52 GPU buffers open, 0 after close, footprint 331 MB, 1.2 s
+buffers after close stay at 0: yes; footprint +6 MB after cycle 0; closed model refuses to run: True
+## Pixel 8 (Vulkan)
+  cycle 0: 54 GPU buffers open, 2 after close, footprint 332 MB, 3.9 s
+  cycle 1: 54 GPU buffers open, 2 after close, footprint 377 MB, 2.1 s
+  cycle 2: 54 GPU buffers open, 2 after close, footprint 348 MB, 1.9 s
+  cycle 3: 54 GPU buffers open, 2 after close, footprint 345 MB, 2.0 s
+  cycle 4: 54 GPU buffers open, 2 after close, footprint 338 MB, 2.0 s
+  cycle 5: 54 GPU buffers open, 2 after close, footprint 345 MB, 2.0 s
+buffers after close stay at 2: yes; footprint +13 MB after cycle 0; closed model refuses to run: True

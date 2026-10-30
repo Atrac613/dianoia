@@ -21,3 +21,9 @@
   `package:dianoia/lab.dart`.
 - `ChatSession.send` throws `ContextLengthExceeded` when the prompt leaves
   no room for a reply, and leaves the conversation unchanged when it fails.
+- `LocalModel.close()` releases the model's GPU buffers (new
+  `lab_gpu_release` in the Metal and Vulkan layers, which reuse freed
+  handles) and unmaps the weight cache and `model.safetensors`, whose
+  mappings are now reference-counted. A closed model throws `StateError`.
+- Metal starts once per process: loading a second model no longer drops
+  the first one's buffers.
