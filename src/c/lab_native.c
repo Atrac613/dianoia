@@ -25,9 +25,27 @@
 #include <Accelerate/Accelerate.h>
 #include <dispatch/dispatch.h>
 #include <mach/mach.h>
+#include <sys/sysctl.h>
 #else
 #include <pthread.h>
+#include <sys/auxv.h>
 #endif
+
+// Whether this CPU runs the kernels: they are compiled for the int8 dot
+// product (sdot), which arm64 CPUs before ARMv8.2 lack, so calling any other
+// function of this library there may stop the app on an illegal
+// instruction. This one only asks the OS.
+int64_t lab_cpu_supported(void) {
+#if defined(__APPLE__)
+  int64_t on = 0;
+  size_t size = sizeof on;
+  return sysctlbyname("hw.optional.arm.FEAT_DotProd", &on, &size, NULL, 0) == 0 && on != 0;
+#elif defined(HWCAP_ASIMDDP)
+  return (getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0;
+#else
+  return 0;
+#endif
+}
 
 // Memory the kernels read: 128-byte aligned (Apple Silicon cache line),
 // zeroed. Dart views it with Pointer.asTypedList, so nothing is copied.

@@ -130,6 +130,9 @@ external void _free(Pointer<Void> p);
 @Native<Int64 Function()>(symbol: 'lab_phys_footprint', isLeaf: true)
 external int _physFootprint();
 
+@Native<Int64 Function()>(symbol: 'lab_cpu_supported', isLeaf: true)
+external int _cpuSupported();
+
 /// The process's physical footprint in bytes (what iOS holds against an
 /// app's memory limit); on Linux and Android, its resident set size from
 /// /proc; -1 where neither is available.
@@ -313,11 +316,13 @@ final class NativeKernels {
   }
 
   /// Whether the kernels can be called: built for this platform by the
-  /// build hook, or already opened from a path.
+  /// build hook (or already opened from a path), and this CPU has the int8
+  /// dot product they are compiled for. Check it before anything else of
+  /// the library runs: without the dot product, the kernels stop the app on
+  /// an illegal instruction.
   static bool get isAvailable {
     try {
-      _physFootprint();
-      return true;
+      return _cpuSupported() == 1;
     } on ArgumentError {
       return false;
     }
