@@ -47,7 +47,9 @@ void main(List<String> args) async {
         assetName: 'kernels',
         sources: ['src/c/lab_native.c', 'src/vulkan/lab_vulkan.c'],
         includes: ['src/vulkan/spirv'],
-        libraries: ['vulkan', 'log'],
+        // The NDK's CMake toolchain links libm by default; this builder does
+        // not, and expf would stay unresolved.
+        libraries: ['vulkan', 'log', 'm'],
         flags: [
           '-march=armv8.2-a+dotprod',
           ..._floatFlags,
