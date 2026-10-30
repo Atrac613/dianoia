@@ -98,12 +98,17 @@ final session = ChatSession(
 );
 await session.warmUp(); // the system prompt and tools, once
 
-final turn = await session.send({'role': 'user', 'content': 'Hi!'});
+final turn = await session.send(
+  {'role': 'user', 'content': 'Hi!'},
+  onText: (text) => true, // the reply so far; return false to stop
+);
 print(turn.reply.content);
 print(turn.reply.toolCalls);
 ```
 
-`example/example.dart` is a complete tool round trip.
+`example/example.dart` is a complete tool round trip, and `example/` is a
+Flutter chat app that streams replies on an iPhone or Android phone (see
+`example/README.md`).
 
 ## Development
 
@@ -124,6 +129,8 @@ tool/lab_parity.sh        # bit-for-bit against dart-llm-lab (macOS)
 | `hook/build.dart` | Compiles the kernels for the target into the code asset |
 | `bin/dianoia.dart` | The command-line tool |
 | `tool/` | Shader compilation and the lab parity check |
+| `tool/device_bench/` | The on-device benchmark app and its iPhone and Android round trips |
+| `example/` | The Flutter chat app and a command-line example |
 
 `tool/lab_parity.sh` is the safety net while the lab's code becomes a
 library: it runs the lab's CLI and this one on the lab's reference prompts,

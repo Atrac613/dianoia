@@ -6,3 +6,10 @@
 - Build the native kernels with a build hook (`hook/build.dart`) into one
   code asset, so `dart run`, `dart test` and Flutter apps get them without
   platform build files. Vulkan shaders ship as precompiled SPIR-V.
+- Stream replies: `ChatSession.send(onText:)` sees the text after every
+  token and can stop the reply; replies also stop at the model's context.
+- Add a Flutter chat example (`example/`), tried on a Pixel 8; it also
+  builds for iOS and macOS.
+- Add the on-device benchmark (`tool/device_bench/`). On an iPhone 15 Pro
+  Max and a Pixel 8 its results equal dart-llm-lab's.
+- Link libm into the Android kernels.
