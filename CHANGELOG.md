@@ -1,4 +1,4 @@
-## Unreleased
+## 0.1.1
 
 - The chat template renders LFM3's tool search: tools with
   `defer_loading` stay out of the `<tools>` block, and tool messages bring

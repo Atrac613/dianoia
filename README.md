@@ -9,7 +9,7 @@ kernels for quantized matrix products and attention, and a GPU layer (Metal
 on Apple platforms, Vulkan on Android and Windows) that records one
 dispatch per Dart call.
 
-> **Status: 0.1.0.** The engine was imported from
+> **Status: 0.1.1.** The engine was imported from
 > [dart-llm-lab](#origin) and runs one model family, LFM3, for text chat and
 > tool calling. `package:dianoia/dianoia.dart` is the API for apps and may
 > still change before 1.0; `package:dianoia/lab.dart` exposes the engine's
