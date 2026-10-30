@@ -44,6 +44,11 @@ final class LocalModel {
   /// Whether [close] has run.
   bool get isClosed => _model.isClosed;
 
+  /// Whether models can run here: the native kernels were built for this
+  /// platform and the CPU has the int8 dot product they need. An app should
+  /// check it before offering on-device models at all.
+  static bool get isSupported => NativeKernels.isAvailable;
+
   /// Frees the model: its GPU memory and its mappings of the bundle's
   /// files. Its conversations stop working: a reply being generated fails
   /// at its next token, and [ChatSession.send] throws [StateError]. Closing
