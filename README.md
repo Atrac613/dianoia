@@ -1,5 +1,7 @@
 # dianoia
 
+[![CI](https://github.com/Atrac613/dianoia/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Atrac613/dianoia/actions/workflows/ci.yml)
+
 On-device LLM inference orchestrated in Dart. Dart owns the model: the
 tokenizer, the chat template, tool-call parsing, the graph of the forward
 pass and the state between turns. Native code does only the arithmetic: CPU
