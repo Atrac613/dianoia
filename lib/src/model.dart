@@ -57,6 +57,8 @@ final class Lfm3Model {
     this._stateKey,
     this.maxSeq,
     this.maxChunk,
+    this._cache,
+    this._embedFile,
   );
 
   /// Loads the model.
@@ -108,7 +110,8 @@ final class Lfm3Model {
     final Float32List finalNorm;
     // Token lookup reads the bf16 patterns, which widen to exactly the
     // checkpoint's floats at half the memory of a float32 table.
-    final Uint16List? embedBf16;
+    Uint16List? embedBf16;
+    MappedFile? embedFile;
     try {
       norms = [
         for (var i = 0; i < c.numLayers; i++)
@@ -126,117 +129,129 @@ final class Lfm3Model {
       finalNorm = st.readF32('model.embedding_norm.weight', [h]);
       // A bundle imported from GGUF (`lfm3 import-gguf`) has no bf16
       // embedding: tokens are then looked up in the Q8 LM head below.
-      embedBf16 = st.tensors.containsKey(_embedName)
-          ? _mapEmbedding(modelDir, st, c) ??
-                st.readBf16Bits(_embedName, [c.vocabSize, h])
-          : null;
+      if (st.tensors.containsKey(_embedName)) {
+        final mapped = _mapEmbedding(modelDir, st, c);
+        embedFile = mapped?.$1;
+        embedBf16 = mapped?.$2 ?? st.readBf16Bits(_embedName, [c.vocabSize, h]);
+      }
     } finally {
       st.close();
     }
     String? cacheKey;
     Q8Cache? cache;
     Map<String, NativeMatrix>? built;
-    if (weights.isNative && q8CachePath != null) {
-      cacheKey = Q8Cache.keyFor(modelDir, weights: weights.name);
-      cache = Q8Cache.open(q8CachePath, cacheKey);
-      if (cache == null) built = {};
-    }
-    // What a saved state depends on: the checkpoint, the weights, and the
-    // backend, whose arithmetic differs in the last bits.
-    final native = NativeKernels.isLoaded ? NativeKernels.instance : null;
-    final backend = onGpu
-        ? 'gpu ${Platform.operatingSystem}'
-        : 'cpu inputs=${weights.isNative && native!.int8Inputs ? 'int8' : 'f32'}'
-              ' attention=${native?.attention == true ? 'c' : 'dart'}';
-    final stateKey =
-        '${Q8Cache.keyFor(modelDir, weights: weights.name)} '
-        '${weights.name} keep=${keepF32.join(',')} $backend';
-    NativeQ8Matrix? embedQ8;
-    if (embedBf16 == null) {
-      embedQ8 = switch (cache?.matrix(_embedName, c.vocabSize, h)) {
-        final NativeQ8Matrix m => m,
-        _ => throw StateError(
-          'model.safetensors lacks the embedding and no Q8 cache holds it',
-        ),
-      };
-    }
-    if (onGpu) {
-      if (cache == null) {
-        // Quantize through the CPU loader once to build the cache.
-        LayerShard.load(
-          modelDir,
-          index: 0,
-          shards: 1,
-          maxSeq: 1,
-          maxChunk: 1,
-          format: weights,
-          keepF32: keepF32,
-          q8Built: built,
-        );
-        Q8Cache.write(q8CachePath!, cacheKey!, built!);
-        cache = Q8Cache.open(q8CachePath, cacheKey)!;
+    // Whatever fails from here gives back the mappings made so far.
+    try {
+      if (weights.isNative && q8CachePath != null) {
+        cacheKey = Q8Cache.keyFor(modelDir, weights: weights.name);
+        cache = Q8Cache.open(q8CachePath, cacheKey);
+        if (cache == null) built = {};
       }
-      final gpu = GpuForward.create(
-        libPath: gpuLib,
-        modelDir: modelDir,
-        config: c,
-        cache: cache,
-        maxSeq: maxSeq,
-        maxChunk: maxChunk,
-      );
+      // What a saved state depends on: the checkpoint, the weights, and the
+      // backend, whose arithmetic differs in the last bits.
+      final native = NativeKernels.isLoaded ? NativeKernels.instance : null;
+      final backend = onGpu
+          ? 'gpu ${Platform.operatingSystem}'
+          : 'cpu inputs=${weights.isNative && native!.int8Inputs ? 'int8' : 'f32'}'
+                ' attention=${native?.attention == true ? 'c' : 'dart'}';
+      final stateKey =
+          '${Q8Cache.keyFor(modelDir, weights: weights.name)} '
+          '${weights.name} keep=${keepF32.join(',')} $backend';
+      NativeQ8Matrix? embedQ8;
+      if (embedBf16 == null) {
+        embedQ8 = switch (cache?.matrix(_embedName, c.vocabSize, h)) {
+          final NativeQ8Matrix m => m,
+          _ => throw StateError(
+            'model.safetensors lacks the embedding and no Q8 cache holds it',
+          ),
+        };
+      }
+      if (onGpu) {
+        if (cache == null) {
+          // Quantize through the CPU loader once to build the cache.
+          LayerShard.load(
+            modelDir,
+            index: 0,
+            shards: 1,
+            maxSeq: 1,
+            maxChunk: 1,
+            format: weights,
+            keepF32: keepF32,
+            q8Built: built,
+          );
+          Q8Cache.write(q8CachePath!, cacheKey!, built!);
+          cache = Q8Cache.open(q8CachePath, cacheKey)!;
+        }
+        final gpu = GpuForward.create(
+          libPath: gpuLib,
+          modelDir: modelDir,
+          config: c,
+          cache: cache,
+          maxSeq: maxSeq,
+          maxChunk: maxChunk,
+        );
+        return Lfm3Model._(
+          c,
+          embedBf16,
+          embedQ8,
+          norms,
+          finalNorm,
+          null,
+          gpu,
+          stateKey,
+          maxSeq,
+          maxChunk,
+          cache,
+          embedFile,
+        );
+      }
+      final LayerExecutor executor = workers == 0
+          ? LocalExecutor(
+              LayerShard.load(
+                modelDir,
+                index: 0,
+                shards: 1,
+                maxSeq: maxSeq,
+                maxChunk: maxChunk,
+                format: weights,
+                keepF32: keepF32,
+                q8Cache: cache,
+                q8Built: built,
+              ),
+            )
+          : await PooledExecutor.spawn(
+              modelDir,
+              workers: workers,
+              maxSeq: maxSeq,
+              maxChunk: maxChunk,
+              format: weights,
+              keepF32: keepF32,
+            );
+      if (built != null) Q8Cache.write(q8CachePath!, cacheKey!, built);
       return Lfm3Model._(
         c,
         embedBf16,
         embedQ8,
         norms,
         finalNorm,
+        executor,
         null,
-        gpu,
         stateKey,
         maxSeq,
         maxChunk,
+        cache,
+        embedFile,
       );
+    } catch (_) {
+      cache?.close();
+      embedFile?.release();
+      rethrow;
     }
-    final LayerExecutor executor = workers == 0
-        ? LocalExecutor(
-            LayerShard.load(
-              modelDir,
-              index: 0,
-              shards: 1,
-              maxSeq: maxSeq,
-              maxChunk: maxChunk,
-              format: weights,
-              keepF32: keepF32,
-              q8Cache: cache,
-              q8Built: built,
-            ),
-          )
-        : await PooledExecutor.spawn(
-            modelDir,
-            workers: workers,
-            maxSeq: maxSeq,
-            maxChunk: maxChunk,
-            format: weights,
-            keepF32: keepF32,
-          );
-    if (built != null) Q8Cache.write(q8CachePath!, cacheKey!, built);
-    return Lfm3Model._(
-      c,
-      embedBf16,
-      embedQ8,
-      norms,
-      finalNorm,
-      executor,
-      null,
-      stateKey,
-      maxSeq,
-      maxChunk,
-    );
   }
 
-  /// A view of the bf16 embedding inside a mapping of model.safetensors,
-  /// or null without the native kernels.
-  static Uint16List? _mapEmbedding(
+  /// A mapping of model.safetensors and the bf16 embedding inside it, or
+  /// null without the native kernels.
+  static (MappedFile, Uint16List)? _mapEmbedding(
     String modelDir,
     SafetensorsFile st,
     Lfm3Config c,
@@ -248,7 +263,10 @@ final class Lfm3Model {
     if (offset.isOdd || info.numel != c.vocabSize * c.hiddenSize) return null;
     final file = MappedFile.open('$modelDir/model.safetensors');
     if (file == null) return null;
-    return (file.address + offset).cast<Uint16>().asTypedList(info.numel);
+    return (
+      file,
+      (file.address + offset).cast<Uint16>().asTypedList(info.numel),
+    );
   }
 
   final Lfm3Config config;
@@ -295,16 +313,50 @@ final class Lfm3Model {
   late final Float32List _a = Float32List(maxChunk * config.hiddenSize);
   late final Float32List _m = Float32List(maxChunk * config.hiddenSize);
   late final Float32List _normed = Float32List(config.hiddenSize);
-  late final Float32List logits = _gpu?.logits ?? Float32List(config.vocabSize);
+  late final Float32List _logits =
+      _gpu?.logits ?? Float32List(config.vocabSize);
 
-  /// Stops the worker isolates, if any.
-  Future<void> close() async => _executor?.close();
+  /// The logits of the last token fed with logits. On the GPU this is a
+  /// view of GPU memory: do not read it after [close].
+  Float32List get logits {
+    _checkOpen();
+    return _logits;
+  }
+
+  /// The mapped weight cache, and the mapping of model.safetensors that
+  /// holds the bf16 embedding, which [close] gives back.
+  final Q8Cache? _cache;
+  final MappedFile? _embedFile;
+
+  bool _closed = false;
+
+  /// Whether [close] has run.
+  bool get isClosed => _closed;
+
+  void _checkOpen() {
+    if (_closed) throw StateError('the model is closed');
+  }
+
+  /// Frees what the model holds: its GPU buffers, its worker isolates and
+  /// its mappings of the weight cache and model.safetensors, in that order
+  /// (the GPU wraps the cache). Afterwards the model throws StateError.
+  /// Matrices quantized at load time, without a cache, stay allocated: only
+  /// the command-line tool loads that way, and it exits.
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    _gpu?.dispose();
+    await _executor?.close();
+    _cache?.close();
+    _embedFile?.release();
+  }
 
   /// Timing of the shard calls, for profiling (empty on the GPU).
   late final ExecutorStats executorStats = _executor?.stats ?? ExecutorStats();
 
   /// Clears all state so the next call starts a new sequence.
   Future<void> reset() async {
+    _checkOpen();
     length = 0;
     _history.clear();
     _checkpoints.clear();
@@ -326,6 +378,7 @@ final class Lfm3Model {
     List<int> ids, {
     Iterable<int> checkpoints = const [],
   }) async {
+    _checkOpen();
     if (ids.isEmpty) throw ArgumentError('empty prompt');
     var common = 0;
     final limit = math.min(_history.length, ids.length - 1);
@@ -357,6 +410,7 @@ final class Lfm3Model {
   /// Costs a copy of the conv histories (640 KB for LFM3-1.7B); a no-op
   /// with worker isolates.
   Future<void> checkpoint() async {
+    _checkOpen();
     if (length == 0 || _checkpoints.containsKey(length)) return;
     final state = _gpu?.saveState() ?? await _executor!.saveState();
     if (state == null) return;
@@ -378,6 +432,7 @@ final class Lfm3Model {
   /// header (version, key, tokens, block lengths), zero padding to a
   /// multiple of 64, then the float blocks of [_stateBlocks] in order.
   Future<void> saveState(String path) async {
+    _checkOpen();
     final blocks =
         _stateBlocks(length) ??
         (throw UnsupportedError('worker isolates do not save states'));
@@ -416,6 +471,7 @@ final class Lfm3Model {
   /// backend, and checkpoints it. Returns false, with the model reset, if
   /// [path] is missing, malformed or written for anything else.
   Future<bool> loadState(String path) async {
+    _checkOpen();
     await reset();
     final file = File(path);
     if (!file.existsSync()) return false;
@@ -514,6 +570,7 @@ final class Lfm3Model {
     void Function(int slot, int first, Float32List rows, int count)? capture,
     bool computeLogits = true,
   }) async {
+    _checkOpen();
     if (length + tokens.length > maxSeq) {
       throw StateError('sequence exceeds maxSeq=$maxSeq');
     }
@@ -555,6 +612,7 @@ final class Lfm3Model {
   /// Applies the final norm and the tied LM head to one residual vector,
   /// leaving the result in [logits].
   Future<Float32List> logitsOf(Float32List residual) async {
+    _checkOpen();
     if (_gpu != null) return _gpu.logitsOf(residual);
     rmsNorm(
       residual,

@@ -27,6 +27,7 @@ void main() {
   group('with a model', () {
     test('auto runs on the GPU of an Apple silicon Mac', () async {
       final model = await LocalModel.load(_modelDir!, contextLength: 256);
+      addTearDown(model.close);
       expect(model.backend, InferenceBackend.gpu);
       expect(model.contextLength, 256);
     }, skip: Abi.current() == Abi.macosArm64 ? null : 'needs a Mac GPU');
@@ -37,6 +38,7 @@ void main() {
         backend: InferenceBackend.cpu,
         contextLength: 256,
       );
+      addTearDown(model.close);
       expect(model.backend, InferenceBackend.cpu);
       final turn = await model.chat(maxNewTokens: 8).send({
         'role': 'user',

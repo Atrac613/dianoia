@@ -10,13 +10,16 @@ final _modelDir = Platform.environment['DIANOIA_LFM3_DIR'];
 
 void main() {
   group('ChatSession.send', () {
+    late LocalModel model;
     late ChatSession session;
 
     setUpAll(() async {
-      final model = await LocalModel.load(_modelDir!, contextLength: 512);
+      model = await LocalModel.load(_modelDir!, contextLength: 512);
       session = model.chat(system: 'Answer briefly.', maxNewTokens: 48);
       await session.warmUp();
     });
+
+    tearDownAll(() => model.close());
 
     setUp(() => session.clear());
 

@@ -68,6 +68,12 @@ external int _wrap(Pointer<Void> address, int bytes);
 @Native<Pointer<Void> Function(Int64)>(symbol: 'lab_gpu_contents', isLeaf: true)
 external Pointer<Void> _contents(int handle);
 
+@Native<Void Function(Int64)>(symbol: 'lab_gpu_release')
+external void _release(int handle);
+
+@Native<Int64 Function()>(symbol: 'lab_gpu_live_buffers', isLeaf: true)
+external int _liveBuffers();
+
 @Native<Void Function(Int64)>(symbol: 'lab_gpu_set_decode_rows', isLeaf: true)
 external void _setDecodeRows(int rows);
 
@@ -369,19 +375,51 @@ final class GpuForward {
     if (maxSeq * 4 + 128 > _maxThreadgroupMemory()) {
       throw ArgumentError('--max-seq=$maxSeq is too long for GPU attention');
     }
-    return GpuForward._(config, maxSeq, maxChunk).._load(modelDir, cache);
+    final gpu = GpuForward._(config, maxSeq, maxChunk);
+    try {
+      gpu._load(modelDir, cache);
+    } catch (_) {
+      gpu.dispose();
+      rethrow;
+    }
+    return gpu;
+  }
+
+  /// GPU buffers in the process not yet released, for leak checks.
+  static int get liveBuffers => _liveBuffers();
+
+  /// The buffers this forward pass made, which [dispose] releases.
+  final _owned = <int>[];
+  bool _disposed = false;
+
+  _Buffer _newBuffer(int floats) {
+    final buffer = _Buffer(floats);
+    _owned.add(buffer.handle);
+    return buffer;
+  }
+
+  /// Releases every GPU buffer this forward pass made. The cache it wraps
+  /// stays mapped: unmap it after this, never before. Using the forward
+  /// pass afterwards throws.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _owned.forEach(_release);
+    _owned.clear();
   }
 
   /// The GPU's name, once a [GpuForward] exists.
   static String get deviceName {
-    final out = _scratchBytes(256);
-    _deviceName(out, 256);
-    final bytes = out.asTypedList(256);
-    return String.fromCharCodes(bytes.sublist(0, bytes.indexOf(0)));
+    final scratch = _Buffer._check(_buffer(256), 256);
+    try {
+      final out = _contents(scratch).cast<Uint8>();
+      _deviceName(out, 256);
+      final bytes = out.asTypedList(256);
+      return String.fromCharCodes(bytes.sublist(0, bytes.indexOf(0)));
+    } finally {
+      _release(scratch);
+    }
   }
-
-  static Pointer<Uint8> _scratchBytes(int n) =>
-      _contents(_Buffer._check(_buffer(n), n)).cast<Uint8>();
 
   /// Device facts for a measurement record, once a [GpuForward] exists.
   static Map<String, Object> get deviceFacts => {
@@ -433,11 +471,16 @@ final class GpuForward {
     final floats = megabytes << 18;
     final from = _Buffer(floats), to = _Buffer(floats);
     var best = 0.0;
-    for (var i = 0; i < 3; i++) {
-      _begin();
-      _copy(from.handle, 0, to.handle, 0, floats);
-      if (_commit(1) != 1) throw StateError('GPU command buffer failed');
-      best = math.max(best, 2 * floats * 4 / (_lastGpuMs() / 1000) / 1e9);
+    try {
+      for (var i = 0; i < 3; i++) {
+        _begin();
+        _copy(from.handle, 0, to.handle, 0, floats);
+        if (_commit(1) != 1) throw StateError('GPU command buffer failed');
+        best = math.max(best, 2 * floats * 4 / (_lastGpuMs() / 1000) / 1e9);
+      }
+    } finally {
+      _release(from.handle);
+      _release(to.handle);
     }
     return best;
   }
@@ -467,8 +510,8 @@ final class GpuForward {
       if (!q8WorkgroupSweep && !q8VectorSweep) 'ffn_down': _layers.first.w2,
       'lm_head': _lmHead,
     };
-    final x = _Buffer(matrices.values.map((w) => w.cols).reduce(math.max));
-    final y = _Buffer(matrices.values.map((w) => w.rows).reduce(math.max));
+    final x = _newBuffer(matrices.values.map((w) => w.cols).reduce(math.max));
+    final y = _newBuffer(matrices.values.map((w) => w.rows).reduce(math.max));
     for (var i = 0; i < x.length; i++) {
       x.view[i] = math.sin(i * 0.17) + 0.25 * math.cos(i * 0.07);
     }
@@ -695,7 +738,7 @@ final class GpuForward {
             ..convKernel = place(
               st.readF32('${p}conv.conv.weight', [h, 1, c.convKernel]),
             )
-            ..history = _Buffer((c.convKernel - 1) * h).handle;
+            ..history = _newBuffer((c.convKernel - 1) * h).handle;
         } else {
           final a = '${p}self_attn.';
           layer
@@ -706,8 +749,8 @@ final class GpuForward {
             ..o = matrix('${a}o_proj', h, c.numHeads * hd)
             ..qNorm = place(st.readF32('${a}q_norm.weight', [hd]))
             ..kNorm = place(st.readF32('${a}k_norm.weight', [hd]))
-            ..keys = _Buffer(maxSeq * c.kvDim).handle
-            ..values = _Buffer(maxSeq * c.kvDim).handle
+            ..keys = _newBuffer(maxSeq * c.kvDim).handle
+            ..values = _newBuffer(maxSeq * c.kvDim).handle
             ..sliding = c.layerTypes[i] == LayerType.slidingAttention;
         }
         _layers.add(layer);
@@ -716,7 +759,7 @@ final class GpuForward {
     } finally {
       st.close();
     }
-    _small = _Buffer(smallFloats);
+    _small = _newBuffer(smallFloats);
     var at = 0;
     for (final values in small) {
       _small.view.setAll(at, values);
@@ -741,22 +784,22 @@ final class GpuForward {
     // Activations of a chunk: maxChunk rows each.
     final heads = c.numHeads * hd;
     final rows = maxChunk;
-    _x = _Buffer(rows * h);
-    _a = _Buffer(rows * h);
-    _m = _Buffer(rows * h);
-    _bcx = _Buffer(rows * 3 * h);
-    _y = _Buffer(rows * h);
-    _q = _Buffer(rows * heads);
-    _gate = _Buffer(rows * c.numHeads);
-    _attnOut = _Buffer(rows * heads);
-    _g = _Buffer(rows * c.intermediateSize);
-    _u = _Buffer(rows * c.intermediateSize);
-    _normed = _Buffer(h);
-    _logits = _Buffer(c.vocabSize);
+    _x = _newBuffer(rows * h);
+    _a = _newBuffer(rows * h);
+    _m = _newBuffer(rows * h);
+    _bcx = _newBuffer(rows * 3 * h);
+    _y = _newBuffer(rows * h);
+    _q = _newBuffer(rows * heads);
+    _gate = _newBuffer(rows * c.numHeads);
+    _attnOut = _newBuffer(rows * heads);
+    _g = _newBuffer(rows * c.intermediateSize);
+    _u = _newBuffer(rows * c.intermediateSize);
+    _normed = _newBuffer(h);
+    _logits = _newBuffer(c.vocabSize);
     // Per token: [full cos, full sin, sliding cos, sliding sin], hd / 2 each.
-    _rope = _Buffer(rows * 2 * hd);
-    _residualIn = _Buffer(h);
-    _capture = _Buffer((c.numLayers + 1) * rows * h);
+    _rope = _newBuffer(rows * 2 * hd);
+    _residualIn = _newBuffer(h);
+    _capture = _newBuffer((c.numLayers + 1) * rows * h);
   }
 
   /// Wraps the mapped cache as GPU buffers: one buffer
@@ -780,6 +823,7 @@ final class GpuForward {
         math.min(end, cache.file.length) - start,
       );
       if (handle < 0) throw StateError('wrapping the weight cache failed');
+      _owned.add(handle);
       _segments++;
       for (final name in pending) {
         result[name] = (handle, start);
@@ -857,6 +901,7 @@ final class GpuForward {
     required bool withLogits,
     required bool capture,
   }) {
+    if (_disposed) throw StateError('the GPU forward pass is disposed');
     if (n < 1 || n > maxChunk) throw ArgumentError('chunk of $n tokens');
     if (position + n > maxSeq) throw StateError('position exceeds maxSeq');
     final sw = Stopwatch()..start();

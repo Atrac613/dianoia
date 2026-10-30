@@ -118,6 +118,15 @@ external void _gemmQ4(
 )
 external Pointer<Void> _mapFile(Pointer<Uint8> path, Pointer<Int64> size);
 
+@Native<Void Function(Pointer<Void>, Int64)>(
+  symbol: 'lab_unmap_file',
+  isLeaf: true,
+)
+external void _unmapFile(Pointer<Void> address, int size);
+
+@Native<Void Function(Pointer<Void>)>(symbol: 'lab_free', isLeaf: true)
+external void _free(Pointer<Void> p);
+
 @Native<Int64 Function()>(symbol: 'lab_phys_footprint', isLeaf: true)
 external int _physFootprint();
 
@@ -140,18 +149,22 @@ int physFootprint() {
 
 /// A file mapped read-only into memory by the native library. Its pages are
 /// read on first touch and stay clean, so the OS can drop them under memory
-/// pressure. Mappings live for the rest of the process, and opening a path
-/// again returns its existing mapping: an iOS app's address space has room
-/// for the 1.95 GB Q8 cache, but not for two copies of it.
+/// pressure. Opening a path that is already mapped returns its mapping: an
+/// iOS app's address space has room for the 1.95 GB Q8 cache, but not for
+/// two copies of it. The opens are counted, each needs a [release], and the
+/// last release unmaps the file.
 final class MappedFile {
-  MappedFile._(this.address, this.length);
+  MappedFile._(this._path, this.address, this.length);
 
   static final _mapped = <String, MappedFile>{};
 
   /// Maps [path], or returns null if it cannot be opened, is empty, or
   /// does not fit in the address space.
   static MappedFile? open(String path) {
-    if (_mapped[path] case final file?) return file;
+    if (_mapped[path] case final file?) {
+      file._opens++;
+      return file;
+    }
     final bytes = utf8.encode(path);
     final cPath = NativeKernels.allocate<Uint8>(bytes.length + 1);
     cPath.asTypedList(bytes.length + 1)
@@ -159,12 +172,29 @@ final class MappedFile {
       ..[bytes.length] = 0;
     final size = NativeKernels.allocate<Int64>(8);
     final p = _mapFile(cPath, size);
+    final length = size.value;
+    _free(cPath.cast());
+    _free(size.cast());
     if (p == nullptr) return null;
-    return _mapped[path] = MappedFile._(p.cast<Uint8>(), size.value);
+    return _mapped[path] = MappedFile._(path, p.cast<Uint8>(), length);
   }
 
+  final String _path;
   final Pointer<Uint8> address;
   final int length;
+  int _opens = 1;
+
+  /// Gives back one [open]. After the last, the memory is gone: views of
+  /// it, and GPU buffers wrapping it, must not outlive it.
+  void release() {
+    if (_opens == 0) throw StateError('$_path is not mapped');
+    if (--_opens > 0) return;
+    _mapped.remove(_path);
+    _unmapFile(address.cast(), length);
+  }
+
+  /// Whether [path] is mapped, for leak checks.
+  static bool isMapped(String path) => _mapped.containsKey(path);
 
   Uint8List bytes(int offset, int count) =>
       (address + offset).asTypedList(count);

@@ -160,6 +160,8 @@ static int64_t gKindCount[kKinds];
 static double gLastGpuMs;
 static Buffer gBuffers[kMaxBuffers];
 static int64_t gBufferCount;
+// Handles freed by lab_gpu_release, handed out again before new ones.
+static int64_t gFree[kMaxBuffers], gFreeCount, gLive;
 
 // Vulkan 1.1 and 1.2 entry points: Android's libvulkan stubs export only
 // 1.0, so these come from the loader at run time.
@@ -423,8 +425,16 @@ int64_t lab_gpu_physical_memory(void) {
 }
 
 static int64_t create_buffer(VkDeviceSize bytes) {
-  if (gBufferCount >= kMaxBuffers || bytes == 0) return -1;
-  Buffer* b = &gBuffers[gBufferCount];
+  if (bytes == 0) return -1;
+  int64_t handle;
+  if (gFreeCount > 0) {
+    handle = gFree[gFreeCount - 1];
+  } else if (gBufferCount < kMaxBuffers) {
+    handle = gBufferCount;
+  } else {
+    return -1;
+  }
+  Buffer* b = &gBuffers[handle];
   const VkBufferCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = bytes,
@@ -454,7 +464,13 @@ static int64_t create_buffer(VkDeviceSize bytes) {
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = b->buffer};
   b->address = pGetBufferDeviceAddress(gDevice, &addressInfo);
   b->size = bytes;
-  return gBufferCount++;
+  if (handle == gBufferCount) {
+    gBufferCount++;
+  } else {
+    gFreeCount--;
+  }
+  gLive++;
+  return handle;
 }
 
 // A host-visible buffer of `bytes` zeroed bytes; returns its handle, or -1.
@@ -498,6 +514,26 @@ static int wait_pending(void) {
   }
   return 1;
 }
+
+// Destroys a buffer and frees its handle for reuse, after the GPU is done
+// with any submitted work. Whatever was keyed by the handle goes with it: a
+// cached quantization of its contents and a registered Q8 head.
+void lab_gpu_release(int64_t handle) {
+  if (handle < 0 || handle >= gBufferCount || gBuffers[handle].buffer == VK_NULL_HANDLE) return;
+  wait_pending();
+  Buffer* b = &gBuffers[handle];
+  vkDestroyBuffer(gDevice, b->buffer, NULL);
+  vkFreeMemory(gDevice, b->memory, NULL);  // unmaps it too
+  memset(b, 0, sizeof *b);
+  gGeneration[handle]++;  // a quantization cached from it goes stale
+  if (gQuantized.handle == handle) gQuantized.valid = 0;
+  gAutoQ8Head[handle] = 0;
+  gFree[gFreeCount++] = handle;
+  gLive--;
+}
+
+// Buffers not yet released, for leak checks.
+int64_t lab_gpu_live_buffers(void) { return gLive; }
 
 // Opens the command buffer that the encode calls record into.
 void lab_gpu_begin(void) {

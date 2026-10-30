@@ -41,6 +41,15 @@ final class LocalModel {
   /// The most tokens a conversation can hold, prompt and replies together.
   int get contextLength => _model.maxSeq;
 
+  /// Whether [close] has run.
+  bool get isClosed => _model.isClosed;
+
+  /// Frees the model: its GPU memory and its mappings of the bundle's
+  /// files. Its conversations stop working: a reply being generated fails
+  /// at its next token, and [ChatSession.send] throws [StateError]. Closing
+  /// twice does nothing.
+  Future<void> close() => _model.close();
+
   /// Loads the model bundle in [dir]: `config.json`, `tokenizer.json`,
   /// `model.safetensors` and the quantized weights, `lfm3-q4.cache` (from
   /// `dianoia import-gguf`) or `lfm3-q8.cache` (from `dianoia pack`).

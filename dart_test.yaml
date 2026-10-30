@@ -1,0 +1,4 @@
+# One test file at a time. Test files run as isolates of one process, and
+# the GPU layer is process-wide: two isolates encoding GPU work at once
+# corrupt each other's command buffers (Metal aborts the process).
+concurrency: 1

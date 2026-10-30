@@ -435,11 +435,14 @@ static double gLastGpuMs;
 static const NSUInteger kRowsPerGroup = 8;
 static const NSUInteger kGemmTokens = 8, kGemmRows = 4;
 
-// Buffers stay alive in gBuffers for the life of the process; gTable mirrors
-// it without reference counting, so a lookup on the encoding path is a load.
-static NSMutableArray<id<MTLBuffer>>* gBuffers;
+// Buffers stay alive in gStrong until lab_gpu_release; gTable mirrors it
+// without reference counting, so a lookup on the encoding path is a load.
+// Released handles go to gFree and are handed out again.
 enum { kMaxBuffers = 4096 };
+static id<MTLBuffer> gStrong[kMaxBuffers];
 static __unsafe_unretained id<MTLBuffer> gTable[kMaxBuffers];
+static int64_t gFree[kMaxBuffers], gFreeCount, gBufferCount, gLive;
+static int gReady;  // lab_gpu_init succeeded
 
 // The command buffer being encoded, and its encoder.
 static id<MTLCommandBuffer> gCmd;
@@ -457,11 +460,12 @@ static id<MTLComputePipelineState> pipeline(id<MTLLibrary> library, NSString* na
 // Returns 1 on success, 0 if there is no Metal device or the shader fails
 // to compile (the error is logged).
 int64_t lab_gpu_init(void) {
+  // Once per process: the buffers of every model share the device.
+  if (gReady) return 1;
   @autoreleasepool {
     gDevice = MTLCreateSystemDefaultDevice();
     if (gDevice == nil) return 0;
     gQueue = [gDevice newCommandQueue];
-    gBuffers = [NSMutableArray array];
     NSError* error = nil;
     MTLCompileOptions* options = [MTLCompileOptions new];
     options.mathMode = MTLMathModeSafe;
@@ -481,8 +485,9 @@ int64_t lab_gpu_init(void) {
     gAttention = pipeline(library, @"attention");
     gSwiglu = pipeline(library, @"swiglu");
     gCopy = pipeline(library, @"copy_f32");
-    return gGemvQ8 && gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv && gAttention &&
-           gSwiglu && gCopy;
+    gReady = gGemvQ8 && gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv &&
+             gAttention && gSwiglu && gCopy;
+    return gReady;
   }
 }
 
@@ -514,11 +519,34 @@ int64_t lab_gpu_physical_memory(void) {
 }
 
 static int64_t add_buffer(id<MTLBuffer> b) {
-  if (b == nil || gBuffers.count >= kMaxBuffers) return -1;
-  gTable[gBuffers.count] = b;
-  [gBuffers addObject:b];
-  return (int64_t)gBuffers.count - 1;
+  if (b == nil) return -1;
+  int64_t handle;
+  if (gFreeCount > 0) {
+    handle = gFree[--gFreeCount];
+  } else if (gBufferCount < kMaxBuffers) {
+    handle = gBufferCount++;
+  } else {
+    return -1;
+  }
+  gStrong[handle] = b;
+  gTable[handle] = b;
+  gLive++;
+  return handle;
 }
+
+// Releases a buffer and frees its handle for reuse. The GPU must be done
+// with it: Dart waits for every command buffer it commits. A wrapped
+// buffer leaves the memory it wraps alone.
+void lab_gpu_release(int64_t handle) {
+  if (handle < 0 || handle >= gBufferCount || gStrong[handle] == nil) return;
+  gStrong[handle] = nil;
+  gTable[handle] = nil;
+  gFree[gFreeCount++] = handle;
+  gLive--;
+}
+
+// Buffers not yet released, for leak checks.
+int64_t lab_gpu_live_buffers(void) { return gLive; }
 
 // A shared-storage buffer of `bytes` zeroed bytes; returns its handle, or -1.
 int64_t lab_gpu_buffer(int64_t bytes) {
@@ -656,7 +684,7 @@ void lab_metal_touch(int64_t y) {
 // Every buffer argument is a handle plus a byte offset into it.
 
 // Opens a command buffer and its serial compute encoder. Buffers are not
-// retained per command buffer: gBuffers keeps them all alive.
+// retained per command buffer: gStrong keeps them alive.
 void lab_gpu_begin(void) {
   @autoreleasepool {
     gCmd = [gQueue commandBufferWithUnretainedReferences];

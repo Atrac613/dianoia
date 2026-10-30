@@ -64,6 +64,7 @@ final class Q8Cache {
         MappedFile.open(path) ??
         (throw StateError('mapping $path ($length bytes) failed'));
     if (utf8.decode(file.bytes(0, 8), allowMalformed: true) != _magic) {
+      file.release();
       return null;
     }
     final headerLength = ByteData.sublistView(
@@ -72,7 +73,10 @@ final class Q8Cache {
     final header =
         jsonDecode(utf8.decode(file.bytes(16, headerLength)))
             as Map<String, Object?>;
-    if (header['version'] != _version || header['key'] != key) return null;
+    if (header['version'] != _version || header['key'] != key) {
+      file.release();
+      return null;
+    }
     return Q8Cache._(file, {
       for (final MapEntry(:key, :value)
           in (header['tensors'] as Map<String, Object?>).entries)
@@ -82,6 +86,10 @@ final class Q8Cache {
 
   /// The mapping, for handing the whole file to the GPU in one piece.
   MappedFile get file => _file;
+
+  /// Unmaps the cache once no other [open] of it holds the mapping. The
+  /// matrices from [matrix] point into it and must not be used afterwards.
+  void close() => _file.release();
 
   /// Every cached matrix: name, rows and columns.
   Iterable<(String, int, int)> get shapes => _entries.entries.map(
