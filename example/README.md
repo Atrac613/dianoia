@@ -48,7 +48,7 @@ Measured on the GPU while the reply streams onto the screen:
 | iPhone 15 Pro Max | 309 ms | 25.9 tok/s (a 9-token reply) |
 | Pixel 8 | 310 ms | about 12 tok/s |
 
-The macOS build has not been run yet. Replies are shown as plain text, so
+On a Pixel 8 the app also installed from Hugging Face itself: download, build and load finished within 11 minutes of the tap (not timed more closely), and the model answered. The macOS build has not been run yet. Replies are shown as plain text, so
 the model's Markdown (`**bold**`) appears as written.
 
 ## Command line
