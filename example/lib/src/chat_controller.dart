@@ -144,8 +144,20 @@ class ChatController extends ChangeNotifier {
   }
 
   static Future<ModelLocation> _modelLocation() async {
-    final store = '${(await getApplicationSupportDirectory()).path}/models';
     const name = 'LFM3-1.7B-QAD-Q4';
+    if (Platform.isWindows) {
+      // The support directory is in the roaming profile, which is no place
+      // for a 1 GB model, and Documents is the user's own folder: keep both
+      // in the app's directory under Local AppData.
+      final local = (await getApplicationCacheDirectory()).path;
+      final dir = '$local/$name';
+      return ModelLocation(
+        storeDir: '$local/models',
+        dropDir: dir,
+        copyDir: dir,
+      );
+    }
+    final store = '${(await getApplicationSupportDirectory()).path}/models';
     if (Platform.isAndroid) {
       final external = await getExternalStorageDirectory();
       final internal = await getApplicationSupportDirectory();

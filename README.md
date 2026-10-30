@@ -142,8 +142,8 @@ are in `package:dianoia/lab.dart`, which the command-line tool and the
 benchmarks use and which may change without notice.
 
 `example/example.dart` is a complete tool round trip, and `example/` is a
-Flutter chat app that streams replies on an iPhone or Android phone (see
-`example/README.md`).
+Flutter chat app that streams replies on an iPhone, an Android phone or a
+Windows PC (see `example/README.md`).
 
 ## Development
 

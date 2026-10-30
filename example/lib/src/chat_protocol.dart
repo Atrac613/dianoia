@@ -21,7 +21,7 @@ final class ModelLocation {
 
   /// Where a developer may put a ready bundle instead (see README.md): the
   /// app's Documents on iOS and macOS, its external files directory on
-  /// Android.
+  /// Android, its directory under Local AppData on Windows.
   final String dropDir;
 
   /// Where a bundle from [dropDir] is mapped from: [dropDir] itself, or on

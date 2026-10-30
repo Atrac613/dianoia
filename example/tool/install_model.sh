@@ -5,6 +5,7 @@
 #   example/tool/install_model.sh ios       BUNDLE_DIR [DEVICE_ID]
 #   example/tool/install_model.sh android   BUNDLE_DIR
 #   example/tool/install_model.sh simulator BUNDLE_DIR
+#   example/tool/install_model.sh windows   BUNDLE_DIR   (from Git Bash)
 #
 # BUNDLE_DIR is the LFM3-1.7B-QAD-Q4 directory written by
 # `dianoia import-gguf`. Install the app and start it once first, so that
@@ -12,7 +13,7 @@
 # the bundle into the app's documents just as well.
 set -euo pipefail
 
-PLATFORM="${1:?ios, android or simulator}"
+PLATFORM="${1:?ios, android, simulator or windows}"
 BUNDLE="${2:?the model bundle directory}"
 NAME=LFM3-1.7B-QAD-Q4
 IOS_ID=dev.atrac613.dianoiaExample
@@ -42,6 +43,13 @@ case "$PLATFORM" in
     container="$(xcrun simctl get_app_container booted "$IOS_ID" data)"
     mkdir -p "$container/Documents/$NAME"
     cp "$BUNDLE"/* "$container/Documents/$NAME/"
+    ;;
+  windows)
+    # Local AppData\<CompanyName>\<ProductName> from windows/runner/Runner.rc,
+    # as path_provider names the app's directory.
+    dest="$LOCALAPPDATA/dev.atrac613/dianoia_example/$NAME"
+    mkdir -p "$dest"
+    cp "$BUNDLE"/* "$dest/"
     ;;
   *)
     echo "unknown platform $PLATFORM" >&2

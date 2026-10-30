@@ -2,17 +2,20 @@
 
 ## Chat app (Flutter)
 
-A simple chat with LFM3-1.7B running on the phone: replies stream in token
-by token, a stop button ends a reply early, and "New chat" starts over
-while keeping the system prompt's state. The model runs on the GPU (Metal
-on iOS and macOS, Vulkan on Android), or on the CPU kernels when there is
-no usable GPU, in a worker isolate so the UI never waits on it.
+A simple chat with LFM3-1.7B running on the device: replies stream in
+token by token, a stop button ends a reply early, and "New chat" starts
+over while keeping the system prompt's state. The model runs on the GPU
+(Metal on iOS and macOS, Vulkan on Android and Windows), or on the CPU
+kernels when there is no usable GPU, in a worker isolate so the UI never
+waits on it.
 
 The model is not bundled. Without one the app offers to download it,
 naming its size (1.07 GB) and license; `ModelStore.install` then fetches
 Liquid's published files from Hugging Face, checks each one's SHA-256,
 builds the bundle on the device and loads it. A cancelled download resumes
-where it stopped.
+where it stopped. On Windows the app keeps the model under
+`%LOCALAPPDATA%\dev.atrac613\dianoia_example`, not in the roaming
+profile.
 
 For development there are two shortcuts around the 1 GB download:
 
@@ -26,7 +29,7 @@ flutter build apk --dart-define=DIANOIA_MODEL_MIRROR=http://127.0.0.1:8642
 
 # Or a ready bundle (from `dianoia import-gguf`) copied into the app's data,
 # which the app loads first.
-tool/install_model.sh ios path/to/LFM3-1.7B-QAD-Q4        # or android
+tool/install_model.sh ios path/to/LFM3-1.7B-QAD-Q4  # or android, windows
 ```
 
 `serve_model.dart --mbps=50` slows the mirror enough to try cancelling and
@@ -47,8 +50,9 @@ Measured on the GPU while the reply streams onto the screen:
 |---|---|---|
 | iPhone 15 Pro Max | 309 ms | 25.9 tok/s (a 9-token reply) |
 | Pixel 8 | 310 ms | about 12 tok/s |
+| Radeon RX 6600 XT, Windows (debug build) | 49 ms | 91.7 tok/s (a 78-token reply) |
 
-On a Pixel 8 the app also installed from Hugging Face itself: download, build and load finished within 11 minutes of the tap (not timed more closely), and the model answered. The macOS build has not been run yet. Replies are shown as plain text, so
+On a Pixel 8 the app also installed from Hugging Face itself: download, build and load finished within 11 minutes of the tap (not timed more closely), and the model answered. On the Windows PC the same install took 70 seconds. The macOS build has not been run yet. Replies are shown as plain text, so
 the model's Markdown (`**bold**`) appears as written.
 
 ## Command line
