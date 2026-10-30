@@ -1,5 +1,6 @@
 /// Whole LFM3 tokens on the GPU: Metal on Apple platforms
-/// (src/metal/lab_metal.m), Vulkan on Android (src/vulkan/lab_vulkan.c).
+/// (src/metal/lab_metal.m), Vulkan on Android and Windows
+/// (src/vulkan/lab_vulkan.c).
 /// Both export the same C API, `lab_gpu_*`, and the build hook compiles the
 /// one for the target into the kernels asset, so this file drives either.
 ///

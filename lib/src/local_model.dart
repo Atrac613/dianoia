@@ -16,7 +16,7 @@ enum InferenceBackend {
   /// The GPU where it can run the model, the CPU kernels otherwise.
   auto,
 
-  /// Metal on Apple platforms, Vulkan on Android.
+  /// Metal on Apple platforms, Vulkan on Android and Windows.
   gpu,
 
   /// The native CPU kernels.
@@ -45,8 +45,9 @@ final class LocalModel {
   bool get isClosed => _model.isClosed;
 
   /// Whether models can run here: the native kernels were built for this
-  /// platform and the CPU has the int8 dot product they need. An app should
-  /// check it before offering on-device models at all.
+  /// platform and the CPU has what they need (the int8 dot product on
+  /// arm64, AVX2 on x86-64). An app should check it before offering
+  /// on-device models at all.
   static bool get isSupported => NativeKernels.isAvailable;
 
   /// Frees the model: its GPU memory and its mappings of the bundle's
@@ -75,7 +76,7 @@ final class LocalModel {
       if (!NativeKernels.isAvailable) {
         throw UnsupportedError(
           'dianoia has no native kernels for ${Abi.current()}; it runs on '
-          'arm64 macOS, iOS and Android',
+          'arm64 macOS, iOS and Android and on x86-64 Windows with AVX2',
         );
       }
       NativeKernels.load(null, threads: threads);

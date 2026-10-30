@@ -13,9 +13,10 @@
 /// Q8 is llama.cpp's Q8_0 idea in a plain layout: per row, blocks of 32
 /// weights share a float scale and store int8 q = round(w / scale). With
 /// int8 inputs (the default) each product first quantizes its inputs per
-/// block and multiplies int8 pairs with `sdot`; otherwise inputs stay float
-/// and int8 weights are widened. Rows are split across native threads that
-/// share memory, so there are no isolates and no messages.
+/// block and multiplies int8 pairs with `sdot` (on x86-64, AVX2's
+/// equivalent, with the same result); otherwise inputs stay float and int8
+/// weights are widened. Rows are split across native threads that share
+/// memory, so there are no isolates and no messages.
 ///
 /// Q4 is llama.cpp's Q4_0 (the format of Liquid's quantization-aware
 /// distilled LFM3): per block of 32, a half scale d and 4-bit q, worth
@@ -134,8 +135,8 @@ external int _physFootprint();
 external int _cpuSupported();
 
 /// The process's physical footprint in bytes (what iOS holds against an
-/// app's memory limit); on Linux and Android, its resident set size from
-/// /proc; -1 where neither is available.
+/// app's memory limit); on Windows, its working set; on Linux and Android,
+/// its resident set size from /proc; -1 where none is available.
 int physFootprint() {
   final footprint = _physFootprint();
   if (footprint >= 0 || !(Platform.isAndroid || Platform.isLinux)) {

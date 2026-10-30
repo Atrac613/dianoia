@@ -1,5 +1,6 @@
 // Closing a model gives back everything it took. Needs a Q4 bundle in
-// DIANOIA_LFM3_DIR and the GPU of an Apple silicon Mac; skipped otherwise.
+// DIANOIA_LFM3_DIR and the GPU of an Apple silicon Mac or of a Windows PC
+// (Vulkan); skipped otherwise.
 import 'dart:ffi';
 import 'dart:io';
 
@@ -19,8 +20,13 @@ Future<LocalModel> _loadAndChat() async {
 }
 
 void main() {
-  if (_modelDir == null || Abi.current() != Abi.macosArm64) {
-    test('close', () {}, skip: 'set DIANOIA_LFM3_DIR on an Apple silicon Mac');
+  if (_modelDir == null ||
+      (Abi.current() != Abi.macosArm64 && Abi.current() != Abi.windowsX64)) {
+    test(
+      'close',
+      () {},
+      skip: 'set DIANOIA_LFM3_DIR on an Apple silicon Mac or a Windows PC',
+    );
     return;
   }
   test('close gives back every GPU buffer and mapping', () async {

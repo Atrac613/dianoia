@@ -23,12 +23,25 @@
 //
 // The shaders (shaders/*.comp) are compiled to SPIR-V at build time and
 // included as word arrays (see the plugin's CMakeLists.txt).
+//
+// The same layer runs on Windows. There the Vulkan loader, vulkan-1.dll,
+// comes with the GPU driver rather than with the OS, so it is opened when
+// the GPU starts instead of being linked: the CPU kernels in this library
+// still load on a machine without it. A discrete GPU's buffers are its own
+// memory mapped through the PCIe BAR, which needs Resizable BAR for a model
+// to fit.
 
+#ifdef _WIN32
+#define VK_NO_PROTOTYPES
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <vulkan/vulkan.h>
 #include "q8_vector_policy.h"
 
@@ -38,6 +51,57 @@
 #define LOG(...) __android_log_print(ANDROID_LOG_ERROR, "lab_vulkan", __VA_ARGS__)
 #else
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
+#endif
+
+// A DLL exports only what it is told to.
+#ifdef _WIN32
+#define LAB_EXPORT __declspec(dllexport)
+#else
+#define LAB_EXPORT
+#endif
+
+#ifdef _WIN32
+// The entry points this layer calls besides vkCreateInstance, loaded from
+// vulkan-1.dll under their usual names once there is an instance.
+#define ENTRY_POINTS(X)                                                                   \
+  X(vkAllocateCommandBuffers) X(vkAllocateMemory) X(vkBeginCommandBuffer)                 \
+  X(vkBindBufferMemory) X(vkCmdBindPipeline) X(vkCmdDispatch) X(vkCmdPipelineBarrier)     \
+  X(vkCmdPushConstants) X(vkCmdResetQueryPool) X(vkCmdWriteTimestamp) X(vkCreateBuffer)   \
+  X(vkCreateCommandPool) X(vkCreateComputePipelines) X(vkCreateDevice) X(vkCreateFence)   \
+  X(vkCreatePipelineLayout) X(vkCreateQueryPool) X(vkCreateShaderModule)                  \
+  X(vkDestroyBuffer) X(vkDestroyShaderModule) X(vkEndCommandBuffer)                       \
+  X(vkEnumerateDeviceExtensionProperties) X(vkEnumeratePhysicalDevices) X(vkFreeMemory)   \
+  X(vkGetBufferMemoryRequirements) X(vkGetDeviceProcAddr) X(vkGetDeviceQueue)             \
+  X(vkGetPhysicalDeviceMemoryProperties) X(vkGetPhysicalDeviceQueueFamilyProperties)      \
+  X(vkGetQueryPoolResults) X(vkMapMemory) X(vkQueueSubmit) X(vkResetCommandBuffer)        \
+  X(vkResetFences) X(vkWaitForFences)
+
+#define DECLARE(name) static PFN_##name name;
+static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+static PFN_vkCreateInstance vkCreateInstance;
+ENTRY_POINTS(DECLARE)
+#undef DECLARE
+
+// Opens the loader; returns 0 if there is none.
+static int load_loader(void) {
+  if (vkCreateInstance != NULL) return 1;
+  const HMODULE loader = LoadLibraryA("vulkan-1.dll");
+  if (loader == NULL) return 0;
+  vkGetInstanceProcAddr =
+      (PFN_vkGetInstanceProcAddr)(void (*)(void))GetProcAddress(loader, "vkGetInstanceProcAddr");
+  if (vkGetInstanceProcAddr == NULL) return 0;
+  vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(NULL, "vkCreateInstance");
+  return vkCreateInstance != NULL;
+}
+
+// Loads the other entry points through `instance`; returns 0 if any is missing.
+static int load_entry_points(VkInstance instance) {
+#define LOAD(name) \
+  if ((name = (PFN_##name)vkGetInstanceProcAddr(instance, #name)) == NULL) return 0;
+  ENTRY_POINTS(LOAD)
+#undef LOAD
+  return 1;
+}
 #endif
 
 static const uint32_t kGemvQ8[] =
@@ -221,14 +285,26 @@ static VkPipeline pipeline_constants(const uint32_t* code, size_t bytes,
 }
 
 // Returns 1 on success, 0 if there is no usable Vulkan device (logged).
-int64_t lab_gpu_init(void) {
+LAB_EXPORT int64_t lab_gpu_init(void) {
   if (gDevice != VK_NULL_HANDLE) return 1;
   const VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
                                  .pApplicationName = "dart-llm-lab",
                                  .apiVersion = VK_API_VERSION_1_2};
   const VkInstanceCreateInfo instanceInfo = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                                              .pApplicationInfo = &app};
+#ifdef _WIN32
+  if (!load_loader()) {
+    LOG("no Vulkan loader (vulkan-1.dll)\n");
+    return 0;
+  }
+#endif
   CHECK(vkCreateInstance(&instanceInfo, NULL, &gInstance));
+#ifdef _WIN32
+  if (!load_entry_points(gInstance)) {
+    LOG("the Vulkan loader lacks an entry point\n");
+    return 0;
+  }
+#endif
   uint32_t count = 1;
   const VkResult enumerated = vkEnumeratePhysicalDevices(gInstance, &count, &gPhysical);
   if ((enumerated != VK_SUCCESS && enumerated != VK_INCOMPLETE) || count == 0) {
@@ -404,24 +480,29 @@ int64_t lab_gpu_init(void) {
 }
 
 // Copies the device name into out (UTF-8, NUL-terminated).
-void lab_gpu_device_name(char* out, int64_t capacity) {
+LAB_EXPORT void lab_gpu_device_name(char* out, int64_t capacity) {
   snprintf(out, (size_t)capacity, "%s", gProperties.deviceName);
 }
 
-int64_t lab_gpu_max_buffer_length(void) { return (int64_t)gMaxBuffer; }
+LAB_EXPORT int64_t lab_gpu_max_buffer_length(void) { return (int64_t)gMaxBuffer; }
 
 // What gpu.dart checks maxSeq against: the attention kernel's scores live in
 // a fixed shared array of kMaxKeys floats (plus 128 bytes, as on Metal).
-int64_t lab_gpu_max_shared_memory(void) { return kMaxKeys * 4 + 128; }
+LAB_EXPORT int64_t lab_gpu_max_shared_memory(void) { return kMaxKeys * 4 + 128; }
 
 // The heap of the buffers' memory type: on a phone, the shared RAM.
-int64_t lab_gpu_recommended_working_set(void) { return (int64_t)gHeapSize; }
+LAB_EXPORT int64_t lab_gpu_recommended_working_set(void) { return (int64_t)gHeapSize; }
 
 // NSProcessInfo's thermal state on Apple; Vulkan has nothing like it.
-int64_t lab_gpu_thermal_state(void) { return -1; }
+LAB_EXPORT int64_t lab_gpu_thermal_state(void) { return -1; }
 
-int64_t lab_gpu_physical_memory(void) {
+LAB_EXPORT int64_t lab_gpu_physical_memory(void) {
+#ifdef _WIN32
+  MEMORYSTATUSEX status = {.dwLength = sizeof status};
+  return GlobalMemoryStatusEx(&status) ? (int64_t)status.ullTotalPhys : -1;
+#else
   return (int64_t)sysconf(_SC_PHYS_PAGES) * (int64_t)sysconf(_SC_PAGESIZE);
+#endif
 }
 
 static int64_t create_buffer(VkDeviceSize bytes) {
@@ -474,7 +555,7 @@ static int64_t create_buffer(VkDeviceSize bytes) {
 }
 
 // A host-visible buffer of `bytes` zeroed bytes; returns its handle, or -1.
-int64_t lab_gpu_buffer(int64_t bytes) {
+LAB_EXPORT int64_t lab_gpu_buffer(int64_t bytes) {
   const int64_t handle = create_buffer((VkDeviceSize)bytes);
   if (handle >= 0) memset(gBuffers[handle].contents, 0, (size_t)bytes);
   return handle;
@@ -482,16 +563,16 @@ int64_t lab_gpu_buffer(int64_t bytes) {
 
 // A buffer holding a copy of `bytes` bytes at `address` (on Metal, a wrap
 // without a copy). Returns the handle, or -1.
-int64_t lab_gpu_wrap(void* address, int64_t bytes) {
+LAB_EXPORT int64_t lab_gpu_wrap(void* address, int64_t bytes) {
   const int64_t handle = create_buffer((VkDeviceSize)bytes);
   if (handle >= 0) memcpy(gBuffers[handle].contents, address, (size_t)bytes);
   return handle;
 }
 
-void* lab_gpu_contents(int64_t handle) { return gBuffers[handle].contents; }
+LAB_EXPORT void* lab_gpu_contents(int64_t handle) { return gBuffers[handle].contents; }
 
 // GPU execution time of the last waited command buffer, in milliseconds.
-double lab_gpu_last_ms(void) { return gLastGpuMs; }
+LAB_EXPORT double lab_gpu_last_ms(void) { return gLastGpuMs; }
 
 static int wait_pending(void) {
   if (!gPending) return 1;
@@ -518,7 +599,7 @@ static int wait_pending(void) {
 // Destroys a buffer and frees its handle for reuse, after the GPU is done
 // with any submitted work. Whatever was keyed by the handle goes with it: a
 // cached quantization of its contents and a registered Q8 head.
-void lab_gpu_release(int64_t handle) {
+LAB_EXPORT void lab_gpu_release(int64_t handle) {
   if (handle < 0 || handle >= gBufferCount || gBuffers[handle].buffer == VK_NULL_HANDLE) return;
   wait_pending();
   Buffer* b = &gBuffers[handle];
@@ -533,10 +614,10 @@ void lab_gpu_release(int64_t handle) {
 }
 
 // Buffers not yet released, for leak checks.
-int64_t lab_gpu_live_buffers(void) { return gLive; }
+LAB_EXPORT int64_t lab_gpu_live_buffers(void) { return gLive; }
 
 // Opens the command buffer that the encode calls record into.
-void lab_gpu_begin(void) {
+LAB_EXPORT void lab_gpu_begin(void) {
   wait_pending();
   vkResetCommandBuffer(gCmd, 0);
   const VkCommandBufferBeginInfo info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -550,7 +631,7 @@ void lab_gpu_begin(void) {
 
 // Rows per subgroup of the decode GEMVs: 1, 2 or 4; 0 selects the old
 // int8 GEMM for a same-device numerical and performance reference.
-void lab_gpu_set_decode_rows(int64_t rows) {
+LAB_EXPORT void lab_gpu_set_decode_rows(int64_t rows) {
   if (rows == 0) gDecodeRows = -1;
   for (int i = 0; i < 3; i++) {
     if (kDecodeRows[i] == (uint32_t)rows) gDecodeRows = i;
@@ -558,7 +639,7 @@ void lab_gpu_set_decode_rows(int64_t rows) {
 }
 
 // Q8 decode only. Return zero for unsupported sizes, without changing it.
-int64_t lab_gpu_set_q8_group(int64_t invocations) {
+LAB_EXPORT int64_t lab_gpu_set_q8_group(int64_t invocations) {
   for (int i = 0; i < 3; i++) {
     if (invocations == kQ8Groups[i] && gGemvQ8I8[2][i] != VK_NULL_HANDLE) {
       gQ8Group = i;
@@ -570,7 +651,7 @@ int64_t lab_gpu_set_q8_group(int64_t invocations) {
 
 // -1 restores scoped auto, 0/1 force scalar/vector. Returns 1 on success;
 // this means the mode is available, not that auto selected a vector head.
-int64_t lab_gpu_set_q8_vector(int64_t on) {
+LAB_EXPORT int64_t lab_gpu_set_q8_vector(int64_t on) {
   if (on < -1 || on > 1 || gGemvQ8I8Vec[2][gQ8Group] == VK_NULL_HANDLE) return 0;
   gQ8Vector = (int)on;
   return 1;
@@ -578,8 +659,8 @@ int64_t lab_gpu_set_q8_vector(int64_t on) {
 
 // Only Dart knows whether the loaded cache's body is Q4. Register its head
 // by address, so another model's Q8 products cannot inherit this selection.
-int64_t lab_gpu_register_q8_head(int64_t w, int64_t qs, int64_t rows, int64_t cols,
-                                int64_t q4Body) {
+LAB_EXPORT int64_t lab_gpu_register_q8_head(int64_t w, int64_t qs, int64_t rows, int64_t cols,
+                                           int64_t q4Body) {
 #ifdef __ANDROID__
   char manufacturer[PROP_VALUE_MAX] = {0}, model[PROP_VALUE_MAX] = {0};
   __system_property_get("ro.product.manufacturer", manufacturer);
@@ -599,12 +680,12 @@ int64_t lab_gpu_register_q8_head(int64_t w, int64_t qs, int64_t rows, int64_t co
 }
 
 // Times every dispatch from now on (1) or stops (0).
-void lab_gpu_set_profiling(int64_t on) { gProfiling = on != 0; }
+LAB_EXPORT void lab_gpu_set_profiling(int64_t on) { gProfiling = on != 0; }
 
 // Copies into ms and counts, per kernel kind (kKinds of them, the order of
 // the enum above), the GPU time and dispatches since the last call, and
 // starts over. Returns the number of kinds.
-int64_t lab_gpu_profile(double* ms, int64_t* counts, int64_t kinds) {
+LAB_EXPORT int64_t lab_gpu_profile(double* ms, int64_t* counts, int64_t kinds) {
   for (int64_t k = 0; k < kinds && k < kKinds; k++) {
     ms[k] = gKindMs[k];
     counts[k] = gKindCount[k];
@@ -616,7 +697,7 @@ int64_t lab_gpu_profile(double* ms, int64_t* counts, int64_t kinds) {
 
 // Ends recording and submits. With `wait`, blocks until the GPU is done and
 // returns 0 if anything failed (logged), else 1.
-int64_t lab_gpu_commit(int64_t wait) {
+LAB_EXPORT int64_t lab_gpu_commit(int64_t wait) {
   // The host reads results after the wait.
   const VkMemoryBarrier toHost = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
                                   .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
@@ -748,16 +829,16 @@ static void matmul(int kind, VkPipeline gemv, VkPipeline gemm, VkPipeline gemmI8
 
 // Y = X W^T for n tokens, W in Q8 inside buffer w at the given offsets:
 // gemv_q8 for one token, else gemm_q8.
-void lab_gpu_enc_matmul_q8(int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
-                           int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows, int64_t cols,
-                           int64_t n) {
+LAB_EXPORT void lab_gpu_enc_matmul_q8(int64_t w, int64_t qsOffset, int64_t scalesOffset,
+                                      int64_t x, int64_t xOffset, int64_t y, int64_t yOffset,
+                                      int64_t rows, int64_t cols, int64_t n) {
   matmul(kKindGemvQ8, gGemvQ8, gGemmQ8, gGemmQ8I8, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols, n);
 }
 
 // The same for Q4 weights.
-void lab_gpu_enc_matmul_q4(int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
-                           int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows, int64_t cols,
-                           int64_t n) {
+LAB_EXPORT void lab_gpu_enc_matmul_q4(int64_t w, int64_t qsOffset, int64_t scalesOffset,
+                                      int64_t x, int64_t xOffset, int64_t y, int64_t yOffset,
+                                      int64_t rows, int64_t cols, int64_t n) {
   matmul(kKindGemvQ4, gGemvQ4, gGemmQ4, gGemmQ4I8, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols, n);
 }
 
@@ -768,9 +849,9 @@ typedef struct {
   uint32_t accumulate, pad;
 } NormParams;
 
-void lab_gpu_enc_rms_norm(int64_t x, int64_t xOffset, int64_t w, int64_t wOffset, int64_t out,
-                          int64_t outOffset, int64_t rows, int64_t cols, double eps,
-                          int64_t accumulate) {
+LAB_EXPORT void lab_gpu_enc_rms_norm(int64_t x, int64_t xOffset, int64_t w, int64_t wOffset,
+                                     int64_t out, int64_t outOffset, int64_t rows, int64_t cols,
+                                     double eps, int64_t accumulate) {
   const NormParams p = {at(x, xOffset), at(w, wOffset), at(out, outOffset), (uint32_t)cols,
                         (float)eps, accumulate != 0, 0};
   dispatch(kKindRmsNorm, gRmsNorm, &p, sizeof p, (uint32_t)rows, 1);
@@ -785,10 +866,10 @@ typedef struct {
 } HeadParams;
 
 // The kernel's workgroup is 64 = hd / 2 invocations: head_dim 128.
-void lab_gpu_enc_head_norm_rope(int64_t x, int64_t xOffset, int64_t xStride, int64_t w,
-                                int64_t wOffset, int64_t rope, int64_t ropeOffset,
-                                int64_t ropeStride, int64_t heads, int64_t hd, int64_t n,
-                                double eps) {
+LAB_EXPORT void lab_gpu_enc_head_norm_rope(int64_t x, int64_t xOffset, int64_t xStride, int64_t w,
+                                           int64_t wOffset, int64_t rope, int64_t ropeOffset,
+                                           int64_t ropeStride, int64_t heads, int64_t hd, int64_t n,
+                                           double eps) {
   const HeadParams p = {at(x, xOffset),  at(w, wOffset),        at(rope, ropeOffset),
                         (uint32_t)hd,    (float)eps,            (uint32_t)xStride,
                         (uint32_t)ropeStride};
@@ -801,8 +882,8 @@ typedef struct {
   uint32_t width, k, n, pad;
 } ConvParams;
 
-void lab_gpu_enc_conv(int64_t bcx, int64_t weight, int64_t weightOffset, int64_t history,
-                      int64_t y, int64_t width, int64_t k, int64_t n) {
+LAB_EXPORT void lab_gpu_enc_conv(int64_t bcx, int64_t weight, int64_t weightOffset, int64_t history,
+                                 int64_t y, int64_t width, int64_t k, int64_t n) {
   const ConvParams p = {at(bcx, 0),         at(weight, weightOffset), at(history, 0), at(y, 0),
                         (uint32_t)width,    (uint32_t)k,              (uint32_t)n,    0};
   dispatch(kKindConv, gConv, &p, sizeof p, groups(width, 256), 1);
@@ -817,9 +898,9 @@ typedef struct {
   uint32_t pad;
 } AttentionParams;
 
-void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate, int64_t out,
-                           int64_t position, int64_t n, int64_t heads, int64_t kvHeads, int64_t hd,
-                           int64_t window) {
+LAB_EXPORT void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate,
+                                      int64_t out, int64_t position, int64_t n, int64_t heads,
+                                      int64_t kvHeads, int64_t hd, int64_t window) {
   const AttentionParams p = {at(q, 0),
                              at(keys, 0),
                              at(values, 0),
@@ -842,7 +923,7 @@ typedef struct {
   uint32_t count, pad;
 } SwigluParams;
 
-void lab_gpu_enc_swiglu(int64_t g, int64_t u, int64_t count) {
+LAB_EXPORT void lab_gpu_enc_swiglu(int64_t g, int64_t u, int64_t count) {
   const SwigluParams p = {at(g, 0), at(u, 0), (uint32_t)count, 0};
   dispatch(kKindSwiglu, gSwiglu, &p, sizeof p, groups(count, 256), 1);
   wrote(g);
@@ -853,8 +934,8 @@ typedef struct {
   uint32_t count, pad;
 } CopyParams;
 
-void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOffset,
-                      int64_t count) {
+LAB_EXPORT void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOffset,
+                                 int64_t count) {
   const CopyParams p = {at(src, srcOffset), at(dst, dstOffset), (uint32_t)count, 0};
   dispatch(kKindCopy, gCopy, &p, sizeof p, groups(count, 256), 1);
   wrote(dst);

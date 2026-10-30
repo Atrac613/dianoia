@@ -9,9 +9,12 @@
 //   (src/vulkan), whose shaders arrive precompiled as SPIR-V word arrays
 //   (src/vulkan/spirv, written by tool/compile_shaders.sh), so no glslc is
 //   needed either.
+// * Windows on x86-64: the C kernels in AVX2, threaded with the Windows
+//   thread pool, and the same Vulkan layer, built with MSVC against the
+//   Vulkan headers in src/vulkan/include; it opens vulkan-1.dll at run time.
 //
-// The kernels use arm64 NEON (sdot), so other targets get no asset and the
-// engine runs in Dart alone there.
+// The kernels use arm64 NEON (sdot) or x86-64 AVX2, so other targets get no
+// asset and the engine runs in Dart alone there.
 //
 // No FMA contraction anywhere: the float kernels stay comparable, bit for
 // bit, with the Dart kernels and across chunkings.
@@ -26,9 +29,8 @@ void main(List<String> args) async {
   await build(args, (input, output) async {
     if (!input.config.buildCodeAssets) return;
     final code = input.config.code;
-    if (code.targetArchitecture != Architecture.arm64) return;
-    final builder = switch (code.targetOS) {
-      OS.macOS || OS.iOS => CBuilder.library(
+    final builder = switch ((code.targetOS, code.targetArchitecture)) {
+      (OS.macOS || OS.iOS, Architecture.arm64) => CBuilder.library(
         name: 'dianoia_kernels',
         assetName: 'kernels',
         language: Language.objectiveC,
@@ -42,7 +44,7 @@ void main(List<String> args) async {
         ],
         defines: {'ACCELERATE_NEW_LAPACK': null},
       ),
-      OS.android => CBuilder.library(
+      (OS.android, Architecture.arm64) => CBuilder.library(
         name: 'dianoia_kernels',
         assetName: 'kernels',
         sources: ['src/c/lab_native.c', 'src/vulkan/lab_vulkan.c'],
@@ -57,6 +59,17 @@ void main(List<String> args) async {
           // Apple), linked statically so nothing else ships.
           '-fopenmp',
           '-static-openmp',
+        ],
+      ),
+      (OS.windows, Architecture.x64) => CBuilder.library(
+        name: 'dianoia_kernels',
+        assetName: 'kernels',
+        sources: ['src/c/lab_native.c', 'src/vulkan/lab_vulkan.c'],
+        includes: ['src/vulkan/spirv', 'src/vulkan/include'],
+        flags: [
+          '/arch:AVX2',
+          // Since Visual Studio 2022, /fp:precise contracts nothing.
+          '/fp:precise',
         ],
       ),
       _ => null,
