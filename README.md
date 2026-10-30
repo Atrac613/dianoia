@@ -4,8 +4,8 @@ On-device LLM inference orchestrated in Dart. Dart owns the model: the
 tokenizer, the chat template, tool-call parsing, the graph of the forward
 pass and the state between turns. Native code does only the arithmetic: CPU
 kernels for quantized matrix products and attention, and a GPU layer (Metal
-on Apple platforms, Vulkan on Android) that records one dispatch per Dart
-call.
+on Apple platforms, Vulkan on Android and Windows) that records one
+dispatch per Dart call.
 
 > **Status: 0.1.0-dev.** The engine was imported from
 > [dart-llm-lab](#origin) and runs one model family, LFM3, for text chat and
@@ -19,7 +19,13 @@ call.
 | macOS, Apple silicon | NEON `sdot`, Grand Central Dispatch | Metal | M2 Max: ~280 tok/s prompt, ~90 tok/s decode |
 | iOS, A14 or later | NEON `sdot`, Grand Central Dispatch | Metal | iPhone: ~80 tok/s prompt, 29.5 tok/s decode, 0.56 s to first token |
 | Android, arm64 with dotprod | NEON `sdot`, OpenMP | Vulkan 1.2 (int8 dot products where present) | Pixel 8: ~82 tok/s prompt, ~18 tok/s sustained decode |
+| Windows, x86-64 with AVX2 | AVX2, the Windows thread pool | Vulkan 1.2 (Resizable BAR on a discrete GPU) | Radeon RX 6600 XT: ~400-800 tok/s prompt, ~130 tok/s decode |
 | Anything else | none: Dart only | none | slow, but correct |
+
+The x86-64 kernels do NEON's float operations in NEON's order, so their
+matrix products equal arm64's bit for bit. On its CPU alone (Core
+i3-12100F, 4 threads) the Windows PC above prompts at ~26 tok/s and
+decodes at ~22 tok/s.
 
 Reusing state is exact: a conversation that continues from a saved
 checkpoint, in memory or in a state file, produces the logits of a run from
@@ -31,9 +37,12 @@ Pixel 8, 0.56 s on an iPhone).
 
 - Dart SDK 3.10 or newer (build hooks). Flutter 3.38 or newer for apps.
 - A C compiler for the target: Xcode for Apple platforms, the Android NDK
-  for Android (Flutter supplies both through its toolchain). No Metal
-  compiler and no `glslc` are needed: Metal shaders compile when the GPU
-  starts, and the Vulkan shaders ship as SPIR-V.
+  for Android (Flutter supplies both through its toolchain), Visual Studio
+  2022 or its Build Tools with the C++ workload (MSVC) for Windows. No Metal
+  compiler, no `glslc` and no Vulkan SDK are needed: Metal shaders compile
+  when the GPU starts, the Vulkan shaders ship as SPIR-V, and on Windows
+  the Vulkan layer opens the driver's `vulkan-1.dll` at run time against
+  headers in `src/vulkan/include`.
 - Model weights, which are not part of this package. LFM3-1.7B is
   [LiquidAI/LFM3-1.7B](https://huggingface.co/LiquidAI/LFM3-1.7B) under
   the LFM Open License v1.0; read its terms before you ship it.
@@ -149,9 +158,9 @@ tool/lab_parity.sh        # bit-for-bit against dart-llm-lab (macOS)
 | Path | Contents |
 |---|---|
 | `lib/src/` | The engine in Dart: model, chat session, tokenizer, template, tool calls, FFI bindings |
-| `src/c/` | CPU kernels: Q8 and Q4 matrix products, attention, file mapping |
+| `src/c/` | CPU kernels (NEON, and AVX2 on x86-64): Q8 and Q4 matrix products, attention, file mapping |
 | `src/metal/` | The Metal layer and its shader source |
-| `src/vulkan/` | The Vulkan layer, its GLSL shaders and their committed SPIR-V |
+| `src/vulkan/` | The Vulkan layer, its GLSL shaders, their committed SPIR-V and the Vulkan headers for Windows |
 | `hook/build.dart` | Compiles the kernels for the target into the code asset |
 | `bin/dianoia.dart` | The command-line tool |
 | `tool/` | Shader compilation and the lab parity check |
@@ -167,8 +176,8 @@ state, logit and token to match byte for byte.
 
 | Symptom | Cause and fix |
 |---|---|
-| `dianoia has no native kernels for ...` | The target is not arm64 macOS, iOS or Android. The quantized weights need the native kernels. |
-| `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. |
+| `dianoia has no native kernels for ...` | The target is not arm64 macOS, iOS or Android, or x86-64 Windows on a CPU with AVX2, FMA and F16C (Haswell, Zen or later). The quantized weights need the native kernels. |
+| `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; on Windows also no `vulkan-1.dll`, or a discrete GPU without Resizable BAR (the buffers live in the part of its memory the CPU can map). `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. |
 | `--max-seq=N is too long for GPU attention` | GPU attention keeps one score per key in threadgroup memory. Lower `contextLength`. |
 | Edited C or Metal code has no effect | Hook outputs are cached under `.dart_tool/`; delete `.dart_tool/hooks_runner` and run again. |
 | `test/shaders_test.dart` fails | A shader changed without its SPIR-V. Run `tool/compile_shaders.sh`. |

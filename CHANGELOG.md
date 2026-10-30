@@ -36,3 +36,15 @@
   memory 2.2 GB to 1.38 GB, the same bytes).
 - The chat example offers the download, with the model's size and
   license, and shows its progress.
+- Run on Windows x86-64. The CPU kernels have AVX2 twins of the NEON ones
+  that give the same matrix products bit for bit, threaded with the
+  Windows thread pool (no OpenMP runtime to ship). The Vulkan layer builds
+  with MSVC against the Khronos headers in `src/vulkan/include` and opens
+  the driver's `vulkan-1.dll` at run time, so no Vulkan SDK is needed and
+  the CPU kernels load without a driver. On a Core i3-12100F with a Radeon
+  RX 6600 XT: ~22 tok/s decode on the CPU, ~130 tok/s on the GPU.
+- On a discrete GPU the logits and captured hidden states live in the
+  host's cached memory (`lab_gpu_readback_buffer`): reading the logits from
+  the GPU's own memory across PCIe took 150 ms per token.
+- Shader sources check out with LF line endings everywhere
+  (`.gitattributes`), so `test/shaders_test.dart` passes on Windows.
