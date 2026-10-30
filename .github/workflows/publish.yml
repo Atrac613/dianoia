@@ -1,0 +1,24 @@
+# Publishes to pub.dev when a version tag (v1.2.3) is pushed. pub.dev
+# accepts the run's OIDC token if the package's admin page allows this
+# repository, the tag pattern v{{version}} and the pub.dev environment.
+name: Publish
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pub.dev
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      # Hands pub the OIDC token for pub.dev.
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      # example/ is a Flutter app; the package resolves without it.
+      - run: dart pub get --no-example
+      - run: dart pub publish --force
