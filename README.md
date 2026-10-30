@@ -11,8 +11,10 @@ dispatch per Dart call.
 
 > **Status: 0.1.0-dev.** The engine was imported from
 > [dart-llm-lab](#origin) and runs one model family, LFM3, for text chat and
-> tool calling. The public API is the lab's and will change. Planned: LFM3
-> audio and general GGUF models.
+> tool calling. `package:dianoia/dianoia.dart` is the API for apps and may
+> still change before 1.0; `package:dianoia/lab.dart` exposes the engine's
+> internals with no stability promise. Planned: LFM3 audio and general GGUF
+> models.
 
 ## What runs where
 
