@@ -11,6 +11,7 @@
 /// the same text. Only the new message costs prompt time.
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'chat_template.dart';
@@ -109,14 +110,20 @@ final class ChatSession {
       );
 
   /// Adds [message] (a user or tool message) and generates the reply
-  /// greedily, up to [maxNew] tokens.
+  /// greedily, up to [maxNew] tokens or the end of the model's context
+  /// (`maxSeq`).
+  /// [onText] streams the reply: after each generated token it gets the
+  /// text so far, without an incomplete UTF-8 sequence at the end.
+  /// Returning false ends the reply there, which is then stored as it
+  /// stands. An asynchronous [onText] lets the caller's event loop run
+  /// between tokens, so that a request to stop can arrive.
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
-  /// Decode observer work is included in generation timings; use this for
-  /// validation only.
+  /// Observer work, [onText]'s included, counts in the generation timings.
   Future<ChatTurn> send(
     Map<String, Object?> message, {
     void Function(Float32List logits)? onLogits,
+    FutureOr<bool> Function(String text)? onText,
   }) async {
     messages.add(message);
     final ids = promptIds(messages);
@@ -132,12 +139,15 @@ final class ChatSession {
     sw
       ..reset()
       ..start();
-    while (gen.length < maxNew) {
+    while (gen.length < maxNew && model.history.length < model.maxSeq) {
       final next = _argmax(model.logits);
       if (next == model.config.eosTokenId) break;
       gen.add(next);
       await model.step(next);
       onLogits?.call(model.logits);
+      if (onText != null && !await onText(_complete(tokenizer.decode(gen)))) {
+        break;
+      }
     }
     final decodeSeconds = sw.elapsedMicroseconds / 1e6;
     final text = tokenizer.decode(gen);
@@ -152,6 +162,11 @@ final class ChatSession {
       decodeSeconds: decodeSeconds,
     );
   }
+
+  /// [text] without the replacement character that a multi-byte UTF-8
+  /// sequence cut short by the last token decodes to.
+  static String _complete(String text) =>
+      text.endsWith('\uFFFD') ? text.substring(0, text.length - 1) : text;
 
   static bool _startsWith(List<int> ids, List<int> prefix) {
     if (ids.length < prefix.length) return false;
