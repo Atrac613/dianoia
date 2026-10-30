@@ -60,6 +60,9 @@ external void _deviceName(Pointer<Uint8> out, int capacity);
 @Native<Int64 Function(Int64)>(symbol: 'lab_gpu_buffer', isLeaf: true)
 external int _buffer(int bytes);
 
+@Native<Int64 Function(Int64)>(symbol: 'lab_gpu_readback_buffer', isLeaf: true)
+external int _readbackBuffer(int bytes);
+
 @Native<Int64 Function(Pointer<Void>, Int64)>(
   symbol: 'lab_gpu_wrap',
   isLeaf: true,
@@ -333,10 +336,16 @@ final class _Layer {
   bool sliding = false;
 }
 
-/// A shared-storage buffer: its handle and a float view of its memory.
+/// A shared-storage buffer: its handle and a float view of its memory. One
+/// the host reads after every forward pass is a [readback] buffer: on a
+/// discrete GPU it lives in the host's memory, since the host reads the
+/// GPU's own only uncached.
 final class _Buffer {
-  _Buffer(int floats)
-    : handle = _check(_buffer(floats * 4), floats * 4),
+  _Buffer(int floats, {bool readback = false})
+    : handle = _check(
+        (readback ? _readbackBuffer : _buffer)(floats * 4),
+        floats * 4,
+      ),
       length = floats;
 
   static int _check(int handle, int bytes) => handle >= 0
@@ -393,8 +402,8 @@ final class GpuForward {
   final _owned = <int>[];
   bool _disposed = false;
 
-  _Buffer _newBuffer(int floats) {
-    final buffer = _Buffer(floats);
+  _Buffer _newBuffer(int floats, {bool readback = false}) {
+    final buffer = _Buffer(floats, readback: readback);
     _owned.add(buffer.handle);
     return buffer;
   }
@@ -796,11 +805,11 @@ final class GpuForward {
     _g = _newBuffer(rows * c.intermediateSize);
     _u = _newBuffer(rows * c.intermediateSize);
     _normed = _newBuffer(h);
-    _logits = _newBuffer(c.vocabSize);
+    _logits = _newBuffer(c.vocabSize, readback: true);
     // Per token: [full cos, full sin, sliding cos, sliding sin], hd / 2 each.
     _rope = _newBuffer(rows * 2 * hd);
     _residualIn = _newBuffer(h);
-    _capture = _newBuffer((c.numLayers + 1) * rows * h);
+    _capture = _newBuffer((c.numLayers + 1) * rows * h, readback: true);
   }
 
   /// Wraps the mapped cache as GPU buffers: one buffer

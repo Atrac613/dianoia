@@ -184,7 +184,7 @@ static VkInstance gInstance;
 static VkPhysicalDevice gPhysical;
 static VkDevice gDevice;
 static VkQueue gQueue;
-static uint32_t gQueueFamily, gMemoryType, gSubgroupSize;
+static uint32_t gQueueFamily, gMemoryType, gReadbackType, gSubgroupSize;
 static VkPhysicalDeviceProperties gProperties;
 static VkDeviceSize gMaxBuffer, gHeapSize;
 static VkPipelineLayout gLayout;
@@ -359,6 +359,21 @@ LAB_EXPORT int64_t lab_gpu_init(void) {
     LOG("no host-visible coherent memory\n");
     return 0;
   }
+  // A discrete GPU's memory is its own, which the host reads uncached
+  // across PCIe (a token's logits took 150 ms on a Radeon RX 6600 XT), so
+  // what the host reads every token goes to the host's cached memory
+  // instead, which the GPU writes across PCIe (lab_gpu_readback_buffer).
+  gReadbackType = gMemoryType;
+  if (gProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+    const VkMemoryPropertyFlags cached = host | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    for (uint32_t i = 0; i < memory.memoryTypeCount; i++) {
+      const VkMemoryPropertyFlags flags = memory.memoryTypes[i].propertyFlags;
+      if ((flags & cached) == cached && !(flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+        gReadbackType = i;
+        break;
+      }
+    }
+  }
 
   uint32_t families = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(gPhysical, &families, NULL);
@@ -505,7 +520,7 @@ LAB_EXPORT int64_t lab_gpu_physical_memory(void) {
 #endif
 }
 
-static int64_t create_buffer(VkDeviceSize bytes) {
+static int64_t create_buffer(VkDeviceSize bytes, uint32_t memoryType) {
   if (bytes == 0) return -1;
   int64_t handle;
   if (gFreeCount > 0) {
@@ -524,13 +539,13 @@ static int64_t create_buffer(VkDeviceSize bytes) {
   if (vkCreateBuffer(gDevice, &info, NULL, &b->buffer) != VK_SUCCESS) return -1;
   VkMemoryRequirements needs;
   vkGetBufferMemoryRequirements(gDevice, b->buffer, &needs);
-  if (!(needs.memoryTypeBits & (1u << gMemoryType))) return -1;
+  if (!(needs.memoryTypeBits & (1u << memoryType))) return -1;
   const VkMemoryAllocateFlagsInfo flags = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
                                            .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT};
   const VkMemoryAllocateInfo alloc = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                                       .pNext = &flags,
                                       .allocationSize = needs.size,
-                                      .memoryTypeIndex = gMemoryType};
+                                      .memoryTypeIndex = memoryType};
   if (vkAllocateMemory(gDevice, &alloc, NULL, &b->memory) != VK_SUCCESS) {
     vkDestroyBuffer(gDevice, b->buffer, NULL);
     return -1;
@@ -556,7 +571,15 @@ static int64_t create_buffer(VkDeviceSize bytes) {
 
 // A host-visible buffer of `bytes` zeroed bytes; returns its handle, or -1.
 LAB_EXPORT int64_t lab_gpu_buffer(int64_t bytes) {
-  const int64_t handle = create_buffer((VkDeviceSize)bytes);
+  const int64_t handle = create_buffer((VkDeviceSize)bytes, gMemoryType);
+  if (handle >= 0) memset(gBuffers[handle].contents, 0, (size_t)bytes);
+  return handle;
+}
+
+// The same for a buffer the host reads after every command buffer, such as
+// the logits: in the host's cached memory on a discrete GPU.
+LAB_EXPORT int64_t lab_gpu_readback_buffer(int64_t bytes) {
+  const int64_t handle = create_buffer((VkDeviceSize)bytes, gReadbackType);
   if (handle >= 0) memset(gBuffers[handle].contents, 0, (size_t)bytes);
   return handle;
 }
@@ -564,7 +587,7 @@ LAB_EXPORT int64_t lab_gpu_buffer(int64_t bytes) {
 // A buffer holding a copy of `bytes` bytes at `address` (on Metal, a wrap
 // without a copy). Returns the handle, or -1.
 LAB_EXPORT int64_t lab_gpu_wrap(void* address, int64_t bytes) {
-  const int64_t handle = create_buffer((VkDeviceSize)bytes);
+  const int64_t handle = create_buffer((VkDeviceSize)bytes, gMemoryType);
   if (handle >= 0) memcpy(gBuffers[handle].contents, address, (size_t)bytes);
   return handle;
 }

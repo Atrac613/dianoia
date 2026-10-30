@@ -556,6 +556,10 @@ int64_t lab_gpu_buffer(int64_t bytes) {
   }
 }
 
+// A buffer the host reads after every command buffer, such as the logits.
+// Apple GPUs share the host's memory, so it is an ordinary buffer.
+int64_t lab_gpu_readback_buffer(int64_t bytes) { return lab_gpu_buffer(bytes); }
+
 // Wraps existing memory, such as a mapped file, as a buffer without a copy.
 // The address must be page-aligned; the length is rounded up to whole
 // pages, which a mapping always covers. Returns the handle, or -1.
