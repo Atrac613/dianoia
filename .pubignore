@@ -1,0 +1,12 @@
+# pub reads this file instead of .gitignore, so it repeats .gitignore.
+.dart_tool/
+build/
+coverage/
+.DS_Store
+pubspec.lock
+
+# Not part of the package: the on-device benchmark is a Flutter app (it
+# lives on GitHub), and these notes are for the repository's maintainers.
+/tool/device_bench/
+/AGENTS.md
+/FOR_ME.md
