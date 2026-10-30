@@ -1,4 +1,4 @@
-## 0.1.0-dev.1
+## 0.1.0
 
 - Import the LFM3 engine from dart-llm-lab (commit e04e7c3): tokenizer,
   chat template, tool-call parser, the forward pass in Dart, Q8 and Q4

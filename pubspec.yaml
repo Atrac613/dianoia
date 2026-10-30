@@ -1,6 +1,6 @@
 name: dianoia
 description: On-device LLM inference orchestrated in Dart, with native CPU kernels and Metal or Vulkan GPU kernels. Runs LFM3 for chat and tool calling.
-version: 0.1.0-dev.1
+version: 0.1.0
 homepage: https://github.com/Atrac613/dianoia
 repository: https://github.com/Atrac613/dianoia
 issue_tracker: https://github.com/Atrac613/dianoia/issues
