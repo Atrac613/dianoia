@@ -1,0 +1,35 @@
+#version 460
+#include "common.glsl"
+
+// The gated short convolution over n tokens, one invocation per channel
+// walking the tokens in order (see lab_metal.m's conv).
+const uint MAX_CONV_K = 16;
+
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Params {
+  Floats bcx;
+  Floats weight;
+  Floats history;
+  Floats y;
+  uint width;
+  uint k;
+  uint n;
+} p;
+
+void main() {
+  const uint ch = gl_GlobalInvocationID.x;
+  if (ch >= p.width) return;
+  const uint w = p.width, k = p.k;
+  float past[MAX_CONV_K];
+  for (uint r = 0; r + 1 < k; r++) past[r] = p.history.v[r * w + ch];
+  for (uint t = 0; t < p.n; t++) {
+    const uint row = t * 3 * w;
+    const float z = p.bcx.v[row + ch] * p.bcx.v[row + 2 * w + ch];
+    precise float acc = p.weight.v[ch * k + k - 1] * z;
+    for (uint s = 1; s < k; s++) acc += p.weight.v[ch * k + k - 1 - s] * past[k - 1 - s];
+    p.y.v[t * w + ch] = p.bcx.v[row + w + ch] * acc;
+    for (uint r = 0; r + 2 < k; r++) past[r] = past[r + 1];
+    past[k - 2] = z;
+  }
+  for (uint r = 0; r + 1 < k; r++) p.history.v[r * w + ch] = past[r];
+}

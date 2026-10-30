@@ -1,0 +1,47 @@
+#version 460
+#include "common.glsl"
+
+// gemm_q8 for Q4 weights, each (row, token) in gemv_q4's order.
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Uvec4s qs;
+  Uints scales;
+  Vec4s x;
+  Floats y;
+  uint rows;
+  uint cols;
+  uint n;
+} p;
+
+void main() {
+  const uint row0 = (gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID) * GEMM_ROWS;
+  if (row0 >= p.rows) return;
+  const uint rn = min(GEMM_ROWS, p.rows - row0);
+  const uint t0 = gl_WorkGroupID.y * GEMM_TOKENS;
+  const uint tn = min(GEMM_TOKENS, p.n - t0);
+  const uint blocks = p.cols / 32;
+  const uint cols4 = p.cols / 4;
+  precise float acc[GEMM_ROWS][GEMM_TOKENS];
+  for (uint r = 0; r < GEMM_ROWS; r++) {
+    for (uint t = 0; t < GEMM_TOKENS; t++) acc[r][t] = 0.0;
+  }
+  for (uint b = gl_SubgroupInvocationID; b < blocks; b += gl_SubgroupSize) {
+    uvec4 w[GEMM_ROWS];
+    float scale[GEMM_ROWS];
+    for (uint r = 0; r < rn; r++) {
+      w[r] = p.qs.v[(row0 + r) * blocks + b];
+      scale[r] = half_at(p.scales, (row0 + r) * blocks + b);
+    }
+    for (uint t = 0; t < tn; t++) {
+      vec4 xv[8];
+      for (uint k = 0; k < 8; k++) xv[k] = p.x.v[(t0 + t) * cols4 + b * 8 + k];
+      for (uint r = 0; r < rn; r++) acc[r][t] += q4_block_dot(w[r], xv) * scale[r];
+    }
+  }
+  for (uint r = 0; r < rn; r++) {
+    for (uint t = 0; t < tn; t++) {
+      const float v = subgroupAdd(acc[r][t]);
+      if (subgroupElect()) p.y.v[(t0 + t) * p.rows + row0 + r] = v;
+    }
+  }
+}

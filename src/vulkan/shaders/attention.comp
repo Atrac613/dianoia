@@ -1,0 +1,74 @@
+#version 460
+#include "common.glsl"
+
+// Causal attention of n tokens over the KV cache, a workgroup per (head,
+// token): scores (a subgroup per key, lanes across head_dim), softmax, the
+// weighted sum of values (an invocation per dimension) and the output gate.
+// Scores live in shared memory, so a token sees at most MAX_KEYS keys
+// (lab_gpu_max_shared_memory reports that limit).
+const uint MAX_KEYS = 4096;
+
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Vec4s q;
+  Vec4s keys;
+  Floats values;
+  Floats gate;
+  Floats out_;
+  uint position;
+  uint window;
+  uint heads;
+  uint hd;
+  uint kv_dim;
+  uint group;
+  float scale;
+} p;
+
+shared float scores[MAX_KEYS];
+shared float partial[64];
+
+void main() {
+  const uint head = gl_WorkGroupID.x, token = gl_WorkGroupID.y;
+  const uint tid = gl_LocalInvocationID.x, threads = gl_WorkGroupSize.x;
+  const uint pos = p.position + token;
+  const uint start = p.window > 0u && pos >= p.window ? pos - p.window + 1u : 0u;
+  const uint count = pos - start + 1u;
+  const uint qo = (token * p.heads + head) * p.hd;
+  const uint kvo = head / p.group * p.hd;
+  const uint hd4 = p.hd / 4;
+  for (uint i = gl_SubgroupID; i < count; i += gl_NumSubgroups) {
+    const uint ko = ((start + i) * p.kv_dim + kvo) / 4;
+    precise float d = 0.0;
+    for (uint c = gl_SubgroupInvocationID; c < hd4; c += gl_SubgroupSize) {
+      d += dot(p.q.v[qo / 4 + c], p.keys.v[ko + c]);
+    }
+    d = subgroupAdd(d);
+    if (subgroupElect()) scores[i] = d * p.scale;
+  }
+  barrier();
+  float m = -1.0 / 0.0;
+  for (uint i = tid; i < count; i += threads) m = max(m, scores[i]);
+  m = subgroupMax(m);
+  if (subgroupElect()) partial[gl_SubgroupID] = m;
+  barrier();
+  m = partial[0];
+  for (uint s = 1; s < gl_NumSubgroups; s++) m = max(m, partial[s]);
+  precise float sum = 0.0;
+  for (uint i = tid; i < count; i += threads) {
+    const float e = exp(scores[i] - m);
+    scores[i] = e;
+    sum += e;
+  }
+  sum = subgroupAdd(sum);
+  barrier();
+  if (subgroupElect()) partial[gl_SubgroupID] = sum;
+  barrier();
+  sum = 0.0;
+  for (uint s = 0; s < gl_NumSubgroups; s++) sum += partial[s];
+  const float g = 1.0 / (1.0 + exp(-p.gate.v[token * p.heads + head]));
+  for (uint d = tid; d < p.hd; d += threads) {
+    precise float acc = 0.0;
+    for (uint i = 0; i < count; i++) acc += scores[i] * p.values.v[(start + i) * p.kv_dim + kvo + d];
+    p.out_.v[qo + d] = (acc / sum) * g;
+  }
+}

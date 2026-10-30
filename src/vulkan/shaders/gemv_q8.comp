@@ -1,0 +1,29 @@
+#version 460
+#include "common.glsl"
+
+// y = W x for Q8 weights (int8 values, a float scale per 32): a subgroup
+// per row, its lanes striding over the row's blocks.
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Uints qs;
+  Floats scales;
+  Vec4s x;
+  Floats y;
+  uint rows;
+  uint cols;
+} p;
+
+void main() {
+  const uint row = gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID;
+  if (row >= p.rows) return;
+  const uint blocks = p.cols / 32;
+  const uint base = row * (p.cols / 4);
+  precise float acc = 0.0;
+  for (uint b = gl_SubgroupInvocationID; b < blocks; b += gl_SubgroupSize) {
+    precise float sum = 0.0;
+    for (uint k = 0; k < 8; k++) sum += dot(q8_word(p.qs.v[base + b * 8 + k]), p.x.v[b * 8 + k]);
+    acc += sum * p.scales.v[row * blocks + b];
+  }
+  acc = subgroupAdd(acc);
+  if (subgroupElect()) p.y.v[row] = acc;
+}

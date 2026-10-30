@@ -1,0 +1,50 @@
+#version 460
+#include "common.glsl"
+#include "int8.glsl"
+
+// Decode (one token) with Q4 weights and int8 inputs: gemm_q4_i8 for n = 1
+// with ROWS rows per subgroup, a specialization constant. Fewer rows per
+// subgroup mean more subgroups for small matrices; more rows share each
+// input block. Each row is computed exactly as gemm_q4_i8 computes it.
+layout(constant_id = 0) const uint ROWS = 4;
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Uvec4s qs;
+  Uints scales;
+  Uints xq;
+  Floats xs;
+  Floats y;
+  uint rows;
+  uint cols;
+  uint n;
+} p;
+
+void main() {
+  const uint row0 = (gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID) * ROWS;
+  if (row0 >= p.rows) return;
+  const uint rn = min(ROWS, p.rows - row0);
+  const uint blocks = p.cols / 32;
+  precise float acc[ROWS];
+  for (uint r = 0; r < ROWS; r++) acc[r] = 0.0;
+  for (uint b = gl_SubgroupInvocationID; b < blocks; b += gl_SubgroupSize) {
+    uint x[8];
+    int xsum = 0;
+    for (uint k = 0; k < 8; k++) {
+      x[k] = p.xq.v[b * 8 + k];
+      xsum += sdot(x[k], 0x01010101u);
+    }
+    const float xscale = p.xs.v[b];
+    for (uint r = 0; r < rn; r++) {
+      const uvec4 w = p.qs.v[(row0 + r) * blocks + b];
+      int isum = 0;
+      for (uint k = 0; k < 4; k++) {
+        isum += sdot(w[k] & 0x0f0f0f0fu, x[k]) + sdot((w[k] >> 4) & 0x0f0f0f0fu, x[4 + k]);
+      }
+      acc[r] += float(isum - 8 * xsum) * (half_at(p.scales, (row0 + r) * blocks + b) * xscale);
+    }
+  }
+  for (uint r = 0; r < rn; r++) {
+    const float v = subgroupAdd(acc[r]);
+    if (subgroupElect()) p.y.v[row0 + r] = v;
+  }
+}

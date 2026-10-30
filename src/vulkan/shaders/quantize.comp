@@ -1,0 +1,33 @@
+#version 460
+#include "common.glsl"
+
+// Matrix inputs to int8 for the integer-dot GEMMs, as the CPU path does
+// (lab_quantize_q8): per block of 32, scale = max|x| / 127 and q = x / scale
+// rounded half away from zero, packed four to a word. One invocation per
+// block of n rows of cols.
+layout(local_size_x = 64) in;
+layout(push_constant) uniform Params {
+  Floats x;
+  Uints xq;
+  Floats xs;
+  uint blocks;
+} p;
+
+void main() {
+  const uint b = gl_GlobalInvocationID.x;
+  if (b >= p.blocks) return;
+  float amax = 0.0;
+  for (uint k = 0; k < 32; k++) amax = max(amax, abs(p.x.v[b * 32 + k]));
+  const float scale = amax / 127.0;
+  const float inv = scale > 0.0 ? 1.0 / scale : 0.0;
+  p.xs.v[b] = scale;
+  for (uint w = 0; w < 8; w++) {
+    uint word = 0u;
+    for (uint j = 0; j < 4; j++) {
+      precise const float v = p.x.v[b * 32 + w * 4 + j] * inv;
+      const int q = clamp(int(v < 0.0 ? v - 0.5 : v + 0.5), -127, 127);
+      word |= (uint(q) & 0xffu) << (8u * j);
+    }
+    p.xq.v[b * 8 + w] = word;
+  }
+}

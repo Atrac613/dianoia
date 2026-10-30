@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+coverage/
+.DS_Store
+
+# Generated for applications; usually not committed for libraries.
+pubspec.lock

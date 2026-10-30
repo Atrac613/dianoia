@@ -1,0 +1,31 @@
+#version 460
+#include "common.glsl"
+#include "reduce.glsl"
+
+// Per (head, token), a workgroup of hd / 2 = 64 invocations: RMSNorm over
+// head_dim with weight w, then the half-split RoPE rotation (dimension j
+// with j + hd / 2) from the token's tables [cos(hd / 2), sin(hd / 2)].
+layout(local_size_x = 64) in;
+layout(push_constant) uniform Params {
+  Floats x;
+  Floats w;
+  Floats rope;
+  uint hd;
+  float eps;
+  uint x_stride;
+  uint rope_stride;
+} p;
+
+void main() {
+  const uint j = gl_LocalInvocationID.x;
+  const uint pair = p.hd / 2;
+  const uint base = gl_WorkGroupID.y * p.x_stride + gl_WorkGroupID.x * p.hd;
+  const uint table = gl_WorkGroupID.y * p.rope_stride;
+  const float x1 = p.x.v[base + j], x2 = p.x.v[base + j + pair];
+  const float sum = group_sum(x1 * x1 + x2 * x2);
+  const float r = 1.0 / sqrt(sum / float(p.hd) + p.eps);
+  precise const float n1 = p.w.v[j] * (x1 * r), n2 = p.w.v[j + pair] * (x2 * r);
+  const float c = p.rope.v[table + j], s = p.rope.v[table + pair + j];
+  p.x.v[base + j] = n1 * c - n2 * s;
+  p.x.v[base + j + pair] = n2 * c + n1 * s;
+}

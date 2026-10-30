@@ -1,0 +1,55 @@
+#version 460
+#include "common.glsl"
+#include "int8.glsl"
+
+// gemm_q4_i8 for Q8 weights: their int8 words go straight into sdot.
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Uints qs;
+  Floats scales;
+  Uints xq;
+  Floats xs;
+  Floats y;
+  uint rows;
+  uint cols;
+  uint n;
+} p;
+
+void main() {
+  const uint row0 = (gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID) * GEMM_ROWS;
+  if (row0 >= p.rows) return;
+  const uint rn = min(GEMM_ROWS, p.rows - row0);
+  const uint t0 = gl_WorkGroupID.y * GEMM_TOKENS;
+  const uint tn = min(GEMM_TOKENS, p.n - t0);
+  const uint blocks = p.cols / 32;
+  const uint cols4 = p.cols / 4;
+  precise float acc[GEMM_ROWS][GEMM_TOKENS];
+  for (uint r = 0; r < GEMM_ROWS; r++) {
+    for (uint t = 0; t < GEMM_TOKENS; t++) acc[r][t] = 0.0;
+  }
+  for (uint b = gl_SubgroupInvocationID; b < blocks; b += gl_SubgroupSize) {
+    uint w[GEMM_ROWS][8];
+    float scale[GEMM_ROWS];
+    for (uint r = 0; r < rn; r++) {
+      for (uint k = 0; k < 8; k++) w[r][k] = p.qs.v[(row0 + r) * cols4 + b * 8 + k];
+      scale[r] = p.scales.v[(row0 + r) * blocks + b];
+    }
+    for (uint t = 0; t < tn; t++) {
+      const uint xb = (t0 + t) * blocks + b;
+      uint x[8];
+      for (uint k = 0; k < 8; k++) x[k] = p.xq.v[xb * 8 + k];
+      const float xscale = p.xs.v[xb];
+      for (uint r = 0; r < rn; r++) {
+        int isum = 0;
+        for (uint k = 0; k < 8; k++) isum += sdot(w[r][k], x[k]);
+        acc[r][t] += float(isum) * (scale[r] * xscale);
+      }
+    }
+  }
+  for (uint r = 0; r < rn; r++) {
+    for (uint t = 0; t < tn; t++) {
+      const float v = subgroupAdd(acc[r][t]);
+      if (subgroupElect()) p.y.v[(t0 + t) * p.rows + row0 + r] = v;
+    }
+  }
+}

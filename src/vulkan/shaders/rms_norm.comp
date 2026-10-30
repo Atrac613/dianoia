@@ -1,0 +1,32 @@
+#version 460
+#include "common.glsl"
+#include "reduce.glsl"
+
+// RMSNorm, one workgroup per row of cols values: w * (x * r), with x * r
+// rounded first as in the reference; with accumulate, added into out.
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Params {
+  Floats x;
+  Floats w;
+  Floats out_;
+  uint cols;
+  float eps;
+  uint accumulate;
+} p;
+
+void main() {
+  const uint row = gl_WorkGroupID.x;
+  const uint tid = gl_LocalInvocationID.x;
+  precise float sum = 0.0;
+  for (uint j = tid; j < p.cols; j += gl_WorkGroupSize.x) {
+    const float v = p.x.v[row * p.cols + j];
+    sum += v * v;
+  }
+  sum = group_sum(sum);
+  const float r = 1.0 / sqrt(sum / float(p.cols) + p.eps);
+  for (uint j = tid; j < p.cols; j += gl_WorkGroupSize.x) {
+    const uint i = row * p.cols + j;
+    precise const float v = p.w.v[j] * (p.x.v[i] * r);
+    p.out_.v[i] = p.accumulate != 0u ? p.out_.v[i] + v : v;
+  }
+}

@@ -1,0 +1,67 @@
+#version 460
+#include "common.glsl"
+#include "int8.glsl"
+
+// Y = X W^T for n tokens with Q4 weights and int8 inputs (quantize.comp),
+// tiled like gemm_q4 (GEMM_ROWS rows by GEMM_TOKENS tokens per subgroup).
+// A weight word's nibbles become two words of four int8 in 0..15 with two
+// bit operations, and sdot multiplies four pairs at once:
+// sum((q - 8) * x) = sum(q * x) - 8 * sum(x), the input sum taken once per
+// block and shared by the rows. Decode uses this kernel too (n = 1).
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Uvec4s qs;
+  Uints scales;
+  Uints xq;
+  Floats xs;
+  Floats y;
+  uint rows;
+  uint cols;
+  uint n;
+} p;
+
+void main() {
+  const uint row0 = (gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID) * GEMM_ROWS;
+  if (row0 >= p.rows) return;
+  const uint rn = min(GEMM_ROWS, p.rows - row0);
+  const uint t0 = gl_WorkGroupID.y * GEMM_TOKENS;
+  const uint tn = min(GEMM_TOKENS, p.n - t0);
+  const uint blocks = p.cols / 32;
+  precise float acc[GEMM_ROWS][GEMM_TOKENS];
+  for (uint r = 0; r < GEMM_ROWS; r++) {
+    for (uint t = 0; t < GEMM_TOKENS; t++) acc[r][t] = 0.0;
+  }
+  for (uint b = gl_SubgroupInvocationID; b < blocks; b += gl_SubgroupSize) {
+    uint lo[GEMM_ROWS][4], hi[GEMM_ROWS][4];
+    float scale[GEMM_ROWS];
+    for (uint r = 0; r < rn; r++) {
+      const uvec4 w = p.qs.v[(row0 + r) * blocks + b];
+      for (uint k = 0; k < 4; k++) {
+        lo[r][k] = w[k] & 0x0f0f0f0fu;
+        hi[r][k] = (w[k] >> 4) & 0x0f0f0f0fu;
+      }
+      scale[r] = half_at(p.scales, (row0 + r) * blocks + b);
+    }
+    for (uint t = 0; t < tn; t++) {
+      const uint xb = (t0 + t) * blocks + b;
+      uint x[8];
+      int xsum = 0;
+      for (uint k = 0; k < 8; k++) {
+        x[k] = p.xq.v[xb * 8 + k];
+        xsum += sdot(x[k], 0x01010101u);
+      }
+      const float xscale = p.xs.v[xb];
+      for (uint r = 0; r < rn; r++) {
+        int isum = 0;
+        for (uint k = 0; k < 4; k++) isum += sdot(lo[r][k], x[k]) + sdot(hi[r][k], x[4 + k]);
+        acc[r][t] += float(isum - 8 * xsum) * (scale[r] * xscale);
+      }
+    }
+  }
+  for (uint r = 0; r < rn; r++) {
+    for (uint t = 0; t < tn; t++) {
+      const float v = subgroupAdd(acc[r][t]);
+      if (subgroupElect()) p.y.v[(t0 + t) * p.rows + row0 + r] = v;
+    }
+  }
+}

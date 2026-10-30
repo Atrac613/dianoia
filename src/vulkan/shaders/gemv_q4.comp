@@ -1,0 +1,27 @@
+#version 460
+#include "common.glsl"
+
+// gemv_q8 for Q4 weights (16 bytes of nibbles and a half scale per block).
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Uvec4s qs;
+  Uints scales;
+  Vec4s x;
+  Floats y;
+  uint rows;
+  uint cols;
+} p;
+
+void main() {
+  const uint row = gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID;
+  if (row >= p.rows) return;
+  const uint blocks = p.cols / 32;
+  precise float acc = 0.0;
+  for (uint b = gl_SubgroupInvocationID; b < blocks; b += gl_SubgroupSize) {
+    vec4 xv[8];
+    for (uint k = 0; k < 8; k++) xv[k] = p.x.v[b * 8 + k];
+    acc += q4_block_dot(p.qs.v[row * blocks + b], xv) * half_at(p.scales, row * blocks + b);
+  }
+  acc = subgroupAdd(acc);
+  if (subgroupElect()) p.y.v[row] = acc;
+}

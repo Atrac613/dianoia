@@ -1,0 +1,54 @@
+#version 460
+#include "common.glsl"
+
+// Y = X W^T for n tokens, Q8 weights: a subgroup computes GEMM_ROWS rows for
+// up to GEMM_TOKENS tokens, so each weight block is read once per
+// GEMM_TOKENS tokens and each input block once per GEMM_ROWS rows. Every
+// (row, token) uses gemv_q8's arithmetic in the same order.
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Uints qs;
+  Floats scales;
+  Vec4s x;
+  Floats y;
+  uint rows;
+  uint cols;
+  uint n;
+} p;
+
+void main() {
+  const uint row0 = (gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID) * GEMM_ROWS;
+  if (row0 >= p.rows) return;
+  const uint rn = min(GEMM_ROWS, p.rows - row0);
+  const uint t0 = gl_WorkGroupID.y * GEMM_TOKENS;
+  const uint tn = min(GEMM_TOKENS, p.n - t0);
+  const uint blocks = p.cols / 32;
+  const uint cols4 = p.cols / 4;
+  precise float acc[GEMM_ROWS][GEMM_TOKENS];
+  for (uint r = 0; r < GEMM_ROWS; r++) {
+    for (uint t = 0; t < GEMM_TOKENS; t++) acc[r][t] = 0.0;
+  }
+  for (uint b = gl_SubgroupInvocationID; b < blocks; b += gl_SubgroupSize) {
+    uint w[GEMM_ROWS][8];
+    float scale[GEMM_ROWS];
+    for (uint r = 0; r < rn; r++) {
+      for (uint k = 0; k < 8; k++) w[r][k] = p.qs.v[(row0 + r) * cols4 + b * 8 + k];
+      scale[r] = p.scales.v[(row0 + r) * blocks + b];
+    }
+    for (uint t = 0; t < tn; t++) {
+      vec4 xv[8];
+      for (uint k = 0; k < 8; k++) xv[k] = p.x.v[(t0 + t) * cols4 + b * 8 + k];
+      for (uint r = 0; r < rn; r++) {
+        precise float sum = 0.0;
+        for (uint k = 0; k < 8; k++) sum += dot(q8_word(w[r][k]), xv[k]);
+        acc[r][t] += sum * scale[r];
+      }
+    }
+  }
+  for (uint r = 0; r < rn; r++) {
+    for (uint t = 0; t < tn; t++) {
+      const float v = subgroupAdd(acc[r][t]);
+      if (subgroupElect()) p.y.v[(t0 + t) * p.rows + row0 + r] = v;
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "get_weather": {"description": "Get the current weather for a city.", "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "City name"}}, "required": ["city"]}},
+    "set_timer": {"description": "Start a countdown timer.", "parameters": {"type": "object", "properties": {"minutes": {"type": "integer", "description": "Length in minutes"}}, "required": ["minutes"]}},
+    "send_message": {"description": "Send a text message to a contact.", "parameters": {"type": "object", "properties": {"to": {"type": "string", "description": "Contact name"}, "text": {"type": "string", "description": "Message body"}}, "required": ["to", "text"]}},
+    "search_web": {"description": "Search the web.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Search query"}}, "required": ["query"]}},
+    "create_reminder": {"description": "Create a reminder at a time.", "parameters": {"type": "object", "properties": {"text": {"type": "string", "description": "What to remind"}, "time": {"type": "string", "description": "When, e.g. 18:00"}}, "required": ["text", "time"]}},
+    "set_light": {"description": "Switch the lights of a room.", "parameters": {"type": "object", "properties": {"room": {"type": "string", "description": "Room name"}, "state": {"type": "string", "enum": ["on", "off"], "description": "on or off"}}, "required": ["room", "state"]}},
+    "convert_currency": {"description": "Convert an amount between currencies.", "parameters": {"type": "object", "properties": {"amount": {"type": "number"}, "from": {"type": "string", "description": "ISO code, e.g. USD"}, "to": {"type": "string", "description": "ISO code, e.g. JPY"}}, "required": ["amount", "from", "to"]}},
+    "play_music": {"description": "Play music matching a query.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Artist, genre or song"}}, "required": ["query"]}},
+    "set_alarm": {"description": "Set an alarm.", "parameters": {"type": "object", "properties": {"time": {"type": "string", "description": "24-hour time, e.g. 07:00"}}, "required": ["time"]}},
+    "add_to_list": {"description": "Add items to the shopping list.", "parameters": {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "string"}}}, "required": ["items"]}},
+    "get_directions": {"description": "Route between two places.", "parameters": {"type": "object", "properties": {"origin": {"type": "string"}, "destination": {"type": "string"}}, "required": ["origin", "destination"]}}
+  },
+  "cases": [
+    {"prompt": "What's the weather like in Paris right now?", "tools": ["get_weather"], "expect": {"name": "get_weather", "arguments": {"city": ["paris"]}}},
+    {"prompt": "Set a timer for 10 minutes.", "tools": ["set_timer", "set_alarm"], "expect": {"name": "set_timer", "arguments": {"minutes": ["10"]}}},
+    {"prompt": "Text Alice that I'll be 15 minutes late.", "tools": ["send_message", "search_web"], "expect": {"name": "send_message", "arguments": {"to": ["alice"], "text": ["late"]}}},
+    {"prompt": "Search the web for the latest Flutter release notes.", "tools": ["get_weather", "set_timer", "send_message", "search_web"], "expect": {"name": "search_web", "arguments": {"query": ["flutter"]}}},
+    {"prompt": "Remind me to call mom at 6pm.", "tools": ["create_reminder", "set_alarm", "send_message"], "expect": {"name": "create_reminder", "arguments": {"text": ["mom"], "time": ["18", "6"]}}},
+    {"prompt": "Turn off the living room lights.", "tools": ["set_light", "play_music"], "expect": {"name": "set_light", "arguments": {"room": ["living"], "state": ["off"]}}},
+    {"prompt": "How much is 100 US dollars in Japanese yen?", "tools": ["convert_currency", "search_web"], "expect": {"name": "convert_currency", "arguments": {"amount": ["100"], "from": ["usd"], "to": ["jpy"]}}},
+    {"prompt": "Play some jazz.", "tools": ["play_music", "set_light"], "expect": {"name": "play_music", "arguments": {"query": ["jazz"]}}},
+    {"prompt": "東京の今の天気を教えて。", "tools": ["get_weather", "search_web"], "expect": {"name": "get_weather", "arguments": {"city": ["tokyo", "東京"]}}},
+    {"prompt": "明日の朝7時にアラームをセットして。", "tools": ["set_alarm", "set_timer", "create_reminder"], "expect": {"name": "set_alarm", "arguments": {"time": ["7"]}}},
+    {"prompt": "Add milk and eggs to my shopping list.", "tools": ["add_to_list", "create_reminder"], "expect": {"name": "add_to_list", "arguments": {"items": ["milk"]}}},
+    {"prompt": "How do I get from Tokyo Station to Shibuya?", "tools": ["get_directions", "get_weather", "search_web"], "expect": {"name": "get_directions", "arguments": {"origin": ["tokyo"], "destination": ["shibuya"]}}},
+    {"prompt": "Hi! How are you today?", "tools": ["get_weather", "set_timer"], "expect": null},
+    {"prompt": "Tell me a short joke about cats.", "tools": ["search_web", "play_music"], "expect": null},
+    {"prompt": "What is 12 times 12?", "tools": ["get_weather", "send_message"], "expect": null},
+    {"prompt": "こんにちは。自己紹介をしてください。", "tools": ["get_weather", "set_alarm"], "expect": null}
+  ]
+}
