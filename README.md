@@ -134,6 +134,13 @@ once a conversation outgrows `model.contextLength` (2048 tokens by
 default); `chat.clear()` starts over. Conversations share the model's
 state, and one generates at a time.
 
+A large tool catalog need not fill the context. Mark tools with
+`"defer_loading": true` and give the model a search tool of your own: the
+deferred tools stay out of the system prompt, and the search tool's reply
+brings in the ones it found, as `{"type": "tool_reference", "name": ...}`
+items in the tool message's content. Keep every tool, deferred or not, in
+`tools`, since a reference renders the definition from there.
+
 `await model.close()` gives back the model's GPU memory and its mappings
 of the bundle's files; its conversations then throw `StateError`. The GPU
 layer is process-wide, so keep every GPU model of a process in one isolate:
@@ -167,7 +174,7 @@ tool/lab_parity.sh        # bit-for-bit against dart-llm-lab (macOS)
 | `src/vulkan/` | The Vulkan layer, its GLSL shaders, their committed SPIR-V and the Vulkan headers for Windows |
 | `hook/build.dart` | Compiles the kernels for the target into the code asset |
 | `bin/dianoia.dart` | The command-line tool |
-| `tool/` | Shader compilation and the lab parity check |
+| `tool/` | Shader compilation, the lab parity check and the chat-template oracle |
 | `tool/device_bench/` | The on-device benchmark app and its iPhone and Android round trips |
 | `example/` | The Flutter chat app and a command-line example |
 

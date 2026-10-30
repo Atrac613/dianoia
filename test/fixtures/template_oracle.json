@@ -1,0 +1,1582 @@
+{
+ "templates": [
+  {
+   "name": "deferred_catalog",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "tool_search",
+      "description": "Search the deferred tools. Returns references to the matching tools.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "Get the tide table for a port.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "port"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_quote",
+      "description": "Get a stock quote.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "symbol"
+       ]
+      }
+     },
+     "defer_loading": true
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_news",
+      "description": "Get the headlines.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "topic": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "topic"
+       ]
+      },
+      "defer_loading": false
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\nYou are a helpful assistant.\n\n<tools>\n{\"name\": \"tool_search\", \"description\": \"Search the deferred tools. Returns references to the matching tools.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}\n{\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}\n{\"name\": \"get_news\", \"description\": \"Get the headlines.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}, \"required\": [\"topic\"]}}\n</tools><|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "all_deferred_with_system",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "Get the tide table for a port.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "port"
+       ]
+      },
+      "defer_loading": true
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "all_deferred_without_system",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_quote",
+      "description": "Get a stock quote.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "symbol"
+       ]
+      }
+     },
+     "defer_loading": true
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "tool_reference_round_trip",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "tide forecast"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": [
+      {
+       "type": "tool_reference",
+       "name": "get_tides"
+      },
+      {
+       "type": "tool_reference",
+       "name": "get_forecast"
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_tides",
+        "arguments": {
+         "port": "Kobe"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "High tide 06:12, 18:40"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "tool_search",
+      "description": "Search the deferred tools. Returns references to the matching tools.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "Get the tide table for a port.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "port"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_quote",
+      "description": "Get a stock quote.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "symbol"
+       ]
+      }
+     },
+     "defer_loading": true
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_news",
+      "description": "Get the headlines.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "topic": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "topic"
+       ]
+      },
+      "defer_loading": false
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\nYou are a helpful assistant.\n\n<tools>\n{\"name\": \"tool_search\", \"description\": \"Search the deferred tools. Returns references to the matching tools.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}\n{\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}\n{\"name\": \"get_news\", \"description\": \"Get the headlines.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}, \"required\": [\"topic\"]}}\n</tools><|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\ntide forecast\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_tides\", \"description\": \"Get the tide table for a port.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\"}}, \"required\": [\"port\"]}}\n{\"name\": \"get_forecast\", \"description\": \"Get a multi-day forecast. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"city\", \"days\"]}}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=get_tides>\n<parameter=port>\nKobe\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\nHigh tide 06:12, 18:40\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "tool_reference_mixed",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "tide"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": [
+      {
+       "type": "text",
+       "text": "Found 3 tools."
+      },
+      {
+       "type": "tool_reference",
+       "name": "get_tides"
+      },
+      {
+       "type": "tool_reference",
+       "name": "get_quote"
+      },
+      "Pick one.",
+      {
+       "type": "tool_reference",
+       "name": "get_forecast"
+      },
+      {
+       "score": 0.5,
+       "note": "ranked"
+      }
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "tool_search",
+      "description": "Search the deferred tools. Returns references to the matching tools.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "Get the tide table for a port.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "port"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_quote",
+      "description": "Get a stock quote.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "symbol"
+       ]
+      }
+     },
+     "defer_loading": true
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_news",
+      "description": "Get the headlines.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "topic": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "topic"
+       ]
+      },
+      "defer_loading": false
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\n<tools>\n{\"name\": \"tool_search\", \"description\": \"Search the deferred tools. Returns references to the matching tools.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}\n{\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}\n{\"name\": \"get_news\", \"description\": \"Get the headlines.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}, \"required\": [\"topic\"]}}\n</tools><|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\ntide\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\nFound 3 tools.\n<additional_tools>\n{\"name\": \"get_tides\", \"description\": \"Get the tide table for a port.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\"}}, \"required\": [\"port\"]}}\n{\"name\": \"get_quote\", \"description\": \"Get a stock quote.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"symbol\": {\"type\": \"string\"}}, \"required\": [\"symbol\"]}}\n</additional_tools>\nPick one.\n<additional_tools>\n{\"name\": \"get_forecast\", \"description\": \"Get a multi-day forecast. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"city\", \"days\"]}}\n</additional_tools>\n{\"score\": 0.5, \"note\": \"ranked\"}\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "result_tools",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "tide"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": [
+      {
+       "result": {
+        "tools": [
+         {
+          "type": "function",
+          "function": {
+           "name": "get_tides",
+           "description": "Get the tide table for a port.",
+           "parameters": {
+            "type": "object",
+            "properties": {
+             "port": {
+              "type": "string"
+             }
+            },
+            "required": [
+             "port"
+            ]
+           },
+           "defer_loading": true
+          }
+         },
+         {
+          "name": "get_forecast",
+          "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+          "parameters": {
+           "type": "object",
+           "properties": {
+            "city": {
+             "type": "string"
+            },
+            "days": {
+             "type": "integer",
+             "minimum": 1
+            }
+           },
+           "required": [
+            "city",
+            "days"
+           ]
+          },
+          "defer_loading": true
+         }
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "quote"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": [
+      {
+       "result": {
+        "tools": {
+         "type": "function",
+         "function": {
+          "name": "get_quote",
+          "description": "Get a stock quote.",
+          "parameters": {
+           "type": "object",
+           "properties": {
+            "symbol": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "symbol"
+           ]
+          }
+         },
+         "defer_loading": true
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "news"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": [
+      {
+       "result": {
+        "tools": "get_news: the headlines"
+       }
+      }
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "tool_search",
+      "description": "Search the deferred tools. Returns references to the matching tools.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "Get the tide table for a port.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "port"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_quote",
+      "description": "Get a stock quote.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "symbol"
+       ]
+      }
+     },
+     "defer_loading": true
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_news",
+      "description": "Get the headlines.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "topic": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "topic"
+       ]
+      },
+      "defer_loading": false
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\n<tools>\n{\"name\": \"tool_search\", \"description\": \"Search the deferred tools. Returns references to the matching tools.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}\n{\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}\n{\"name\": \"get_news\", \"description\": \"Get the headlines.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}, \"required\": [\"topic\"]}}\n</tools><|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\ntide\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_tides\", \"description\": \"Get the tide table for a port.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\"}}, \"required\": [\"port\"]}}\n{\"name\": \"get_forecast\", \"description\": \"Get a multi-day forecast. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"city\", \"days\"]}}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nquote\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_quote\", \"description\": \"Get a stock quote.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"symbol\": {\"type\": \"string\"}}, \"required\": [\"symbol\"]}}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nnews\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\nget_news: the headlines\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "additional_tools_field",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "tide"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "ignored",
+     "additional_tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_tides",
+        "description": "Get the tide table for a port.",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "port": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "port"
+         ]
+        },
+        "defer_loading": true
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "get_forecast",
+        "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "city": {
+           "type": "string"
+          },
+          "days": {
+           "type": "integer",
+           "minimum": 1
+          }
+         },
+         "required": [
+          "city",
+          "days"
+         ]
+        },
+        "defer_loading": true
+       }
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "quote"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "unused",
+     "additional_tools": {
+      "type": "function",
+      "function": {
+       "name": "get_quote",
+       "description": "Get a stock quote.",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "symbol": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "symbol"
+        ]
+       }
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "news"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "additional_tools": true,
+     "content": "{\"name\": \"get_news\"}"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "more"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "additional_tools": true,
+     "content": "<additional_tools>\nraw\n</additional_tools>"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "again"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "additional_tools": true,
+     "content": "<tool_response>\nas is\n</tool_response>"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "list"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "additional_tools": true,
+     "content": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_tides",
+        "description": "Get the tide table for a port.",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "port": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "port"
+         ]
+        },
+        "defer_loading": true
+       }
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "empty"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "additional_tools": true,
+     "content": ""
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "tool_search",
+      "description": "Search the deferred tools. Returns references to the matching tools.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "Get the tide table for a port.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "port"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_quote",
+      "description": "Get a stock quote.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "symbol"
+       ]
+      }
+     },
+     "defer_loading": true
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_news",
+      "description": "Get the headlines.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "topic": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "topic"
+       ]
+      },
+      "defer_loading": false
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\n<tools>\n{\"name\": \"tool_search\", \"description\": \"Search the deferred tools. Returns references to the matching tools.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}\n{\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}\n{\"name\": \"get_news\", \"description\": \"Get the headlines.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}, \"required\": [\"topic\"]}}\n</tools><|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\ntide\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_tides\", \"description\": \"Get the tide table for a port.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\"}}, \"required\": [\"port\"]}}\n{\"name\": \"get_forecast\", \"description\": \"Get a multi-day forecast. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"city\", \"days\"]}}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nquote\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_quote\", \"description\": \"Get a stock quote.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"symbol\": {\"type\": \"string\"}}, \"required\": [\"symbol\"]}}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nnews\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_news\"}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nmore\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\nraw\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nagain\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\nas is\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nlist\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_tides\", \"description\": \"Get the tide table for a port.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\"}}, \"required\": [\"port\"]}}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\nempty\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "merged_tool_messages",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "tool_search",
+        "arguments": {
+         "query": "tide"
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Kobe"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "a",
+     "content": "first"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "a",
+     "content": ""
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "a",
+     "content": [
+      {
+       "type": "tool_reference",
+       "name": "get_tides"
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "a",
+     "content": {
+      "type": "text",
+      "text": "last"
+     }
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "b",
+     "content": "Rain, 14 C"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "b",
+     "content": "",
+     "additional_tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_forecast",
+        "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "city": {
+           "type": "string"
+          },
+          "days": {
+           "type": "integer",
+           "minimum": 1
+          }
+         },
+         "required": [
+          "city",
+          "days"
+         ]
+        },
+        "defer_loading": true
+       }
+      }
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "tool_search",
+      "description": "Search the deferred tools. Returns references to the matching tools.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_forecast",
+      "description": "Get a multi-day forecast. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "city",
+        "days"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "Get the tide table for a port.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "port"
+       ]
+      },
+      "defer_loading": true
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_quote",
+      "description": "Get a stock quote.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "symbol"
+       ]
+      }
+     },
+     "defer_loading": true
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_news",
+      "description": "Get the headlines.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "topic": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "topic"
+       ]
+      },
+      "defer_loading": false
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\n<tools>\n{\"name\": \"tool_search\", \"description\": \"Search the deferred tools. Returns references to the matching tools.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}\n{\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}\n{\"name\": \"get_news\", \"description\": \"Get the headlines.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}, \"required\": [\"topic\"]}}\n</tools><|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=tool_search>\n<parameter=query>\ntide\n</parameter>\n</function>\n</tool_call>\n\n<tool_call>\n<function=get_weather>\n<parameter=city>\nKobe\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\nfirst\n<additional_tools>\n{\"name\": \"get_tides\", \"description\": \"Get the tide table for a port.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\"}}, \"required\": [\"port\"]}}\n</additional_tools>\nlast\n</tool_response><|im_end|>\n<|im_start|>tool\n<tool_response>\nRain, 14 C\n</tool_response><|im_end|>\n<|im_start|>tool\n<tool_response>\n<additional_tools>\n{\"name\": \"get_forecast\", \"description\": \"Get a multi-day forecast. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"city\", \"days\"]}}\n</additional_tools>\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+   "name": "tool_content_shapes",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Will Kobe have high tide and rain tomorrow?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Kobe"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": {
+      "temperature": 14,
+      "condition": "rain"
+     }
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Osaka"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": {
+      "type": "text",
+      "text": "Sunny"
+     }
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Nara"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": null
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Kyoto"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": [
+      "a",
+      {
+       "type": "text",
+       "text": "b"
+      },
+      [
+       1,
+       2
+      ]
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Uji"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": 42
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "prompt": "<|startoftext|><|im_start|>system\n<tools>\n{\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}\n</tools><|im_end|>\n<|im_start|>user\nWill Kobe have high tide and rain tomorrow?<|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=get_weather>\n<parameter=city>\nKobe\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n{\"temperature\": 14, \"condition\": \"rain\"}\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=get_weather>\n<parameter=city>\nOsaka\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\nSunny\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=get_weather>\n<parameter=city>\nNara\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=get_weather>\n<parameter=city>\nKyoto\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\na\nb\n12\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think><tool_call>\n<function=get_weather>\n<parameter=city>\nUji\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n42\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think>"
+  }
+ ]
+}

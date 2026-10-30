@@ -9,9 +9,15 @@
 ///      "tool_calls": [{"function": {"name": ..., "arguments": {...}}}],
 ///      "reasoning": optional, also read as "thinking" or "reasoning_content"}
 ///
+/// Tool search follows the template too. A tool with a truthy
+/// `defer_loading` (on the tool or its function) stays out of the `<tools>`
+/// block; a tool message brings it in with `tool_reference` items (which
+/// name a tool that must still be in `tools`), `{"result": {"tools": ...}}`
+/// items or the `additional_tools` field, and consecutive tool messages with
+/// the same `tool_call_id` merge into one response.
+///
 /// Not supported, and rejected instead of rendered differently: images and
-/// video, deferred tools (`defer_loading`), `additional_tools`, and merging
-/// consecutive tool messages by `tool_call_id`.
+/// video.
 library;
 
 /// Renders a conversation exactly as `tokenizer.apply_chat_template` does.
@@ -27,55 +33,54 @@ String renderChat(
   var system = '';
   if (rest.isNotEmpty && rest.first['role'] == 'system') {
     if (_truthy(rest.first['content'])) {
-      system = _content(rest.first['content']);
+      system = _parseContent(rest.first['content']);
     }
     rest = rest.sublist(1);
   }
-  if (tools != null && tools.isNotEmpty) {
-    final lines = <String>[];
-    for (final tool in tools) {
-      final fn = _function(tool);
-      if (_truthy(fn['defer_loading']) || _truthy(tool['defer_loading'])) {
-        throw UnsupportedError('deferred tools are not supported');
-      }
-      lines.add(_toolToJson(fn));
-    }
+  final lines = [
+    for (final tool in tools ?? const <Map<String, Object?>>[])
+      if (!_truthy(_function(tool)['defer_loading']) &&
+          !_truthy(tool['defer_loading']))
+        _toolToJson(tool),
+  ];
+  if (lines.isNotEmpty) {
     system =
         '$system${system.isEmpty ? '' : '\n\n'}<tools>\n${lines.join('\n')}\n</tools>';
   }
   if (system.isNotEmpty) out.write('<|im_start|>system\n$system<|im_end|>\n');
 
   final lastUser = rest.lastIndexWhere((m) => m['role'] == 'user');
+  // Items of tool messages waiting to merge into the next one.
+  var pending = <Object?>[];
   for (var i = 0; i < rest.length; i++) {
     final message = rest[i];
     final role = message['role'] as String;
+    final next = i + 1 < rest.length ? rest[i + 1] : null;
+    final plainTool = role == 'tool' && !_truthy(message['additional_tools']);
+    final items = plainTool ? _toolItems(message['content']) : const [];
+    if (plainTool &&
+        next != null &&
+        next['role'] == 'tool' &&
+        !_truthy(next['additional_tools']) &&
+        _truthy(message['tool_call_id']) &&
+        next['tool_call_id'] == message['tool_call_id']) {
+      pending = [...pending, ...items];
+      continue;
+    }
     out.write('<|im_start|>$role\n');
     switch (role) {
       case 'assistant':
         out.write(_assistant(message, preserveThinking || i > lastUser));
+      case 'tool' when !plainTool:
+        out.write(_additionalTools(message));
+      case 'tool' when pending.isNotEmpty:
+        out.write(_toolResponse([...pending, ...items], tools));
+        pending = [];
       case 'tool':
-        if (_truthy(message['additional_tools'])) {
-          throw UnsupportedError('additional_tools is not supported');
-        }
-        final next = i + 1 < rest.length ? rest[i + 1] : null;
-        if (next != null &&
-            next['role'] == 'tool' &&
-            message['tool_call_id'] != null &&
-            next['tool_call_id'] == message['tool_call_id']) {
-          throw UnsupportedError('merging tool messages is not supported');
-        }
-        final content = message['content'] ?? '';
-        if (content is! String) {
-          throw UnsupportedError('tool content must be a string');
-        }
-        out.write(
-          content.contains('<tool_response>')
-              ? content
-              : '<tool_response>\n$content\n</tool_response>',
-        );
+        out.write(_toolResponse(message['content'] ?? '', tools));
       default:
         if (_truthy(message['content'])) {
-          out.write(_content(message['content']));
+          out.write(_parseContent(message['content']));
         }
     }
     out.write('<|im_end|>\n');
@@ -104,7 +109,7 @@ String _assistant(Map<String, Object?> message, bool keepThinking) {
       !(rawContent is String ? rawContent : '').contains('</think>')) {
     out.write('<think></think>');
   }
-  var content = _truthy(rawContent) ? _content(rawContent) : '';
+  var content = _truthy(rawContent) ? _parseContent(rawContent) : '';
   if (!keepThinking) {
     if (content.contains('</think>')) {
       content = content.split('</think>').last.trim();
@@ -153,9 +158,99 @@ Map<String, Object?> _function(Map<String, Object?> tool) =>
     ? tool['function'] as Map<String, Object?>
     : tool;
 
-String _toolToJson(Map<String, Object?> fn) =>
-    '{${[for (final MapEntry(:key, :value) in fn.entries)
-      if (key != 'defer_loading') '${pyJsonDumps(key)}: ${pyJsonDumps(value)}'].join(', ')}}';
+/// The template's tool_to_json: the tool's function (or the tool itself)
+/// as JSON, without `defer_loading`.
+String _toolToJson(Object? tool) {
+  final fn = tool is Map<String, Object?> ? _function(tool) : tool;
+  if (fn is! Map<String, Object?>) {
+    throw ArgumentError('a tool must be a mapping, got $fn');
+  }
+  return '{${[for (final MapEntry(:key, :value) in fn.entries)
+    if (key != 'defer_loading') '${pyJsonDumps(key)}: ${pyJsonDumps(value)}'].join(', ')}}';
+}
+
+/// Tools as the lines of an `<additional_tools>` block: a string as is, a
+/// tool or a list of tools as JSON.
+String _toolLines(Object? tools) => switch (tools) {
+  String() => tools,
+  Map() => _toolToJson(tools),
+  List() => tools.map(_toolToJson).join('\n'),
+  _ => throw ArgumentError(
+    'additional tools must be a string, a tool or a '
+    'list of tools, got $tools',
+  ),
+};
+
+/// A tool message's content as the list of items it merges.
+List<Object?> _toolItems(Object? content) => switch (content) {
+  null => const [],
+  String() when content.isEmpty => const [],
+  String() => [
+    {'type': 'text', 'text': content},
+  ],
+  List() => content,
+  _ => [content],
+};
+
+/// A tool message with `additional_tools`: the field's tools, or with a
+/// field that is not a tool or a list, the content.
+String _additionalTools(Map<String, Object?> message) {
+  final field = message['additional_tools'];
+  final source = field is Map || field is List ? field : message['content'];
+  if (source is String && source.contains('<tool_response>')) return source;
+  if (source is String && source.contains('<additional_tools>')) {
+    return '<tool_response>\n$source\n</tool_response>';
+  }
+  if (!_truthy(source)) return '';
+  return '<tool_response>\n<additional_tools>\n${_toolLines(source)}'
+      '\n</additional_tools>\n</tool_response>';
+}
+
+/// The template's render_tool_response. In a list of items, adjacent
+/// `tool_reference` items share one `<additional_tools>` block.
+String _toolResponse(Object? content, List<Map<String, Object?>>? tools) {
+  if (content is String && content.contains('<tool_response>')) {
+    return content;
+  }
+  final body = switch (content) {
+    String() || Map() => _parseContent(content),
+    List() => [
+      for (var i = 0; i < content.length; i++)
+        if (_isToolReference(content[i]))
+          [
+            if (i == 0 || !_isToolReference(content[i - 1]))
+              '<additional_tools>\n',
+            _referencedTool((content[i] as Map)['name'], tools),
+            if (i == content.length - 1 || !_isToolReference(content[i + 1]))
+              '\n</additional_tools>',
+          ].join()
+        else if (content[i] case {'result': {'tools': final found}})
+          '<additional_tools>\n${_toolLines(found)}\n</additional_tools>'
+        else
+          _parseContent(content[i]),
+    ].join('\n'),
+    _ => pyJsonDumps(content),
+  };
+  return '<tool_response>\n$body\n</tool_response>';
+}
+
+bool _isToolReference(Object? item) =>
+    item is Map && item['type'] == 'tool_reference';
+
+/// The JSON of the tool named [name], found among all [tools], deferred or
+/// not; the last one wins.
+String _referencedTool(Object? name, List<Map<String, Object?>>? tools) {
+  final found = (tools ?? const <Map<String, Object?>>[])
+      .map(_function)
+      .lastWhere((fn) => fn['name'] == name, orElse: () => const {});
+  if (found.isEmpty) {
+    throw ArgumentError(
+      "Tool reference '$name' not found in available tools. Every tool "
+      'referenced by a tool_reference must be in `tools` on every request.',
+    );
+  }
+  return _toolToJson(found);
+}
 
 /// The template's render_value: strings raw, JSON literals for booleans and
 /// null, JSON for containers, Python's str() for numbers.
@@ -168,21 +263,33 @@ String _renderValue(Object? value) => switch (value) {
   _ => value.toString(),
 };
 
-String _content(Object? content) {
-  if (content is String) return content;
-  if (content is List) {
-    return [
-      for (final item in content)
-        if (item is String)
-          item
-        else if (item is Map && item['type'] == 'text')
-          '${item['text'] ?? ''}'
-        else
-          throw UnsupportedError('only text content is supported'),
-    ].join();
-  }
-  throw UnsupportedError('only text content is supported');
-}
+/// The template's parse_content: strings as is, text items as their text,
+/// other values as JSON.
+String _parseContent(Object? content) => switch (content) {
+  String() => content,
+  Map() => _contentItem(content),
+  List() =>
+    content.map((item) => item is String ? item : _contentItem(item)).join(),
+  null => '',
+  _ => pyJsonDumps(content),
+};
+
+String _contentItem(Object? item) => switch (item) {
+  {'type': 'image' || 'video'} => throw UnsupportedError(
+    'only text content is supported',
+  ),
+  {'type': 'text'} => _pyStr((item as Map)['text']),
+  _ => pyJsonDumps(item),
+};
+
+/// Python's str() for a JSON scalar, as Jinja's `(x or "") | string` does.
+String _pyStr(Object? value) => switch (value) {
+  _ when !_truthy(value) => '',
+  String() => value,
+  bool() => value ? 'True' : 'False',
+  num() => _pyNumber(value),
+  _ => throw UnsupportedError('text must be a string, got $value'),
+};
 
 /// Jinja truthiness for JSON values.
 bool _truthy(Object? value) => switch (value) {

@@ -1,3 +1,15 @@
+## Unreleased
+
+- The chat template renders LFM3's tool search: tools with
+  `defer_loading` stay out of the `<tools>` block, and tool messages bring
+  them in through `tool_reference` items, `result.tools` or the
+  `additional_tools` field. Consecutive tool messages with one
+  `tool_call_id` merge into one response, and tool content may be a
+  mapping or a list, as in the model's `chat_template.jinja`.
+- `tool/template_oracle.py` records Hugging Face's rendering of these
+  cases, and `test/chat_template_test.dart` checks `renderChat` against it
+  and against the lab's text oracle.
+
 ## 0.1.0
 
 - Import the LFM3 engine from dart-llm-lab (commit e04e7c3): tokenizer,
