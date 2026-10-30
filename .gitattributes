@@ -1,0 +1,4 @@
+# test/shaders_test.dart hashes the shader sources' bytes: keep them LF on
+# every checkout, Windows with core.autocrlf included.
+src/vulkan/shaders/** text eol=lf
+src/vulkan/spirv/SOURCES.sha256 text eol=lf
