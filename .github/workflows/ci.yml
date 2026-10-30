@@ -23,7 +23,8 @@ jobs:
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
-      - run: dart pub get
+      # example/ is a Flutter app, resolved by the flutter job.
+      - run: dart pub get --no-example
       - run: dart format --output=none --set-exit-if-changed .
       # The Flutter apps (example, tool/device_bench) are analyzed by the
       # flutter job, with their own packages resolved.
