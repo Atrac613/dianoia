@@ -46,23 +46,6 @@ Future<HttpServer> _serve(Map<String, String> files) async {
   return server;
 }
 
-/// [ModelSpec.lfm3Q4] with its files at [base].
-ModelSpec _localSpec(String base) {
-  RemoteFile local(RemoteFile f) =>
-      RemoteFile(f.name, '$base/${f.name}', size: f.size, sha256: f.sha256);
-  const spec = ModelSpec.lfm3Q4;
-  return ModelSpec(
-    id: spec.id,
-    name: spec.name,
-    license: spec.license,
-    licenseUrl: spec.licenseUrl,
-    gguf: local(spec.gguf),
-    config: local(spec.config),
-    tokenizer: local(spec.tokenizer),
-    licenseFile: local(spec.licenseFile),
-  );
-}
-
 String _sha256(String path) =>
     sha256.convert(File(path).readAsBytesSync()).toString();
 
@@ -86,7 +69,9 @@ void main() {
           for (final name in ['config.json', 'tokenizer.json', 'LICENSE'])
             name: '$_lab/LFM3-1.7B/$name',
         });
-        spec = _localSpec('http://127.0.0.1:${server.port}/files');
+        spec = ModelSpec.lfm3Q4.fromMirror(
+          'http://127.0.0.1:${server.port}/files',
+        );
         dir = Directory.systemTemp.createTempSync('dianoia_store');
       });
       tearDownAll(() async {

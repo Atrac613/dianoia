@@ -43,6 +43,29 @@ final class ModelSpec {
   /// Bytes to download.
   int get downloadBytes => files.fold(0, (sum, f) => sum + f.size);
 
+  /// This model with every file fetched from [baseUrl] instead, as
+  /// `[baseUrl]/[RemoteFile.name]`: a mirror an app hosts, or a test
+  /// server. The sizes and SHA-256 stay pinned, so a mirror can only serve
+  /// the published bytes.
+  ModelSpec fromMirror(String baseUrl) {
+    RemoteFile at(RemoteFile f) => RemoteFile(
+      f.name,
+      '$baseUrl/${f.name}',
+      size: f.size,
+      sha256: f.sha256,
+    );
+    return ModelSpec(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      gguf: at(gguf),
+      config: at(config),
+      tokenizer: at(tokenizer),
+      licenseFile: at(licenseFile),
+    );
+  }
+
   /// LFM3-1.7B in Liquid's quantization-aware Q4_0 build, from
   /// LiquidAI/LFM3-1.7B-GGUF and LiquidAI/LFM3-1.7B on Hugging Face: 1.07 GB
   /// to download, 1.14 GB installed.
