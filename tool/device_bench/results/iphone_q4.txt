@@ -1,0 +1,29 @@
+# 2026-10-30T01:36:21Z, launched 2026-10-30T01:33:13 UTC, LFM3-1.7B-QAD-Q4 (q4)
+device: Apple A17 Pro GPU, Version 26.7.2 (Build 23H128), 7.5 GiB, max buffer 4.0 GiB, GPU working set 5.3 GiB, 1 weight buffer(s)
+  GPU ask 1: prompt   31.8 tok/s, decode  29.4 tok/s, total  3.22 s, thermal 0->0, footprint 316 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  GPU ask 2: prompt   73.9 tok/s, decode  29.4 tok/s, total  1.72 s, thermal 0->0, footprint 319 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  GPU ask 3: prompt   73.2 tok/s, decode  29.7 tok/s, total  1.72 s, thermal 0->0, footprint 317 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  GPU forced tools: 90 prompt tokens at 35.2 tok/s, decode 33.2 tok/s
+  GPU forced long: 431 prompt tokens at 52.8 tok/s, decode 30.2 tok/s
+  GPU chat: system and tools 761 tokens; reuse gives the from-scratch logits: bit for bit
+    cold first token 14365 ms (781 tokens), warm-up 14593 ms, warm first token 432 ms median, tool round trip 487 ms, tool calls right 16/16
+    state file 34.9 MB, saved in 67 ms, loaded in 8 ms (right after saving)
+  CPU x2 ask 1: prompt   21.6 tok/s, decode  18.4 tok/s, total  4.82 s, thermal 2->2, footprint 1624 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x2 ask 2: prompt   22.0 tok/s, decode  18.6 tok/s, total  4.74 s, thermal 2->2, footprint 1632 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x6 ask 1: prompt   34.2 tok/s, decode  22.2 tok/s, total  3.22 s, thermal 2->2, footprint 1603 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x6 ask 2: prompt   33.7 tok/s, decode  22.7 tok/s, total  3.24 s, thermal 2->2, footprint 1625 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+iPhone GPU against Mac GPU (tools, long):
+    L23   3.668e-06      53    2.189e-05
+  prompt logits: max |d| 3.672e-05 over 90 positions, argmax equal: True
+  greedy tokens equal: True (18 vs 18); step logits max |d| 1.359e-05
+    L23   2.990e-05     330    2.358e-04
+  prompt logits: max |d| 1.025e-05 over 1 positions, argmax equal: True
+  greedy tokens equal: True (12 vs 12); step logits max |d| 1.168e-05
+iPhone CPU against Mac CPU (tools), bitwise:
+  hidden.f32 identical
+  logits.f32 identical
+  gen.i32 identical
+  gen_logits.f32 identical
+KL against float32 (tools):
+  gpu: tools  q4    positions  107 KL mean 0.6181 p99 4.6467 max 5.0983 top-1 agree  64.5% ref top-1 in top-5  85.0%
+  cpu: tools  q4    positions  107 KL mean 0.6174 p99 4.3602 max 4.8818 top-1 agree  63.6% ref top-1 in top-5  85.0%

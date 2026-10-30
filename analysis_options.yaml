@@ -1,1 +1,6 @@
 include: package:lints/recommended.yaml
+
+analyzer:
+  exclude:
+    # A Flutter app with its own analysis (flutter analyze there).
+    - tool/device_bench/**

@@ -1,0 +1,19 @@
+name: lfm3_bench
+description: The dianoia device benchmark - LFM3 on an iPhone or Android phone, CPU and GPU.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dianoia:
+    path: ../..
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

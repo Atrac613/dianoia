@@ -1,0 +1,60 @@
+# 2026-10-30T01:42:08Z, launched 2026-10-30T01:36:56 UTC, LFM3-1.7B-QAD-Q4 (q4)
+device: Google Pixel 8, SoC Tensor G3, Android 17, thermal status 0 -> 1
+cpu: 9 cores, top MHz [2914, 2367, 1704], parts ['0xd46', '0xd4d', '0xd4e'], 7.4 GiB
+gpu: Mali-G715, max buffer 7.0 GiB, 1 weight buffer(s)
+  GPU ask 1: prompt   71.1 tok/s, decode  14.6 tok/s, total  2.35 s, decode GPU 48.7 ms/token (encoding 0.63), rss 2505 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  GPU ask 2: prompt   82.3 tok/s, decode  14.5 tok/s, total  2.20 s, decode GPU 48.1 ms/token (encoding 0.56), rss 2511 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  GPU ask 3: prompt   82.6 tok/s, decode  14.7 tok/s, total  2.17 s, decode GPU 46.1 ms/token (encoding 0.65), rss 2508 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  GPU forced tools: 90 prompt tokens at 80.1 tok/s, decode 19.4 tok/s
+  GPU forced long: 431 prompt tokens at 77.9 tok/s, decode 17.2 tok/s
+  GPU copy bandwidth: 41.2 GB/s (read plus written)
+  GPU profile, prompt: 12.1 ms/token: gemm_q4_i8 11.35 (4x), attention 0.24 (0x), quantize 0.24 (2x), gemm_q8_i8 0.12 (0x), rms_norm 0.06 (2x), conv 0.06 (0x), swiglu 0.04 (1x), head_norm_rope 0.01 (1x)
+  GPU profile, decode: 55.8 ms/token: gemm_q4_i8 39.75 (153x), gemm_q8_i8 10.90 (1x), rms_norm 1.92 (97x), attention 1.36 (11x), quantize 1.28 (97x), conv 0.30 (13x), head_norm_rope 0.20 (22x), swiglu 0.12 (24x)
+  GPU profile, decode_rows_0: 56.6 ms/token: gemm_q4_i8 40.43 (153x), gemm_q8_i8 11.03 (1x), rms_norm 1.92 (97x), quantize 1.27 (97x), attention 1.26 (11x), conv 0.29 (13x), head_norm_rope 0.20 (22x), swiglu 0.14 (24x)
+  GPU profile, decode_rows_1: 59.1 ms/token: gemv_q4_i8 40.85 (153x), gemv_q8_i8 13.20 (1x), rms_norm 2.00 (97x), attention 1.26 (11x), quantize 1.23 (97x), conv 0.29 (13x), head_norm_rope 0.19 (22x), swiglu 0.11 (24x)
+  GPU profile, decode_rows_2: 50.3 ms/token: gemv_q4_i8 33.86 (153x), gemv_q8_i8 11.38 (1x), rms_norm 2.00 (97x), attention 1.25 (11x), quantize 1.22 (97x), conv 0.28 (13x), head_norm_rope 0.19 (22x), swiglu 0.12 (24x)
+  GPU profile, decode_rows_4: 48.7 ms/token: gemv_q4_i8 33.86 (153x), gemv_q8_i8 9.74 (1x), rms_norm 1.94 (97x), attention 1.25 (11x), quantize 1.20 (97x), conv 0.29 (13x), head_norm_rope 0.21 (22x), swiglu 0.18 (24x)
+  Decode sweep rows 0 (3 runs): GPU median 55.26 ms/token, range 54.72-56.55; wall median 58.32 ms/token; logits vs old GEMM bit-identical
+  Decode sweep rows 1 (3 runs): GPU median 58.79 ms/token, range 58.08-59.13; wall median 61.26 ms/token; logits vs old GEMM bit-identical
+  Decode sweep rows 2 (3 runs): GPU median 50.31 ms/token, range 49.46-50.84; wall median 53.29 ms/token; logits vs old GEMM bit-identical
+  Decode sweep rows 4 (3 runs): GPU median 49.20 ms/token, range 48.67-50.57; wall median 52.54 ms/token; logits vs old GEMM bit-identical
+  Q8 workgroup 64, full decode: GPU median 49.88 ms/token, Q8 alone 10.17, wall 52.94; logits vs old GEMM bit-identical
+  Q8 workgroup 128, full decode: GPU median 49.71 ms/token, Q8 alone 10.28, wall 52.76; logits vs old GEMM bit-identical
+  Q8 workgroup 256, full decode: GPU median 50.23 ms/token, Q8 alone 10.38, wall 52.94; logits vs old GEMM bit-identical
+  Q8 workgroup 64, isolated LM head: GPU median 9.576 ms/dispatch, range 9.452-9.793 (6 runs); vs old GEMM bit-identical
+  Q8 workgroup 128, isolated LM head: GPU median 9.435 ms/dispatch, range 9.357-9.726 (6 runs); vs old GEMM bit-identical
+  Q8 workgroup 256, isolated LM head: GPU median 9.521 ms/dispatch, range 9.239-9.691 (6 runs); vs old GEMM bit-identical
+  Q8 vector=False, full decode (6 runs): GPU median 49.58 ms/token, Q8 alone 10.08, wall 52.73; logits vs old GEMM bit-identical
+  Q8 vector=False, isolated LM head (6 runs): GPU median 9.517 ms/dispatch, range 9.271-9.629; vs old GEMM bit-identical
+  Q8 vector=True, full decode (6 runs): GPU median 49.84 ms/token, Q8 alone 9.56, wall 52.75; logits vs old GEMM bit-identical
+  Q8 vector=True, isolated LM head (6 runs): GPU median 8.589 ms/dispatch, range 8.319-8.885; vs old GEMM bit-identical
+  Matrix ffn_up q4 [7680, 2048], rows 0: GPU median 0.383 ms/dispatch, range 0.302-0.477 (4 runs x 32); vs old GEMM bit-identical; clock raw ['807000', '850000']
+  Matrix ffn_up q4 [7680, 2048], rows 1: GPU median 0.435 ms/dispatch, range 0.426-0.460 (4 runs x 32); vs old GEMM bit-identical; clock raw ['807000']
+  Matrix ffn_up q4 [7680, 2048], rows 2: GPU median 0.400 ms/dispatch, range 0.398-0.411 (4 runs x 32); vs old GEMM bit-identical; clock raw ['807000']
+  Matrix ffn_up q4 [7680, 2048], rows 4: GPU median 0.421 ms/dispatch, range 0.419-0.425 (4 runs x 32); vs old GEMM bit-identical; clock raw ['807000']
+  Matrix ffn_down q4 [2048, 7680], rows 0: GPU median 0.597 ms/dispatch, range 0.339-0.620 (4 runs x 32); vs old GEMM bit-identical; clock raw ['723000', '850000']
+  Matrix ffn_down q4 [2048, 7680], rows 1: GPU median 0.482 ms/dispatch, range 0.466-0.522 (4 runs x 32); vs old GEMM bit-identical; clock raw ['723000', '807000']
+  Matrix ffn_down q4 [2048, 7680], rows 2: GPU median 0.462 ms/dispatch, range 0.385-0.499 (4 runs x 32); vs old GEMM bit-identical; clock raw ['723000']
+  Matrix ffn_down q4 [2048, 7680], rows 4: GPU median 0.496 ms/dispatch, range 0.459-0.516 (4 runs x 32); vs old GEMM bit-identical; clock raw ['723000', '807000']
+  Matrix lm_head q8 [128000, 2048], rows 0: GPU median 9.902 ms/dispatch, range 9.522-9.982 (4 runs x 32); vs old GEMM bit-identical; clock raw ['850000']
+  Matrix lm_head q8 [128000, 2048], rows 1: GPU median 12.859 ms/dispatch, range 12.795-12.924 (4 runs x 32); vs old GEMM bit-identical; clock raw ['807000', '850000']
+  Matrix lm_head q8 [128000, 2048], rows 2: GPU median 10.428 ms/dispatch, range 10.395-10.678 (4 runs x 32); vs old GEMM bit-identical; clock raw ['807000', '850000']
+  Matrix lm_head q8 [128000, 2048], rows 4: GPU median 9.409 ms/dispatch, range 9.237-9.582 (4 runs x 32); vs old GEMM bit-identical; clock raw ['807000', '850000']
+  GPU chat: system and tools 761 tokens; reuse gives the from-scratch logits: bit for bit
+    cold first token 11771 ms (781 tokens), warm-up 11361 ms, warm first token 337 ms median, tool round trip 557 ms, tool calls right 16/16
+    state file 34.9 MB, saved in 127 ms, loaded in 10 ms (right after saving)
+  CPU x2 ask 1: prompt    9.9 tok/s, decode   9.6 tok/s, total 10.24 s, rss 2723 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x2 ask 2: prompt   12.1 tok/s, decode   9.8 tok/s, total  8.67 s, rss 2724 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x4 ask 1: prompt   18.9 tok/s, decode  13.0 tok/s, total  5.76 s, rss 2726 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x4 ask 2: prompt   16.8 tok/s, decode  10.6 tok/s, total  6.61 s, rss 2726 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x5 ask 1: prompt   17.7 tok/s, decode  11.9 tok/s, total  6.17 s, rss 2726 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x5 ask 2: prompt   16.3 tok/s, decode  11.8 tok/s, total  6.59 s, rss 2725 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x9 ask 1: prompt   12.6 tok/s, decode   7.8 tok/s, total  8.86 s, rss 2727 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+  CPU x9 ask 2: prompt   14.1 tok/s, decode   7.5 tok/s, total  8.21 s, rss 2727 MB, [{'name': 'get_weather', 'arguments': {'city': 'Paris'}}]
+Quality gates against float32, bounded by same-weights Mac CPU-int8 controls:
+CPU-int8 control mean KL 0.617446; allowed candidate mean 0.653318 (relative slack 0.05, absolute 0.005)
+tools  q4    positions  107 KL mean 0.6188 p99 4.1863 max 5.3740 top-1 agree  65.4% ref top-1 in top-5  86.0%
+CPU-int8 control mean KL 0.017477; allowed candidate mean 0.023351 (relative slack 0.05, absolute 0.005)
+long   q4    positions   12 KL mean 0.0176 p99 0.0824 max 0.0875 top-1 agree 100.0% ref top-1 in top-5 100.0%
+CPU-int8 control mean KL 0.617446; allowed candidate mean 0.653318 (relative slack 0.05, absolute 0.005)
+tools  q4    positions  107 KL mean 0.6172 p99 4.4649 max 4.8178 top-1 agree  64.5% ref top-1 in top-5  86.0%
