@@ -32,8 +32,15 @@ app copies the pushed bundle into its internal storage on first start.
 | `lib/src/chat_controller.dart` | The UI-side state, a `ChangeNotifier` |
 | `lib/src/chat_page.dart`, `message_bubble.dart` | The screen |
 
-Measured on a Pixel 8 (GPU): 310 ms to the first token and about
-12 tok/s while the reply streams onto the screen.
+Measured on the GPU while the reply streams onto the screen:
+
+| Device | First token | Decode |
+|---|---|---|
+| iPhone 15 Pro Max | 309 ms | 25.9 tok/s (a 9-token reply) |
+| Pixel 8 | 310 ms | about 12 tok/s |
+
+The macOS build has not been run yet. Replies are shown as plain text, so
+the model's Markdown (`**bold**`) appears as written.
 
 ## Command line
 
