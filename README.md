@@ -7,10 +7,6 @@ kernels for quantized matrix products and attention, and a GPU layer (Metal
 on Apple platforms, Vulkan on Android) that records one dispatch per Dart
 call.
 
-The name is Plato's: on the divided line, *dianoia* is the kind of thinking
-that reasons step by step from what it is given. It is also what a language
-model does with tokens.
-
 > **Status: 0.1.0-dev.** The engine was imported from
 > [dart-llm-lab](#origin) and runs one model family, LFM3, for text chat and
 > tool calling. The public API is the lab's and will change. Planned: LFM3
