@@ -27,3 +27,12 @@
   mappings are now reference-counted. A closed model throws `StateError`.
 - Metal starts once per process: loading a second model no longer drops
   the first one's buffers.
+- Download models: `ModelStore.install` fetches a `ModelSpec`'s files from
+  where the model's authors publish them, pinned by revision, size and
+  SHA-256, resumes interrupted downloads and builds the bundle on the
+  device. `ModelSpec.lfm3Q4` is LFM3-1.7B's QAD Q4_0 build;
+  `ModelSpec.fromMirror` fetches the same files from a mirror.
+- The GGUF import builds the cache one matrix at a time (peak resident
+  memory 2.2 GB to 1.38 GB, the same bytes).
+- The chat example offers the download, with the model's size and
+  license, and shows its progress.

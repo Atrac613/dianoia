@@ -53,10 +53,31 @@ The first `dart run`, `dart test` or `flutter run` compiles the native
 kernels through `hook/build.dart` into one code asset,
 `package:dianoia/kernels`, and caches it.
 
-### Preparing a model
+### Getting a model
 
-A model directory holds the checkpoint's `config.json`, `tokenizer.json`
-and `model.safetensors`. Q8 and Q4 weights live in a cache file next to
+Apps download a model with a `ModelStore`. `ModelSpec.lfm3Q4` pins Liquid's
+quantization-aware Q4_0 GGUF and the matching config, tokenizer and license
+on Hugging Face by revision, size and SHA-256 (1.07 GB); the store fetches
+them, resuming interrupted downloads, builds the bundle on the device in a
+background isolate and deletes the downloads. dianoia redistributes no
+weights. `spec.fromMirror(url)` fetches the same pinned files from a mirror
+of your own.
+
+```dart
+final store = ModelStore('${supportDir.path}/models');
+const spec = ModelSpec.lfm3Q4;
+if (!store.isInstalled(spec)) {
+  // Show spec.name, spec.downloadBytes and spec.license first.
+  await for (final progress in store.install(spec)) {
+    print('${progress.stage.name} ${(progress.fraction * 100).round()}%');
+  }
+}
+final model = await LocalModel.load(store.bundlePath(spec));
+```
+
+On the command line, a bundle can also be made from local files. A model
+directory holds the checkpoint's `config.json`, `tokenizer.json` and
+`model.safetensors`. Q8 and Q4 weights live in a cache file next to
 them, built on first use. For the quantization-aware distilled Q4 weights,
 import Liquid's GGUF into a smaller bundle (about 1.1 GB):
 

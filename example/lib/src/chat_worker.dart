@@ -1,5 +1,5 @@
 /// The chat worker: an isolate that owns the model, so that the forward
-/// pass never blocks the UI.
+/// pass, the download's hashing and the bundle build never block the UI.
 library;
 
 import 'dart:async';
@@ -14,51 +14,88 @@ const _system =
     'You are a helpful assistant running entirely on this device. '
     'Answer concisely, in the language the user writes in.';
 
+/// `--dart-define=DIANOIA_MODEL_MIRROR=URL` fetches the model from a mirror
+/// (example/tool/serve_model.dart, say) instead of Hugging Face.
+const _mirror = String.fromEnvironment('DIANOIA_MODEL_MIRROR');
+final _spec = _mirror.isEmpty
+    ? ModelSpec.lfm3Q4
+    : ModelSpec.lfm3Q4.fromMirror(_mirror);
+
 /// The worker isolate's entry point.
 Future<void> runChatWorker((SendPort, ModelLocation) args) async {
   final (out, location) = args;
-  final ChatSession session;
-  final String backend;
-  try {
-    if (location.modelDir != location.dropDir) {
-      out.send(const WorkerProgress('Copying the model to app storage…'));
-      _copyBundle(location.dropDir, location.modelDir);
-    }
-    final dir = location.modelDir;
-    if (!File('$dir/lfm3-q4.cache').existsSync()) {
-      out.send(
-        WorkerFailed(
-          'No model found. Copy the ${ModelLocation.bundleName} bundle '
-          '(from `dianoia import-gguf`) to ${location.dropDir} and restart '
-          'the app.',
-        ),
-      );
-      return;
-    }
+  final store = ModelStore(location.storeDir);
+  final commands = ReceivePort();
+  out.send(WorkerStarted(commands.sendPort));
+
+  ChatSession? session;
+  StreamSubscription<InstallProgress>? install;
+  var stopRequested = false;
+
+  Future<void> open(String dir) async {
     out.send(const WorkerProgress('Loading the model…'));
-    final model = await LocalModel.load(dir);
-    backend = model.backend.name.toUpperCase();
-    session = model.chat(system: _system);
-    await session.warmUp();
-  } catch (e) {
-    out.send(WorkerFailed('$e'));
-    return;
+    try {
+      final model = await LocalModel.load(dir);
+      final chat = model.chat(system: _system);
+      await chat.warmUp();
+      session = chat;
+      out.send(WorkerReady(model.backend.name.toUpperCase()));
+    } catch (e) {
+      out.send(WorkerFailed('$e'));
+    }
   }
 
-  var stopRequested = false;
-  final commands = ReceivePort();
   commands.listen((command) {
     switch (command as ChatCommand) {
       case SendMessage(:final text):
         stopRequested = false;
-        unawaited(_reply(session, text, out, () => stopRequested));
+        unawaited(_reply(session!, text, out, () => stopRequested));
       case StopReply():
         stopRequested = true;
       case NewChat():
-        session.clear();
+        session?.clear();
+      case InstallModel():
+        install ??= store
+            .install(_spec)
+            .listen(
+              (p) => out.send(InstallUpdate(p.stage, p.bytes, p.totalBytes)),
+              onError: (Object e) {
+                install = null;
+                out.send(InstallFailed('$e'));
+              },
+              onDone: () {
+                if (install == null) return; // failed
+                install = null;
+                unawaited(open(store.bundlePath(_spec)));
+              },
+            );
+      case CancelInstall():
+        unawaited(install?.cancel());
+        install = null;
+        out.send(ModelNeeded(_spec));
     }
   });
-  out.send(WorkerReady(commands.sendPort, backend));
+
+  final sideLoaded = _sideLoaded(location, out);
+  if (sideLoaded != null) {
+    await open(sideLoaded);
+  } else if (store.isInstalled(_spec)) {
+    await open(store.bundlePath(_spec));
+  } else {
+    out.send(ModelNeeded(_spec));
+  }
+}
+
+/// A bundle a developer copied into [ModelLocation.dropDir], ready to map,
+/// or null.
+String? _sideLoaded(ModelLocation location, SendPort out) {
+  final cache = 'lfm3-q4.cache';
+  if (!File('${location.dropDir}/$cache').existsSync()) return null;
+  if (location.copyDir != location.dropDir) {
+    out.send(const WorkerProgress('Copying the model to app storage…'));
+    _copyBundle(location.dropDir, location.copyDir);
+  }
+  return location.copyDir;
 }
 
 Future<void> _reply(
@@ -103,10 +140,8 @@ Future<void> _reply(
 /// already there. Mapping the copy in app storage, rather than the pushed
 /// files in external storage, follows the device benchmark.
 void _copyBundle(String from, String to) {
-  final source = Directory(from);
-  if (!source.existsSync()) return;
   Directory(to).createSync(recursive: true);
-  for (final file in source.listSync().whereType<File>()) {
+  for (final file in Directory(from).listSync().whereType<File>()) {
     final copy = File('$to/${file.uri.pathSegments.last}');
     if (copy.existsSync() && copy.lengthSync() == file.lengthSync()) continue;
     file.copySync(copy.path);

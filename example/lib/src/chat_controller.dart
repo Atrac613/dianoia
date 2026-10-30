@@ -1,10 +1,12 @@
-/// The chat's state on the UI side: the messages shown, whether the model
-/// is ready or replying, and the worker isolate that runs it.
+/// The chat's state on the UI side: whether the model is there, being
+/// installed or ready, the messages shown, and the worker isolate that runs
+/// the model.
 library;
 
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:dianoia/dianoia.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -26,12 +28,23 @@ final class ChatMessage {
   bool failed = false;
 }
 
+enum Setup { starting, needsModel, installing, loading, ready, failed }
+
 class ChatController extends ChangeNotifier {
   final messages = <ChatMessage>[];
 
-  /// What the worker is doing before it is ready, or why it failed.
+  Setup setup = Setup.starting;
+
+  /// What the worker is doing while loading, or why it failed.
   String status = 'Starting…';
-  bool failed = false;
+
+  /// The model to offer while [setup] is [Setup.needsModel].
+  ModelSpec? spec;
+
+  /// The install's progress, and why the last attempt failed.
+  InstallStage installStage = InstallStage.downloading;
+  int installBytes = 0, installTotal = 0;
+  String? installError;
 
   /// `GPU` or `CPU` once the model is loaded.
   String? backend;
@@ -41,7 +54,7 @@ class ChatController extends ChangeNotifier {
   Isolate? _worker;
   ReceivePort? _events;
 
-  bool get ready => _commands != null;
+  bool get ready => setup == Setup.ready;
 
   Future<void> start() async {
     final events = _events = ReceivePort();
@@ -52,9 +65,22 @@ class ChatController extends ChangeNotifier {
     ));
   }
 
+  /// Downloads and builds the model: only when the user asked to.
+  void installModel() {
+    installError = null;
+    installBytes = 0;
+    setup = Setup.installing;
+    _commands?.send(const InstallModel());
+    notifyListeners();
+  }
+
+  void cancelInstall() => _commands?.send(const CancelInstall());
+
   void send(String text) {
     final commands = _commands;
-    if (commands == null || replying || text.trim().isEmpty) return;
+    if (!ready || commands == null || replying || text.trim().isEmpty) {
+      return;
+    }
     messages
       ..add(ChatMessage(ChatRole.user, text.trim()))
       ..add(ChatMessage(ChatRole.assistant, ''));
@@ -74,14 +100,28 @@ class ChatController extends ChangeNotifier {
 
   void _handle(ChatEvent event) {
     switch (event) {
-      case WorkerProgress(:final status):
-        this.status = status;
-      case WorkerReady(:final commands, :final backend):
+      case WorkerStarted(:final commands):
         _commands = commands;
+      case WorkerProgress(:final status):
+        setup = Setup.loading;
+        this.status = status;
+      case ModelNeeded(:final spec):
+        setup = Setup.needsModel;
+        this.spec = spec;
+      case InstallUpdate(:final stage, :final bytes, :final totalBytes):
+        setup = Setup.installing;
+        installStage = stage;
+        installBytes = bytes;
+        installTotal = totalBytes;
+      case InstallFailed(:final message):
+        setup = Setup.needsModel;
+        installError = message;
+      case WorkerReady(:final backend):
+        setup = Setup.ready;
         this.backend = backend;
       case WorkerFailed(:final message):
+        setup = Setup.failed;
         status = message;
-        failed = true;
       case ReplyText(:final text):
         messages.last.text = text;
       case ReplyDone(:final text, :final tokens, :final firstTokenMs):
@@ -103,21 +143,21 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// See [ModelLocation]. Resolved here because path_provider talks to the
-  /// platform through the UI isolate.
   static Future<ModelLocation> _modelLocation() async {
-    const name = ModelLocation.bundleName;
+    final store = '${(await getApplicationSupportDirectory()).path}/models';
+    const name = 'LFM3-1.7B-QAD-Q4';
     if (Platform.isAndroid) {
       final external = await getExternalStorageDirectory();
       final internal = await getApplicationSupportDirectory();
       return ModelLocation(
+        storeDir: store,
         dropDir: '${external!.path}/$name',
-        modelDir: '${internal.path}/$name',
+        copyDir: '${internal.path}/$name',
       );
     }
     final documents = await getApplicationDocumentsDirectory();
     final dir = '${documents.path}/$name';
-    return ModelLocation(dropDir: dir, modelDir: dir);
+    return ModelLocation(storeDir: store, dropDir: dir, copyDir: dir);
   }
 
   @override

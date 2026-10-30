@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'chat_controller.dart';
 import 'message_bubble.dart';
+import 'model_setup.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.controller});
@@ -17,6 +18,7 @@ class _ChatPageState extends State<ChatPage> {
   final _scroll = ScrollController();
 
   ChatController get _chat => widget.controller;
+  bool get _failed => _chat.setup == Setup.failed;
 
   @override
   void initState() {
@@ -63,7 +65,13 @@ class _ChatPageState extends State<ChatPage> {
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(child: _chat.ready ? _messages() : _status(context)),
+            Expanded(
+              child: switch (_chat.setup) {
+                Setup.ready => _messages(),
+                Setup.needsModel || Setup.installing => ModelSetup(chat: _chat),
+                _ => _status(context),
+              },
+            ),
             _composer(context),
           ],
         ),
@@ -87,13 +95,13 @@ class _ChatPageState extends State<ChatPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!_chat.failed) const CircularProgressIndicator(),
+          if (!_failed) const CircularProgressIndicator(),
           const SizedBox(height: 16),
           SelectableText(
             _chat.status,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _chat.failed ? Theme.of(context).colorScheme.error : null,
+              color: _failed ? Theme.of(context).colorScheme.error : null,
             ),
           ),
         ],
