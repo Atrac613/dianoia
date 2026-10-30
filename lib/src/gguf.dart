@@ -233,7 +233,10 @@ List<String> importGguf(String ggufPath, String hfDir, String outDir) {
   }
 
   final small = <String, (List<int>, Float32List)>{};
-  final matrices = <String, CachedMatrix>{};
+  // The cache's matrices, made one at a time while it is written: on a
+  // phone the whole set (1.1 GB) does not fit in memory at once.
+  final shapes = <(String, String, int, int)>[];
+  final produce = <String, CachedMatrix Function()>{};
   // Imported tensors keyed by their Hugging Face name, for the comparison.
   final imported = <String, Float32List Function()>{};
 
@@ -253,9 +256,10 @@ List<String> importGguf(String ggufPath, String hfDir, String outDir) {
     int cols,
   ) {
     final t = gguf.tensor(gguf_, GgufType.q4_0, [cols, rows]);
-    final m = splitQ4_0(gguf.bytes(t), rows, cols);
-    matrices[cacheName] = m;
-    imported[hfName] = () => _dequantizeQ4(m);
+    CachedMatrix split() => splitQ4_0(gguf.bytes(t), rows, cols);
+    shapes.add((cacheName, 'q4', rows, cols));
+    produce[cacheName] = split;
+    imported[hfName] = () => _dequantizeQ4(split());
   }
 
   for (var i = 0; i < c.numLayers; i++) {
@@ -308,7 +312,8 @@ List<String> importGguf(String ggufPath, String hfDir, String outDir) {
   ]);
   final embedBytes = gguf.bytes(embedding);
   final perRow = h ~/ 256;
-  matrices[embed] = NativeQ8Matrix.quantizeRows(
+  shapes.add((embed, 'q8', c.vocabSize, h));
+  produce[embed] = () => NativeQ8Matrix.quantizeRows(
     c.vocabSize,
     h,
     (first, count, out) =>
@@ -326,10 +331,14 @@ List<String> importGguf(String ggufPath, String hfDir, String outDir) {
     File('$hfDir/$name').copySync('$outDir/$name');
   }
   writeSafetensorsF32('$outDir/model.safetensors', small);
-  Q8Cache.write(
+  Q8Cache.writeEach(
     '$outDir/lfm3-q4.cache',
     Q8Cache.keyFor(outDir, weights: 'q4'),
-    matrices,
+    shapes,
+    (name) => produce[name]!(),
+    done: (m) {
+      if (m is NativeQ8Matrix) m.free();
+    },
   );
   return _compare(hfDir, c, imported);
 }

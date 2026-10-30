@@ -143,22 +143,38 @@ final class Q8Cache {
     String path,
     String key,
     Map<String, CachedMatrix> matrices,
-  ) {
+  ) => writeEach(path, key, [
+    for (final MapEntry(key: name, value: m) in matrices.entries)
+      (name, m.format, m.rows, m.cols),
+  ], (name) => matrices[name]!);
+
+  /// Writes a cache of the matrices [shapes] lists (name, format, rows,
+  /// cols), in that order, asking [matrix] for each when its turn comes and
+  /// handing it to [done] once written. A producer that makes each matrix
+  /// on demand keeps only one in memory at a time, however large the cache.
+  static void writeEach(
+    String path,
+    String key,
+    List<(String, String, int, int)> shapes,
+    CachedMatrix Function(String name) matrix, {
+    void Function(CachedMatrix written)? done,
+  }) {
     int align(int v, int a) => (v + a - 1) ~/ a * a;
     // Data offsets depend on the header size, which depends on the offsets:
     // reserve a generous fixed header region instead.
     const headerRegion = 1 << 20;
     var offset = headerRegion;
     final tensors = <String, Object?>{};
-    for (final MapEntry(:key, :value) in matrices.entries) {
+    for (final (name, format, rows, cols) in shapes) {
+      final (qsLength, scalesLength) = _byteLengths(format, rows, cols);
       final qs = offset = align(offset, 64);
-      offset += value.qsBytes.length;
+      offset += qsLength;
       final scales = offset = align(offset, 64);
-      offset += value.scaleBytes.length;
-      tensors[key] = {
-        'format': value.format,
-        'rows': value.rows,
-        'cols': value.cols,
+      offset += scalesLength;
+      tensors[name] = {
+        'format': format,
+        'rows': rows,
+        'cols': cols,
         'qs': qs,
         'scales': scales,
       };
@@ -181,19 +197,36 @@ final class Q8Cache {
       out
         ..writeFromSync(prefix.buffer.asUint8List())
         ..writeFromSync(header);
-      for (final MapEntry(:key, :value) in matrices.entries) {
-        final e = tensors[key] as Map<String, Object?>;
+      for (final (name, format, rows, cols) in shapes) {
+        final m = matrix(name);
+        final (qsLength, scalesLength) = _byteLengths(format, rows, cols);
+        if (m.format != format ||
+            m.qsBytes.length != qsLength ||
+            m.scaleBytes.length != scalesLength) {
+          throw StateError('$name is not a $format [$rows, $cols] matrix');
+        }
+        final e = tensors[name] as Map<String, Object?>;
         out
           ..setPositionSync(e['qs'] as int)
-          ..writeFromSync(value.qsBytes)
+          ..writeFromSync(m.qsBytes)
           ..setPositionSync(e['scales'] as int)
-          ..writeFromSync(value.scaleBytes);
+          ..writeFromSync(m.scaleBytes);
+        done?.call(m);
       }
     } finally {
       out.closeSync();
     }
     temp.renameSync(path);
   }
+
+  /// Bytes of values and of scales: Q8 holds an int8 per weight and a float
+  /// scale per block of 32, Q4 a nibble per weight and a half scale.
+  static (int, int) _byteLengths(String format, int rows, int cols) =>
+      switch (format) {
+        'q8' => (rows * cols, rows * cols ~/ 32 * 4),
+        'q4' => (rows * cols ~/ 2, rows * cols ~/ 32 * 2),
+        _ => throw ArgumentError('unknown matrix format $format'),
+      };
 
   static const _fnvOffset = -0x340d631b7bdddcdb; // 0xcbf29ce484222325
   static const _fnvPrime = 0x100000001b3;

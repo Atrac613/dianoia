@@ -397,7 +397,13 @@ abstract interface class NativeMatrix implements CachedMatrix {
 
 /// A row-major [rows, cols] matrix quantized to Q8 in native memory.
 final class NativeQ8Matrix implements NativeMatrix {
-  NativeQ8Matrix._(this.rows, this.cols, this._qs, this._scales);
+  NativeQ8Matrix._(
+    this.rows,
+    this.cols,
+    this._qs,
+    this._scales, {
+    bool owned = true,
+  }) : _owned = owned;
 
   factory NativeQ8Matrix.quantize(Float32List w, int rows, int cols) {
     if (cols % 32 != 0) {
@@ -441,7 +447,7 @@ final class NativeQ8Matrix implements NativeMatrix {
     int cols,
     Pointer<Int8> qs,
     Pointer<Float> scales,
-  ) => NativeQ8Matrix._(rows, cols, qs, scales);
+  ) => NativeQ8Matrix._(rows, cols, qs, scales, owned: false);
 
   @override
   String get format => 'q8';
@@ -452,7 +458,22 @@ final class NativeQ8Matrix implements NativeMatrix {
   final Pointer<Int8> _qs;
   final Pointer<Float> _scales;
 
+  /// Whether the memory was allocated for this matrix (by quantizing), so
+  /// that [free] may give it back.
+  final bool _owned;
+  bool _freed = false;
+
   int get bytes => rows * cols + rows * cols ~/ 32 * 4;
+
+  /// Frees the memory of a matrix made by quantizing. The matrix must not
+  /// be used afterwards.
+  void free() {
+    if (!_owned) throw StateError('this matrix does not own its memory');
+    if (_freed) return;
+    _freed = true;
+    _free(_qs.cast());
+    _free(_scales.cast());
+  }
 
   @override
   Uint8List get qsBytes => _qs.cast<Uint8>().asTypedList(rows * cols);
