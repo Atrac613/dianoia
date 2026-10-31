@@ -1,5 +1,7 @@
-# Checks on Linux: there are no native kernels for linux-x64, so the engine
-# runs in Dart alone here and the GPU and model tests skip themselves.
+# Checks the package on Linux, where there are no native kernels for
+# linux-x64 and the engine runs in Dart alone, and builds and tests the
+# native kernels on an Apple silicon Mac and a Windows PC. The GPU and model
+# tests need model weights and skip themselves everywhere.
 name: CI
 
 on:
@@ -29,6 +31,24 @@ jobs:
       # The Flutter apps (example, tool/device_bench) are analyzed by the
       # flutter job, with their own packages resolved.
       - run: dart analyze --fatal-infos lib bin hook test
+      - run: dart test
+
+  # The build hook compiles the kernels for the runner before the tests:
+  # NEON and Metal on macos-latest (arm64), AVX2 and Vulkan with MSVC on
+  # windows-latest (x86-64). test/native_kernels_test.dart fails if the hook
+  # built none, and checks both against NEON's order bit for bit.
+  kernels:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get --no-example
       - run: dart test
 
   flutter:
