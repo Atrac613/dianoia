@@ -516,10 +516,11 @@ final class NativeQ8Matrix implements NativeMatrix {
   /// Writes row [r], dequantized, into [out] at [offset]: token lookup in
   /// an embedding that exists only as the tied, quantized LM head.
   void dequantizeRow(int r, Float32List out, int offset) {
-    final q = (_qs + r * cols).asTypedList(cols);
-    final s = (_scales + r * cols ~/ 32).asTypedList(cols ~/ 32);
+    // Keep lookup on direct pointers: temporary external typed views crashed
+    // in the CPU-to-GPU cache reload regression under the Dart 3.13.5 JIT.
+    final start = r * cols;
     for (var c = 0; c < cols; c++) {
-      out[offset + c] = q[c] * s[c >> 5];
+      out[offset + c] = _qs[start + c] * _scales[(start + c) >> 5];
     }
   }
 }
