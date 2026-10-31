@@ -70,12 +70,35 @@ incomplete input rejection. Actual checkpoint metadata was inspected at revision
 `ba44bd51db20a2753f28c273a1571ccaa210d954`; full VL-weight inference remains
 unverified. Only the official single-file checkpoint layout is supported.
 
+## RGB image preprocessing
+
+The lab API `Lfm3ImageProcessor.load(modelDir)` reads `processor_config.json`.
+`prepareRgb(rgb, height: ..., width: ...)` accepts packed RGB uint8 pixels and
+returns float32 `pixelValues`, `gridThw`, dimensions and the image-token count.
+It implements aspect-ratio-preserving resize to patch/merge multiples,
+Python's ties-to-even dimension rounding, antialiased uint8 bicubic resizing,
+fused normalization and spatially grouped patches with duplicated temporal
+samples. Pixel budgets are areas, despite the upstream `shortest_edge` and
+`longest_edge` field names.
+
+The caller must decode image files, convert to RGB and apply orientation before
+calling this API. PNG/JPEG decoding, video and encoder execution are not
+implemented here. Unsupported processor settings fail explicitly.
+
+`tool/vision_image_oracle.py` regenerates compact reference hashes using the
+pinned upstream `smart_resize` and `patchify` functions and torchvision resizing
+and normalization. Install torch and torchvision in a separate Python environment,
+then run the script from the repository root. The fixture records source hash
+and runtime versions. Nine cases cover no resize, enlargement, reduction,
+single-axis resizing, singleton input, ties-to-even rounding and the official
+16-pixel patch configuration. All resulting float32 patch bytes match the
+reference hashes.
+
 ## Remaining integration
 
 1. Compare the imported real VL backbone's intermediate outputs against upstream
    inference, including projected input embeddings.
-2. Implement image resize, normalization, patch ordering and spatial merging
-   against the upstream processor; establish reference tensors for fixtures.
+2. Connect RGB preprocessing and image grid metadata to the vision encoder.
 3. Implement the vision encoder and projector, comparing intermediate outputs
    against upstream CPU inference before optimizing native kernels.
 4. Render the VL chat template with the exact number of image placeholders,

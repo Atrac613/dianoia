@@ -1,0 +1,152 @@
+{
+  "source": "https://huggingface.co/LiquidAI/LFM3-VL-2B/raw/ba44bd51db20a2753f28c273a1571ccaa210d954/image_processing_lfm3_vl.py",
+  "source_sha256": "57db0cfa668bf89a6ff898874e1321e78c257d200f25c98e0ea52b30b8740088",
+  "torch": "2.15.0",
+  "torchvision": "0.29.2",
+  "cases": [
+    {
+      "name": "unchanged",
+      "height": 8,
+      "width": 12,
+      "patch_size": 2,
+      "min_pixels": 16,
+      "max_pixels": 256,
+      "resized_height": 8,
+      "resized_width": 12,
+      "grid": [
+        1,
+        4,
+        6
+      ],
+      "sha256": "6f9d355cad3bbd966e5f08c1c52244468543b83bc2bdbe3f26bd4fbd671bb855"
+    },
+    {
+      "name": "upsample",
+      "height": 3,
+      "width": 5,
+      "patch_size": 2,
+      "min_pixels": 64,
+      "max_pixels": 256,
+      "resized_height": 8,
+      "resized_width": 12,
+      "grid": [
+        1,
+        4,
+        6
+      ],
+      "sha256": "bfe0450285dd70683abea7ea032db3a93d0c270802d54cc04e0ccfb75c6405ce"
+    },
+    {
+      "name": "downsample",
+      "height": 37,
+      "width": 53,
+      "patch_size": 2,
+      "min_pixels": 16,
+      "max_pixels": 256,
+      "resized_height": 12,
+      "resized_width": 16,
+      "grid": [
+        1,
+        6,
+        8
+      ],
+      "sha256": "4073919e83c230b3257ed593975244593b655b13a41a3d2a29a985370d766c9a"
+    },
+    {
+      "name": "mixed_axes",
+      "height": 6,
+      "width": 10,
+      "patch_size": 2,
+      "min_pixels": 16,
+      "max_pixels": 256,
+      "resized_height": 8,
+      "resized_width": 8,
+      "grid": [
+        1,
+        4,
+        4
+      ],
+      "sha256": "01944a7c2fcb5a3d80a68fe944abb8a85cb56e605c27d22df3a460f85740a359"
+    },
+    {
+      "name": "singleton",
+      "height": 1,
+      "width": 1,
+      "patch_size": 2,
+      "min_pixels": 16,
+      "max_pixels": 256,
+      "resized_height": 4,
+      "resized_width": 4,
+      "grid": [
+        1,
+        2,
+        2
+      ],
+      "sha256": "4f4a84efd648c8e6e0ccdc08ddf3d54a06ba2bdc6f5cbe33e5cdd61215485dc1"
+    },
+    {
+      "name": "width_only",
+      "height": 8,
+      "width": 11,
+      "patch_size": 2,
+      "min_pixels": 16,
+      "max_pixels": 256,
+      "resized_height": 8,
+      "resized_width": 12,
+      "grid": [
+        1,
+        4,
+        6
+      ],
+      "sha256": "21551852813ecb1cff63f3245656639f04cd528c55c166584a662ff1c9b432bf"
+    },
+    {
+      "name": "height_only",
+      "height": 11,
+      "width": 8,
+      "patch_size": 2,
+      "min_pixels": 16,
+      "max_pixels": 256,
+      "resized_height": 12,
+      "resized_width": 8,
+      "grid": [
+        1,
+        6,
+        4
+      ],
+      "sha256": "ec01d222879e7061a8424d5e1180ad2ce3af72352d754621fecf526c2761e8ca"
+    },
+    {
+      "name": "round_even",
+      "height": 10,
+      "width": 18,
+      "patch_size": 2,
+      "min_pixels": 16,
+      "max_pixels": 256,
+      "resized_height": 8,
+      "resized_width": 16,
+      "grid": [
+        1,
+        4,
+        8
+      ],
+      "sha256": "fd9b5f6ed414c2c3fbdae2f79701ba3cffcd3cd84ce2304a14b453f6a2407ec5"
+    },
+    {
+      "name": "official_defaults",
+      "height": 257,
+      "width": 129,
+      "patch_size": 16,
+      "min_pixels": 65536,
+      "max_pixels": 16777216,
+      "resized_height": 384,
+      "resized_width": 192,
+      "grid": [
+        1,
+        24,
+        12
+      ],
+      "sha256": "849c9be6d82ff67a774d619fe18456f85284d5c9c84c9ce863b81a97c103f5c8"
+    }
+  ]
+}
