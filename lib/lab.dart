@@ -27,3 +27,4 @@ export 'src/tokenizer.dart';
 export 'src/vision_config.dart';
 export 'src/vision_backbone.dart';
 export 'src/vision_image.dart';
+export 'src/vision_encoder.dart';

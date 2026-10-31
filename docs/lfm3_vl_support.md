@@ -1,7 +1,8 @@
 # LFM3-VL-2B integration
 
 Status: implementation in progress. Importing the VL language backbone is
-supported; the vision encoder and public image chat API are not implemented.
+supported; a CPU reference vision encoder is implemented. Public image chat
+and optimized vision inference are not implemented.
 
 ## Verified upstream structure
 
@@ -94,21 +95,46 @@ single-axis resizing, singleton input, ties-to-even rounding and the official
 16-pixel patch configuration. All resulting float32 patch bytes match the
 reference hashes.
 
+## CPU reference encoder and projector
+
+`Lfm3VisionEncoder.load(modelDir)` reads the vision/projector tensors from the
+original VL checkpoint, validating required shapes through the safetensors
+reader. `encode(image)` consumes a `VisionImageInput` from the RGB processor
+and returns flattened `[imageTokens, textHiddenSize]` projected embeddings.
+Optional capture callbacks receive independent snapshots after embedding norm,
+each vision layer and the projector.
+
+The synchronous float32 CPU implementation includes patch projection, RMSNorm,
+gated depthwise 2D convolution, bidirectional grouped-query attention with axial
+2D RoPE, SwiGLU feed-forward layers and the biased LayerNorm/GELU projector.
+It uses existing Dart matrix kernels and one score row at a time for attention.
+GELU uses the erf formula with an erf approximation (absolute error about 1.5e-7).
+It supports one still image per call; encoding images separately isolates their
+attention. Weights are widened to float32 on the Dart heap. This path establishes
+correctness and has not been optimized or benchmarked for phones.
+
+`tool/vision_encoder_oracle.py` runs the pinned upstream PyTorch operator classes
+with reproducible synthetic parameters. Tests generate those parameters at
+runtime; no model weights are committed. Four grids (2x2, 2x4, 4x6 and 6x4)
+exercise convolution boundaries, spatial merge order, nontrivial RoPE frequencies,
+grouped-query attention and the projector. Every captured stage must satisfy
+`abs(error) <= 2e-5 + 2e-5 * abs(reference)`. These are numerical comparisons,
+not byte-identical parity claims or evidence of real-model image quality.
+
 ## Remaining integration
 
 1. Compare the imported real VL backbone's intermediate outputs against upstream
    inference, including projected input embeddings.
-2. Connect RGB preprocessing and image grid metadata to the vision encoder.
-3. Implement the vision encoder and projector, comparing intermediate outputs
-   against upstream CPU inference before optimizing native kernels.
-4. Render the VL chat template with the exact number of image placeholders,
+2. Compare the full-size vision encoder and projector against upstream using
+   real VL weights, then optimize native/GPU execution.
+3. Render the VL chat template with the exact number of image placeholders,
    pass projected rows through the implemented input path, and compare logits
    and generated answers with the reference implementation.
-5. Add a downloadable model specification and public image chat API after
+4. Add a downloadable model specification and public image chat API after
    end-to-end parity. Add video after single-image correctness.
 
 Metadata tests validate the published VL configuration and rejection of
 unsupported or inconsistent configurations. Existing Q4 language-model tests
 exercise embedding replacement across chunk
-boundaries and protection against text-only prefix reuse. They do not validate
-the VL encoder, image understanding, or VL model quality.
+boundaries and protection against text-only prefix reuse. The separate encoder tests validate synthetic CPU arithmetic; real-model image
+understanding and VL model quality remain unverified.
