@@ -1,8 +1,8 @@
 # LFM3-VL-2B integration
 
 Status: implementation in progress. Importing the VL language backbone is
-supported; a CPU reference vision encoder is implemented. Public image chat
-and optimized vision inference are not implemented.
+supported; a CPU reference vision encoder is implemented. The lab API connects image embeddings to VL prompts. Public image chat and
+optimized vision inference are not implemented.
 
 ## Verified upstream structure
 
@@ -121,15 +121,63 @@ grouped-query attention and the projector. Every captured stage must satisfy
 `abs(error) <= 2e-5 + 2e-5 * abs(reference)`. These are numerical comparisons,
 not byte-identical parity claims or evidence of real-model image quality.
 
+## Visual prompts and language prefill
+
+`renderVisionChat` renders still-image parts using the official vision
+start/image/end delimiters, preserving the existing tool and thinking handling.
+`prepareVisionPrompt` expands each image placeholder to the supplied image-token
+count, checks the tokenizer's special IDs against VL configuration, and returns
+immutable token IDs and image spans. Images are bound in message/content order.
+Video, unbound raw image tokens and unsupported image part types are rejected.
+
+`VisionPrompt.prefill(languageModel, projectedImages)` checks image counts, row
+shapes, finite values and context capacity before resetting language-model state.
+It copies all rows before yielding, resets the sequence, and passes projected
+rows to the shared CPU/GPU forward path. Visual prefix reuse is deliberately
+conservative: each complete visual prompt starts from reset.
+
+Example with an imported VL backbone and an already decoded RGB image:
+
+```dart
+final encoder = Lfm3VisionEncoder.load(vlDir);
+final processor = Lfm3ImageProcessor.load(vlDir);
+final image = processor.prepareRgb(rgb, height: height, width: width);
+final tokenizer = Lfm3Tokenizer.load(vlDir);
+final prompt = prepareVisionPrompt([
+  {'role': 'user', 'content': [
+    {'type': 'image'},
+    {'type': 'text', 'text': 'Describe this image.'},
+  ]},
+], tokenizer: tokenizer, config: encoder.config,
+   imageTokenCounts: [image.imageTokens], enableThinking: false);
+// languageModel must be loaded from this VL checkpoint's imported backbone.
+await prompt.prefill(languageModel, [encoder.encode(image)]);
+// languageModel.logits now predicts the first generated token.
+```
+
+This low-level lab API requires the caller to use matching VL encoder and
+language weights; it does not establish checkpoint identity or manage generation.
+The public `LocalModel` / `ChatSession` APIs still accept text only.
+
+`tool/vision_prompt_oracle.py` checks the pinned Jinja template and processor
+image-token replacement via Hugging Face. Thirty cases include multiple images,
+follow-ups, preserved reasoning, tool results and deferred tools, with thinking
+enabled and disabled. The rendering and expanded IDs match the oracle. Separate
+CPU/Metal integration tests feed synthetic encoder outputs to the existing Q4
+language model and match independent manual embedding placement. Those tests
+validate the connection, not real VL image-answer accuracy. The CPU-to-Metal
+sequence also exercises Q8 embedding lookup after cache reload. It exposed a
+crash in temporary external typed-view reads under the Dart 3.13.5 JIT; direct
+native-pointer reads preserve the lookup arithmetic and pass this regression.
+
 ## Remaining integration
 
 1. Compare the imported real VL backbone's intermediate outputs against upstream
    inference, including projected input embeddings.
 2. Compare the full-size vision encoder and projector against upstream using
    real VL weights, then optimize native/GPU execution.
-3. Render the VL chat template with the exact number of image placeholders,
-   pass projected rows through the implemented input path, and compare logits
-   and generated answers with the reference implementation.
+3. Compare complete image-conditioned prompts, logits and generated answers
+   against the upstream real VL model.
 4. Add a downloadable model specification and public image chat API after
    end-to-end parity. Add video after single-image correctness.
 
