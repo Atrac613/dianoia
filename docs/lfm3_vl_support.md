@@ -1,7 +1,7 @@
 # LFM3-VL-2B integration
 
-Status: implementation in progress. Loading a VL checkpoint and passing images
-through the public chat API are not supported yet.
+Status: implementation in progress. Importing the VL language backbone is
+supported; the vision encoder and public image chat API are not implemented.
 
 ## Verified upstream structure
 
@@ -44,10 +44,36 @@ names to the VL checkpoint namespace. The regular text loader still rejects
 VL checkpoints. The official config metadata is covered by a checked-in
 fixture; no weights are included.
 
+## Importing the language backbone
+
+Download the full BF16 checkpoint (single `model.safetensors`, `config.json`,
+`tokenizer.json`) to a local directory, then use a new output directory:
+
+```sh
+dart run dianoia import-vl-backbone --model=/path/to/LFM3-VL-2B \
+  --out=/path/to/LFM3-VL-2B-backbone
+```
+
+The importer validates every required language tensor's name, shape, dtype and
+byte range, then writes the original tensor bytes under engine language names.
+It copies only the language backbone, tokenizer and nested text config, retaining
+the original config as `vl_config.json`. Vision weights remain in the source.
+Output is published after the copy completes; existing output is rejected.
+Copying uses a 1 MiB buffer rather than materializing large tensors in memory.
+The output is a full-weight checkpoint, not a quantized device bundle: existing
+`run`, `pack` and Q8/Q4 cache paths can process it. Use token-ID prompts for
+backbone comparisons; the text-only chat renderer is not a VL chat template.
+
+Tests compare imported BF16 bytes and CPU logits against a canonical miniature
+checkpoint containing all three language layer types, and check truncated or
+incomplete input rejection. Actual checkpoint metadata was inspected at revision
+`ba44bd51db20a2753f28c273a1571ccaa210d954`; full VL-weight inference remains
+unverified. Only the official single-file checkpoint layout is supported.
+
 ## Remaining integration
 
-1. Wire the VL language tensor namespace into weight loading and cache building,
-   with tests against the checkpoint's backbone.
+1. Compare the imported real VL backbone's intermediate outputs against upstream
+   inference, including projected input embeddings.
 2. Implement image resize, normalization, patch ordering and spatial merging
    against the upstream processor; establish reference tensors for fixtures.
 3. Implement the vision encoder and projector, comparing intermediate outputs

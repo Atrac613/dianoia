@@ -33,6 +33,10 @@
 ///       for --weights=q4 (see lib/src/gguf.dart), and prints how far each
 ///       imported tensor family is from DIR's weights.
 ///
+///   dianoia import-vl-backbone --model=VL_DIR --out=NEW_DIR
+///       Copies the VL language backbone into standalone engine layout;
+///       retains vl_config.json, with image inference still pending.
+///
 ///   dianoia toolbench --model=DIR --cases=FILE [--weights=... --gpu]
 ///       Asks each case of FILE (example/tool_cases.json) greedily with its
 ///       tools and checks the tool call against the expected name and
@@ -104,13 +108,14 @@ Future<void> main(List<String> args) async {
     'selftest': _selftest,
     'pack': _pack,
     'import-gguf': _importGguf,
+    'import-vl-backbone': _importVlBackbone,
     'toolbench': _toolbench,
     'chatbench': _chatbench,
   };
   final command = args.isEmpty ? null : commands[args.first];
   if (command == null) {
     stderr.writeln(
-      'usage: dianoia ask|selftest|run|pack|import-gguf|toolbench|chatbench '
+      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|toolbench|chatbench '
       '--key=value ...',
     );
     exitCode = 2;
@@ -543,6 +548,16 @@ Future<int> _pack(Map<String, String> flags) async {
     bytes += f.lengthSync();
   }
   stdout.writeln('wrote $outDir: ${(bytes / 1e9).toStringAsFixed(2)} GB');
+  return 0;
+}
+
+Future<int> _importVlBackbone(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final out = require('out');
+  importVlBackbone(require('model'), out);
+  stdout.writeln(
+    'wrote VL language backbone to $out (image inference pending)',
+  );
   return 0;
 }
 
