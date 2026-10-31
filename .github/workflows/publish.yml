@@ -8,7 +8,15 @@ on:
     tags: ['v[0-9]+.[0-9]+.[0-9]+*']
 
 jobs:
+  # The checks of every push, the native kernels' included: a tag pushed
+  # with its release commit would otherwise publish before CI has run.
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publish:
+    needs: ci
     runs-on: ubuntu-latest
     environment: pub.dev
     permissions:
