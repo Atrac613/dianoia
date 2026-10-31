@@ -36,10 +36,18 @@ states. Text-only prefix reuse therefore stops before visual input. Multimodal
 callers must reset before submitting a new visual prompt until feature-aware
 prefix reuse is implemented.
 
+The lab API `Lfm3VlConfig.load` now parses the nested language configuration,
+vision encoder dimensions and layer types, projector parameters and special
+vision token IDs. It validates axial RoPE dimensions, spatial merging and
+supported projector options. `languageTensorName` maps engine language tensor
+names to the VL checkpoint namespace. The regular text loader still rejects
+VL checkpoints. The official config metadata is covered by a checked-in
+fixture; no weights are included.
+
 ## Remaining integration
 
-1. Load the nested VL config and checkpoint tensor prefixes without allowing a
-   VL checkpoint to be mistaken for a ready-to-use text bundle.
+1. Wire the VL language tensor namespace into weight loading and cache building,
+   with tests against the checkpoint's backbone.
 2. Implement image resize, normalization, patch ordering and spatial merging
    against the upstream processor; establish reference tensors for fixtures.
 3. Implement the vision encoder and projector, comparing intermediate outputs
@@ -50,6 +58,8 @@ prefix reuse is implemented.
 5. Add a downloadable model specification and public image chat API after
    end-to-end parity. Add video after single-image correctness.
 
-Existing Q4 language-model tests exercise embedding replacement across chunk
+Metadata tests validate the published VL configuration and rejection of
+unsupported or inconsistent configurations. Existing Q4 language-model tests
+exercise embedding replacement across chunk
 boundaries and protection against text-only prefix reuse. They do not validate
 the VL encoder, image understanding, or VL model quality.

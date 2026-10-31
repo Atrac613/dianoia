@@ -24,3 +24,4 @@ export 'src/quant.dart';
 export 'src/safetensors.dart';
 export 'src/shard.dart';
 export 'src/tokenizer.dart';
+export 'src/vision_config.dart';
