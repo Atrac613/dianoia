@@ -265,6 +265,14 @@ void main() {
         expect(model.history, before);
         await prompt.prefill(model, features);
         final actual = Float32List.fromList(model.logits);
+        // The rows are owned once the call returns; later changes are unseen.
+        final mutable = [for (final f in features) Float32List.fromList(f)];
+        final pending = prompt.prefill(model, mutable);
+        for (final values in mutable) {
+          values.fillRange(0, values.length, double.nan);
+        }
+        await pending;
+        expect(model.logits, orderedEquals(actual));
         expect(model.length, prompt.ids.length);
         for (final span in prompt.images) {
           expect(

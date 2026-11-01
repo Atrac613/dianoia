@@ -122,16 +122,21 @@ final class VisionPrompt {
     final overrides = <int, Float32List>{};
     for (var i = 0; i < images.length; i++) {
       final span = images[i];
-      final values = projectedImages[i];
-      if (values.length != span.count * hiddenSize ||
-          values.any((v) => !v.isFinite)) {
+      // One owned copy per image: the rows are views of it, and the caller
+      // cannot change what was checked while reset() is awaited.
+      final values = projectedImages[i].length == span.count * hiddenSize
+          ? Float32List.fromList(projectedImages[i])
+          : null;
+      if (values == null || values.any((v) => !v.isFinite)) {
         throw ArgumentError(
           'image $i must contain ${span.count} finite projected rows',
         );
       }
       for (var row = 0; row < span.count; row++) {
-        overrides[span.start + row] = Float32List.fromList(
-          values.sublist(row * hiddenSize, (row + 1) * hiddenSize),
+        overrides[span.start + row] = Float32List.sublistView(
+          values,
+          row * hiddenSize,
+          (row + 1) * hiddenSize,
         );
       }
     }
