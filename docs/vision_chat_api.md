@@ -217,9 +217,10 @@ one-frame APNG) is rejected. No network URLs are fetched.
 `encoded` decodes synchronously. `fromFile` awaits file I/O, then decodes on the
 calling isolate. Run these in the same worker isolate as the model. Decoding is
 not part of an active chat request and is not interrupted by `chat.cancel()`.
-Both adapters decode at the original resolution; the model's processor performs
-its existing resize later. A `ChatImage` is created before the conversation's
-context-budget check, so its decode budgets apply independently of token limits.
+Both adapters decode at the original resolution; the model's processor resizes
+later, within the [image token budget](#image-token-budget). A `ChatImage` is
+created before the conversation's context-budget check, so its decode budgets
+apply independently of token limits.
 The implementation uses [image](https://pub.dev/packages/image) `^4.12.0`, whose
 PNG/JPEG decoders expose per-instance pixel limits.
 
@@ -232,6 +233,34 @@ RGB/PNG logit bytes and read the same Japanese OCR card from an oriented JPEG
 on CPU and Metal. Both backends passed on 2026-11-01; see the
 [image-input validation record](validation/lfm3-vl-image-input-2026-11-01.json).
 Enable `DIANOIA_VL_BUNDLE` and `DIANOIA_VL_VALIDATION_DIR`.
+
+## Image token budget
+
+The checkpoint's processor allows 16,777,216 pixels per image, 16,384 image
+tokens: a 4032×3024 photo keeps 3008×4032 pixels and becomes 11,844 tokens,
+more than an on-device context holds. `LocalVisionModel.load` and `loadBundle`
+therefore lower the budget to `maxImageTokens`, by default 1024
+(`LocalVisionModel.defaultMaxImageTokens`):
+
+```dart
+final model = await LocalVisionModel.loadBundle(
+  '/path/to/portable-vl',
+  contextLength: 2048,
+  maxImageTokens: 512,
+);
+print(model.maxImageTokens); // 512
+```
+
+Larger images are downscaled with the upstream resize rule, as the upstream
+processor does with `longest_edge` set to `maxImageTokens` × 32 × 32 pixels. With
+the default, the photo above becomes 864×1152 pixels and 972 tokens. Images
+within the budget are processed exactly as before, so the recorded validation
+images are unaffected. A request above the checkpoint's own budget leaves that
+budget in place; `maxImageTokens` reports the budget in effect. A request below
+the checkpoint's minimum (64 tokens) throws `ArgumentError` before native model
+resources are allocated. As upstream, a side that would shrink below 32 pixels
+is kept at 32, so a very elongated image can exceed the budget; the context
+check still applies to it.
 
 ## Message layout and tools
 

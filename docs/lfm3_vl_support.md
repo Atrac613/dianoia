@@ -82,7 +82,9 @@ It implements aspect-ratio-preserving resize to patch/merge multiples,
 Python's ties-to-even dimension rounding, antialiased uint8 bicubic resizing,
 fused normalization and spatially grouped patches with duplicated temporal
 samples. Pixel budgets are areas, despite the upstream `shortest_edge` and
-`longest_edge` field names.
+`longest_edge` field names. `withMaxImageTokens(n)` lowers the budget to `n`
+merged tokens (`n` × (patch × merge)² pixels) without changing the resize rule;
+`LocalVisionModel` applies it with a default of 1024 tokens.
 
 The caller must decode image files, convert to RGB and apply orientation before
 calling this API. PNG/JPEG decoding, video and encoder execution are not
@@ -95,7 +97,8 @@ then run the script from the repository root. The fixture records source hash
 and runtime versions. Nine cases cover no resize, enlargement, reduction,
 single-axis resizing, singleton input, ties-to-even rounding and the official
 16-pixel patch configuration. All resulting float32 patch bytes match the
-reference hashes.
+reference hashes, also when each case's budget is reached by capping a
+four-times-larger one with `withMaxImageTokens`.
 
 ## CPU reference encoder and projector
 

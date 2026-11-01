@@ -74,6 +74,9 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
       threads: (config['threads'] as num?)?.toInt() ?? 4,
       maxNewTokens: (config['max_new_tokens'] as num?)?.toInt() ?? 32,
       runs: (config['runs'] as num?)?.toInt() ?? 3,
+      maxImageTokens:
+          (config['max_image_tokens'] as num?)?.toInt() ??
+          LocalVisionModel.defaultMaxImageTokens,
       expectedText: config['expected_text'] as String?,
       log: log,
       onRecord: (r) {

@@ -48,7 +48,8 @@
 ///       and greedy output for real-checkpoint comparison.
 ///
 ///   dianoia vision-bench --bundle=DIR --image=FILE --prompt=TEXT --out=FILE.json
-///       [--backend=cpu|gpu|auto --runs=3 --max-new=32 --max-seq=512]
+///       [--backend=cpu|gpu|auto --runs=3 --max-new=32 --max-seq=512
+///       --max-image-tokens=1024]
 ///       Measures verified load, decode, fresh image turns, visual follow-up,
 ///       first text latency and process memory. Optional --expected=TEXT.
 ///
@@ -706,6 +707,9 @@ Future<int> _visionBench(Map<String, String> flags) async {
     threads: int.parse(flags['native-threads'] ?? '4'),
     maxNewTokens: int.parse(flags['max-new'] ?? '32'),
     runs: int.parse(flags['runs'] ?? '3'),
+    maxImageTokens: int.parse(
+      flags['max-image-tokens'] ?? '${LocalVisionModel.defaultMaxImageTokens}',
+    ),
     expectedText: flags['expected'],
     log: stdout.writeln,
     onRecord: (r) =>

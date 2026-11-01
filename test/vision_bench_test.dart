@@ -47,6 +47,9 @@ void main() {
       expect(record['finished'], isTrue);
       expect(record['phase'], 'done');
       expect(record['backend'], 'cpu');
+      expect(record['requested_max_image_tokens'], 1024);
+      // The fixture checkpoint's own budget is lower than the request.
+      expect(record['max_image_tokens'], 256);
       expect(record['image_width'], 8);
       expect(phases.first, 'loading');
       expect(

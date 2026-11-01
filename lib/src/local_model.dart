@@ -163,19 +163,34 @@ final class LocalVisionModel {
   int get contextLength => _runtime.model.maxSeq;
   bool get isClosed => _runtime.isClosed;
 
+  /// The default [maxImageTokens]: a 4032x3024 photo becomes 972 tokens,
+  /// which leaves room for a conversation in a 2048-token context.
+  static const defaultMaxImageTokens = 1024;
+
+  /// The most tokens one image is resized to: the load's request, or the
+  /// checkpoint's own budget if that is smaller.
+  int get maxImageTokens => _runtime.processor.maxImageTokens;
+
   /// Loads original VL vision weights and a matching prepared language bundle.
   /// Checks import fingerprints and special-token IDs before allocating model
   /// resources. The bundle must contain a Q8 or Q4 cache as LocalModel expects.
+  ///
+  /// [maxImageTokens] lowers the checkpoint's pixel budget (16,384 tokens for
+  /// LFM3-VL, beyond any on-device context) so larger images are downscaled
+  /// with the upstream resize rule. Images within it are unaffected.
   static Future<LocalVisionModel> load(
     String modelDir, {
     required String backboneDir,
     InferenceBackend backend = InferenceBackend.auto,
     int contextLength = 2048,
     int threads = 4,
+    int maxImageTokens = defaultMaxImageTokens,
   }) async {
     validateVlBackbone(modelDir, backboneDir);
     final config = Lfm3VlConfig.load(modelDir);
-    final processor = Lfm3ImageProcessor.load(modelDir);
+    final processor = Lfm3ImageProcessor.load(
+      modelDir,
+    ).withMaxImageTokens(maxImageTokens);
     if (processor.patchSize != config.vision.patchSize ||
         processor.mergeSize != config.vision.spatialMergeSize ||
         processor.temporalPatchSize != config.vision.temporalPatchSize ||
@@ -216,6 +231,7 @@ final class LocalVisionModel {
     InferenceBackend backend = InferenceBackend.auto,
     int contextLength = 2048,
     int threads = 4,
+    int maxImageTokens = defaultMaxImageTokens,
   }) async {
     await validateVlBundle(directory);
     return load(
@@ -224,6 +240,7 @@ final class LocalVisionModel {
       backend: backend,
       contextLength: contextLength,
       threads: threads,
+      maxImageTokens: maxImageTokens,
     );
   }
 

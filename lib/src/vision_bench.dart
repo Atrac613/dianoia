@@ -29,6 +29,7 @@ Future<Map<String, Object?>> benchmarkVisionBundle({
   int threads = 4,
   int maxNewTokens = 32,
   int runs = 3,
+  int maxImageTokens = LocalVisionModel.defaultMaxImageTokens,
   String? expectedText,
   void Function(Map<String, Object?> record)? onRecord,
   void Function(String message)? log,
@@ -54,6 +55,7 @@ Future<Map<String, Object?>> benchmarkVisionBundle({
     'context_length': contextLength,
     'threads': threads,
     'max_new_tokens': maxNewTokens,
+    'requested_max_image_tokens': maxImageTokens,
     'fresh_runs': runs,
     'prompt': prompt,
     'expected_text': expectedText,
@@ -99,9 +101,11 @@ Future<Map<String, Object?>> benchmarkVisionBundle({
       backend: backend,
       contextLength: contextLength,
       threads: threads,
+      maxImageTokens: maxImageTokens,
     );
     record['load_s'] = load.elapsedMicroseconds / 1e6;
     record['backend'] = model.backend.name;
+    record['max_image_tokens'] = model.maxImageTokens;
     checkpoint('loaded');
     final decode = Stopwatch()..start();
     final image = await ChatImage.fromFile(imagePath);

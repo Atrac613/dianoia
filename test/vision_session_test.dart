@@ -221,6 +221,55 @@ void main() {
     );
 
     test(
+      'the image token budget downscales images that overflow the context',
+      () async {
+        await model.close();
+        final large = ChatImage.rgb(
+          Uint8List(64 * 64 * 3)..fillRange(0, 64 * 64 * 3, 120),
+          width: 64,
+          height: 64,
+        );
+        Future<LocalVisionModel> load({
+          int maxImageTokens = LocalVisionModel.defaultMaxImageTokens,
+        }) => LocalVisionModel.load(
+          '${root.path}/model',
+          backboneDir: '${root.path}/backbone',
+          backend: InferenceBackend.cpu,
+          contextLength: 128,
+          threads: 2,
+          maxImageTokens: maxImageTokens,
+        );
+        // The default exceeds the fixture checkpoint's own 256-token budget.
+        final uncapped = await load();
+        try {
+          expect(uncapped.maxImageTokens, 256);
+          await expectLater(
+            uncapped.chat(maxNewTokens: 1).send('Describe.', images: [large]),
+            throwsA(isA<ContextLengthExceeded>()),
+          );
+        } finally {
+          await uncapped.close();
+        }
+        final capped = await load(maxImageTokens: 4);
+        try {
+          expect(capped.maxImageTokens, 4);
+          final turn = await capped
+              .chat(maxNewTokens: 1)
+              .send('Describe.', images: [large]);
+          // 64 x 64 shrinks to 8 x 8, the size of an image within budget.
+          final small = await capped
+              .chat(maxNewTokens: 1)
+              .send('Describe.', images: [_image()]);
+          expect(turn.promptTokens, small.promptTokens);
+        } finally {
+          await capped.close();
+        }
+        await expectLater(load(maxImageTokens: 0), throwsArgumentError);
+        expect(fixtureBackboneIsMapped(root), isFalse);
+      },
+    );
+
+    test(
       'explicit cancellation rolls back draft and session can be reused',
       () async {
         final session = model.chat(maxNewTokens: 3);

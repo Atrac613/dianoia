@@ -106,6 +106,36 @@ final class Lfm3ImageProcessor {
   final int patchSize, mergeSize, temporalPatchSize, minPixels, maxPixels;
   int get factor => patchSize * mergeSize;
 
+  /// The pixel budget in merged image tokens, each [factor] x [factor].
+  int get maxImageTokens => maxPixels ~/ (factor * factor);
+
+  /// This processor with its pixel budget lowered to [tokens] merged image
+  /// tokens, or this processor if its budget is no larger. The resize rule is
+  /// unchanged: the result is upstream's with a smaller longest_edge. As there,
+  /// a side that would shrink below [factor] is kept at [factor], so a very
+  /// elongated image can still exceed [tokens].
+  Lfm3ImageProcessor withMaxImageTokens(int tokens) {
+    if (tokens <= 0) {
+      throw ArgumentError.value(tokens, 'tokens', 'must be positive');
+    }
+    if (tokens >= maxImageTokens) return this;
+    final area = factor * factor;
+    if (tokens * area < minPixels) {
+      throw ArgumentError.value(
+        tokens,
+        'tokens',
+        'below the minimum budget of ${(minPixels + area - 1) ~/ area} tokens',
+      );
+    }
+    return Lfm3ImageProcessor(
+      patchSize: patchSize,
+      mergeSize: mergeSize,
+      temporalPatchSize: temporalPatchSize,
+      minPixels: minPixels,
+      maxPixels: tokens * area,
+    );
+  }
+
   /// Upstream rounds ties to even before checking the pixel budget. The
   /// budget is an area, despite the config's shortest_edge/longest_edge names.
   (int height, int width) resizedSize(int height, int width) {
