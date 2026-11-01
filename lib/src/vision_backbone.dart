@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'config.dart';
+import 'q8_cache.dart';
 import 'safetensors.dart';
 import 'vision_config.dart';
 
@@ -81,6 +82,13 @@ void importVlBackbone(String modelDir, String outDir) {
     );
     File('${staging.path}/vl_config.json').writeAsStringSync(sourceConfig);
     tokenizer.copySync('${staging.path}/tokenizer.json');
+    File('${staging.path}/vl_backbone.json').writeAsStringSync(
+      jsonEncode({
+        'version': 1,
+        'source_key': Q8Cache.keyFor(modelDir),
+        'backbone_key': Q8Cache.keyFor(staging.path),
+      }),
+    );
     staging.renameSync(destination.path);
     staging = null;
   } finally {

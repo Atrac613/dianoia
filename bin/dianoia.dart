@@ -37,6 +37,11 @@
 ///       Copies the VL language backbone into standalone engine layout;
 ///       retains vl_config.json, with image inference still pending.
 ///
+///   dianoia vision-run --model=VL_DIR --backbone=IMPORTED_DIR --rgb=FILE
+///       --height=H --width=W --prompt=TEXT --out=NEW_DIR [--weights=f32 --gpu]
+///       Runs one raw RGB image and dumps encoder stages, prompt IDs, logits
+///       and greedy output for real-checkpoint comparison.
+///
 ///   dianoia toolbench --model=DIR --cases=FILE [--weights=... --gpu]
 ///       Asks each case of FILE (example/tool_cases.json) greedily with its
 ///       tools and checks the tool call against the expected name and
@@ -109,13 +114,14 @@ Future<void> main(List<String> args) async {
     'pack': _pack,
     'import-gguf': _importGguf,
     'import-vl-backbone': _importVlBackbone,
+    'vision-run': _visionRun,
     'toolbench': _toolbench,
     'chatbench': _chatbench,
   };
   final command = args.isEmpty ? null : commands[args.first];
   if (command == null) {
     stderr.writeln(
-      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|toolbench|chatbench '
+      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|toolbench|chatbench '
       '--key=value ...',
     );
     exitCode = 2;
@@ -548,6 +554,130 @@ Future<int> _pack(Map<String, String> flags) async {
     bytes += f.lengthSync();
   }
   stdout.writeln('wrote $outDir: ${(bytes / 1e9).toStringAsFixed(2)} GB');
+  return 0;
+}
+
+/// Runs one decoded RGB image through the reference encoder and a matching
+/// imported VL language backbone, dumping evidence for upstream comparison.
+Future<int> _visionRun(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final vlDir = require('model');
+  final backbone = require('backbone');
+  final out = require('out');
+  final height = int.parse(require('height'));
+  final width = int.parse(require('width'));
+  final maxNew = int.parse(flags['max-new'] ?? '16');
+  final maxSeq = int.parse(flags['max-seq'] ?? '2048');
+  if (maxNew < 0) throw ArgumentError('--max-new must be nonnegative');
+  if (Directory(out).existsSync() || File(out).existsSync()) {
+    throw ArgumentError('--out must be a new directory');
+  }
+  final identity =
+      jsonDecode(File('$backbone/vl_backbone.json').readAsStringSync()) as Map;
+  if (identity['version'] != 1 ||
+      identity['source_key'] != Q8Cache.keyFor(vlDir) ||
+      identity['backbone_key'] != Q8Cache.keyFor(backbone)) {
+    throw ArgumentError('backbone provenance does not match the VL checkpoint');
+  }
+  final processor = Lfm3ImageProcessor.load(vlDir);
+  final image = processor.prepareRgb(
+    File(require('rgb')).readAsBytesSync(),
+    height: height,
+    width: width,
+  );
+  final tokenizer = Lfm3Tokenizer.load(vlDir);
+  final encoder = Lfm3VisionEncoder.load(vlDir);
+  final prompt = prepareVisionPrompt(
+    [
+      {
+        'role': 'user',
+        'content': [
+          {'type': 'image'},
+          {'type': 'text', 'text': require('prompt')},
+        ],
+      },
+    ],
+    tokenizer: tokenizer,
+    config: encoder.config,
+    imageTokenCounts: [image.imageTokens],
+    enableThinking: flags['think'] == 'true',
+  );
+  if (prompt.ids.length >= maxSeq) {
+    throw ContextLengthExceeded(prompt.ids.length, maxSeq);
+  }
+  Directory(out).createSync(recursive: true);
+  final clock = Stopwatch()..start();
+  final stages = <String>[];
+  final features = encoder.encode(
+    image,
+    capture: (stage, rows) {
+      stages.add(stage);
+      _write('$out/vision_$stage.f32', rows);
+    },
+  );
+  final visionSeconds = clock.elapsedMicroseconds / 1e6;
+  _write('$out/pixels.f32', image.pixelValues);
+  _write('$out/ids.i32', Int32List.fromList(prompt.ids));
+  final weights = WeightFormat.values.byName(flags['weights'] ?? 'f32');
+  _loadNative(flags, needed: weights.isNative || NativeKernels.isAvailable);
+  clock.reset();
+  final model = await Lfm3Model.load(
+    backbone,
+    weights: weights,
+    q8CachePath: _q8CachePath(flags, backbone, weights),
+    maxSeq: maxSeq,
+    maxChunk: int.parse(flags['chunk'] ?? '64'),
+    gpu: flags['gpu'] == 'true',
+  );
+  final loadSeconds = clock.elapsedMicroseconds / 1e6;
+  try {
+    clock.reset();
+    await prompt.prefill(model, [features]);
+    final prefillSeconds = clock.elapsedMicroseconds / 1e6;
+    _write('$out/logits.f32', model.logits);
+    final generated = <int>[];
+    final allLogits = BytesBuilder();
+    clock.reset();
+    for (var i = 0; i < maxNew && model.length < maxSeq; i++) {
+      final copy = Float32List.fromList(model.logits);
+      allLogits.add(copy.buffer.asUint8List());
+      final token = _argmax(copy);
+      if (token == model.config.eosTokenId) break;
+      generated.add(token);
+      await model.step(token);
+    }
+    final decodeSeconds = clock.elapsedMicroseconds / 1e6;
+    _write('$out/gen.i32', Int32List.fromList(generated));
+    File('$out/gen_logits.f32').writeAsBytesSync(allLogits.takeBytes());
+    final text = tokenizer.decode(generated);
+    File('$out/meta.json').writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert({
+        'complete': true,
+        'prompt': flags['prompt'],
+        'thinking': flags['think'] == 'true',
+        'source_key': identity['source_key'],
+        'weights': weights.name,
+        'gpu': flags['gpu'] == 'true',
+        'prompt_tokens': prompt.ids.length,
+        'image_tokens': image.imageTokens,
+        'grid_thw': [image.gridThw.$1, image.gridThw.$2, image.gridThw.$3],
+        'stages': stages,
+        'vision_hidden_size': encoder.config.vision.hiddenSize,
+        'text_hidden_size': encoder.config.text.hiddenSize,
+        'vocab_size': model.config.vocabSize,
+        'generated_ids': generated,
+        'text': text,
+        'vision_seconds': visionSeconds,
+        'load_seconds': loadSeconds,
+        'prefill_seconds': prefillSeconds,
+        'decode_seconds': decodeSeconds,
+      }),
+    );
+    stdout.writeln(text);
+    stdout.writeln('wrote visual inference evidence to $out');
+  } finally {
+    await model.close();
+  }
   return 0;
 }
 

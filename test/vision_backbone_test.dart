@@ -132,6 +132,10 @@ void main() {
       _writeWeights('${reference.path}/model.safetensors', _shapes());
       final out = '${root.path}/imported';
       importVlBackbone(source.path, out);
+      final provenance =
+          jsonDecode(File('$out/vl_backbone.json').readAsStringSync()) as Map;
+      expect(provenance['source_key'], Q8Cache.keyFor(source.path));
+      expect(provenance['backbone_key'], Q8Cache.keyFor(out));
       final expected = SafetensorsFile.open(
         '${reference.path}/model.safetensors',
       );
