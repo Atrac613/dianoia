@@ -98,6 +98,25 @@ void main() {
     expect(File('$path.part').existsSync(), isFalse);
   });
 
+  test('reuses completed files only when their pinned bytes match', () async {
+    final server = _Server(content);
+    await server.start();
+    addTearDown(server.stop);
+    final path = '${dir.path}/file.bin';
+    File(path).writeAsBytesSync(content);
+    await downloadFile(client, remote(server), path);
+    expect(server.rangeHeaders, isEmpty);
+    final changed = Uint8List.fromList(content)..[0] ^= 1;
+    File(path).writeAsBytesSync(changed);
+    await downloadFile(client, remote(server), path);
+    expect(server.rangeHeaders, hasLength(1));
+    expect(File(path).readAsBytesSync(), content);
+    File(path).writeAsBytesSync([1]);
+    await downloadFile(client, remote(server), path);
+    expect(server.rangeHeaders, hasLength(2));
+    expect(File(path).readAsBytesSync(), content);
+  });
+
   test('resumes a cut download with a Range request', () async {
     final server = _Server(content, cutAfter: 1 << 20);
     await server.start();

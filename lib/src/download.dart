@@ -37,7 +37,8 @@ final class ModelDownloadException implements Exception {
   String toString() => 'ModelDownloadException: $message';
 }
 
-/// Downloads [file] to [path] unless it is already there. Bytes arrive in
+/// Downloads [file] to [path], reusing an existing file only after checking
+/// its pinned size and SHA-256. Bytes arrive in
 /// `[path].part`, which a later call resumes with a Range request; only a
 /// file of the right size and SHA-256 is renamed to [path]. [onBytes] sees
 /// how many bytes of the file are on disk; [cancelled] is polled between
@@ -53,9 +54,18 @@ Future<void> downloadFile(
   void Function(int bytes)? onBytes,
   bool Function()? cancelled,
 }) async {
-  if (File(path).existsSync()) {
-    onBytes?.call(file.size);
-    return;
+  final existing = File(path);
+  if (existing.existsSync()) {
+    final matches =
+        existing.lengthSync() == file.size &&
+        (await sha256.bind(existing.openRead()).first).toString() ==
+            file.sha256;
+    if (cancelled?.call() ?? false) return;
+    if (matches) {
+      onBytes?.call(file.size);
+      return;
+    }
+    existing.deleteSync();
   }
   final part = File('$path.part');
   var have = part.existsSync() ? part.lengthSync() : 0;
