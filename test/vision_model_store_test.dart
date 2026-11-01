@@ -66,6 +66,10 @@ final class _Server {
 }
 
 void main() {
+  if (!LocalModel.isSupported) {
+    test('VL model store', () {}, skip: 'requires native kernels');
+    return;
+  }
   late Directory fixture;
   late Map<String, List<int>> bundle;
   setUpAll(() async {

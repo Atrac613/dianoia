@@ -7,6 +7,10 @@ import 'package:test/test.dart';
 import 'support/vision_model_fixture.dart';
 
 void main() {
+  if (!NativeKernels.isAvailable) {
+    test('VL benchmark', () {}, skip: 'requires native kernels');
+    return;
+  }
   late Directory root;
   late String bundle;
   setUpAll(() async {

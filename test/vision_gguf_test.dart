@@ -9,6 +9,10 @@ import 'support/vision_model_fixture.dart';
 import 'support/gguf_fixture.dart';
 
 void main() {
+  if (!NativeKernels.isAvailable) {
+    test('QAD GGUF import', () {}, skip: 'requires native kernels');
+    return;
+  }
   late Directory root;
   late Map<String, List<int>> files;
   late HttpServer server;
