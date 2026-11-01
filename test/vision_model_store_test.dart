@@ -85,7 +85,11 @@ void main() {
       for (final file in Directory(
         path,
       ).listSync(recursive: true).whereType<File>())
-        file.path.substring(path.length + 1): file.readAsBytesSync(),
+        // Manifest paths and HTTP URLs use '/' on every host.
+        file.path
+            .substring(path.length + 1)
+            .replaceAll(Platform.pathSeparator, '/'): file
+            .readAsBytesSync(),
     };
   });
   tearDownAll(() => fixture.deleteSync(recursive: true));
