@@ -189,6 +189,17 @@ void main() {
     );
     expect(MappedFile.isMapped('${root.path}/language.gguf'), isFalse);
   });
+  test('closing a GGUF twice keeps another opener mapped', () {
+    final path = '${root.path}/language.gguf';
+    final first = GgufFile.open(path);
+    final second = GgufFile.open(path);
+    first
+      ..close()
+      ..close();
+    expect(MappedFile.isMapped(path), isTrue);
+    second.close();
+    expect(MappedFile.isMapped(path), isFalse);
+  });
   test('QAD catalog pins both GGUFs and metadata separately from PTQ', () {
     final catalog = VisionGgufSpec.lfm3VlQadQ4;
     expect(catalog.downloadBytes, 1446534952);

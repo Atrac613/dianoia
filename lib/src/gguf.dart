@@ -179,7 +179,15 @@ final class GgufFile {
   }
 
   /// Releases the mapped GGUF after all tensor views have been consumed.
-  void close() => _file.release();
+  /// The mapping is shared by path, so a second close must not give back
+  /// another opener's reference.
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _file.release();
+  }
+
+  bool _closed = false;
 
   /// An F32 tensor's values, copied.
   Float32List f32(GgufTensor t) =>
