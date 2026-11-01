@@ -24,8 +24,8 @@ as described in the [real-checkpoint report](lfm3_vl_validation_2026-11-01.md).
 The loader validates source/backbone import fingerprints, processor dimensions
 and vision special-token IDs. As with existing caches, fingerprints cover the
 safetensors header/size and config; verify downloaded payload hashes separately.
-`ModelStore` currently installs text checkpoints only. Loading does not download
-weights, prepare a backbone or decode image files.
+`ModelStore` installs text checkpoints and prebuilt VL bundles. Loading itself
+does not download weights, prepare a backbone or decode image files.
 
 ## Build a standalone bundle
 
@@ -58,13 +58,83 @@ Loading verifies the size and SHA-256 of every required file before native
 loading. This reads the entire bundle on each load; the manifest must come from
 a trusted installation source. The checks detect changed files and incomplete
 copies, and do not authenticate the manifest. Move/copy the whole directory
-without changing its layout. `ModelStore` does not yet download VL bundles.
+without changing its layout. `ModelStore` can install this layout from a host
+you choose, using the pinned manifest as described below.
 
 The measured Q8 bundle is 2,885,204,285 bytes (2.69 GiB), compared with
 9,275,569,800 bytes (8.64 GiB) for the original checkpoint plus imported backbone
 and Q8 cache. This saves 68.9% of disk space in that preparation layout; it does
 not reduce the vision encoder's float32 working memory. See the
 [bundle validation report](lfm3_vl_bundle_2026-11-01.md).
+
+## Install a hosted VL bundle
+
+Host the whole `pack-vl` directory under an HTTP(S) base URL with its relative
+paths intact. Include its exact `vl_bundle.json` in a trusted app asset or release
+configuration; pass those reviewed bytes as `manifestJson`. The store pins the
+remote manifest itself as well as every payload's size and SHA-256. Do not obtain
+the expected manifest through an unverified fetch from the payload host.
+
+```dart
+Future<LocalVisionModel> installVision({
+  required ModelStore store,
+  required String reviewedManifestJson,
+  required String distributionUrl,
+}) async {
+  final spec = VisionModelSpec.fromManifest(
+    id: 'lfm3-vl-2b-q8',
+    name: 'LFM3-VL-2B (Q8)',
+    license: 'LFM Open License v1.0',
+    licenseUrl: '$distributionUrl/LICENSE',
+    baseUrl: distributionUrl,
+    manifestJson: reviewedManifestJson,
+  );
+  // Show spec.name, spec.license and spec.downloadBytes before downloading.
+  await for (final progress in store.install(spec)) {
+    print('${progress.stage.name}: ${progress.bytes}/${progress.totalBytes}');
+  }
+  return LocalVisionModel.loadBundle(store.bundlePath(spec));
+}
+```
+
+Use `spec.fromMirror(baseUrl)` to change the host without changing pinned bytes.
+The manifest text, including whitespace, must match the hosted file exactly.
+`downloadBytes` includes the manifest and all payload files. No built-in hosted
+VL catalog entry is supplied; applications choose their own distribution URL.
+
+`ModelStore.install` shares the text installer's resumable downloads, retry policy,
+progress stream and per-model exclusion. Cancelling its subscription waits for
+file closure and retains downloads; a later install resumes them. Completed
+files are also checked against their pinned size and hash before reuse. The
+`building` stage validates the complete VL bundle in a worker isolate, then
+renames the downloads directory into the installed path. This avoids another
+bundle-sized copy and does not quantize. Cancelling during verification waits
+for that verification and leaves the downloads unpublished.
+
+`store.isInstalled(spec)` checks directory presence and the pinned VL manifest,
+not every tensor payload; `loadBundle` checks the full payload on each load.
+Use a distinct model ID for a new release. A different manifest cannot overwrite
+an installed VL model under the same ID: close any loaded model, then explicitly
+`await store.remove(spec)` before installing its replacement. Removal is rejected
+while that model is being installed. IDs must be single directory names starting
+with a letter or digit, using only letters, digits, dots, underscores or hyphens.
+
+Synthetic HTTP tests cover successful loading, nested Range resume, retry after
+an interrupted response, cancellation during download/verification, changed
+payloads/manifests, stale completed downloads and inconsistent provenance.
+An optional real integration test installs the Q8 bundle over loopback HTTP and
+reads `東京 123` through the installed public API on CPU and Metal:
+
+```sh
+DIANOIA_VL_BUNDLE="$PWD/build/vl-validation/portable-q8" \
+DIANOIA_VL_VALIDATION_DIR="$PWD/build/vl-validation/extended" \
+dart test test/vision_model_store_integration_test.dart
+```
+
+This test temporarily needs another bundle-sized directory. It uses local files
+and does not publish or fetch external weights. The 2026-11-01 M2 Max run
+successfully installed 2,885,204,285 bytes and read `東京 123` on CPU and Metal;
+see the [installation record](validation/lfm3-vl-store-2026-11-01.json).
 
 ## Send an image and follow up
 

@@ -91,6 +91,12 @@ if (!store.isInstalled(spec)) {
 final model = await LocalModel.load(store.bundlePath(spec));
 ```
 
+Prebuilt VL bundles use `VisionModelSpec.fromManifest` with the same store API.
+Apps supply a trusted manifest and a host for the exact `pack-vl` files; the store
+resumes and verifies downloads, then installs without another copy or conversion.
+Load the installed path with `LocalVisionModel.loadBundle`. See the
+[VL installation guide](docs/vision_chat_api.md#install-a-hosted-vl-bundle).
+
 On the command line, a bundle can also be made from local files. A model
 directory holds the checkpoint's `config.json`, `tokenizer.json` and
 `model.safetensors`. Q8 and Q4 weights live in a cache file next to

@@ -1,21 +1,132 @@
 /// Getting a model onto the device: its files from where the model's authors
 /// publish them, pinned by revision and checked by SHA-256, and the bundle
-/// dianoia runs built from them on the device. Nothing is redistributed.
+/// dianoia runs built from them on the device, or a prebuilt VL bundle.
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+
+import 'package:crypto/crypto.dart';
 
 import 'download.dart';
 import 'gguf.dart';
 import 'native.dart';
+import 'vision_bundle.dart';
 
 export 'download.dart' show ModelDownloadException, RemoteFile;
 
+/// A pinned text checkpoint or prebuilt vision bundle installed by [ModelStore].
+sealed class InstallableModel {
+  const InstallableModel();
+
+  String get id;
+  String get name;
+  String get license;
+  String get licenseUrl;
+  List<RemoteFile> get files;
+
+  /// Total bytes downloaded, including metadata and license files.
+  int get downloadBytes => files.fold(0, (sum, file) => sum + file.size);
+}
+
+/// A prebuilt `pack-vl` bundle hosted by an app or its model distributor.
+///
+/// The application supplies a trusted, pinned manifest, for example from an
+/// asset reviewed with its release. Never trust an unverified manifest fetched
+/// from the same remote server: it defines the expected payload hashes.
+final class VisionModelSpec extends InstallableModel {
+  VisionModelSpec._({
+    required this.id,
+    required this.name,
+    required this.license,
+    required this.licenseUrl,
+    required this.files,
+  });
+
+  /// [manifestJson] is the exact `vl_bundle.json` produced by `pack-vl`.
+  /// All files, including that manifest, are fetched beneath [baseUrl] and
+  /// pinned by their sizes and SHA-256. Whitespace in the manifest is significant.
+  factory VisionModelSpec.fromManifest({
+    required String id,
+    required String name,
+    required String license,
+    required String licenseUrl,
+    required String baseUrl,
+    required String manifestJson,
+  }) {
+    final manifest = VlBundleManifest.parse(manifestJson);
+    final bytes = utf8.encode(manifestJson);
+    final files = [
+      RemoteFile(
+        'vl_bundle.json',
+        '',
+        size: bytes.length,
+        sha256: sha256.convert(bytes).toString(),
+      ),
+      for (final entry in manifest.files.entries)
+        RemoteFile(
+          entry.key,
+          '',
+          size: entry.value.bytes,
+          sha256: entry.value.sha256,
+        ),
+    ];
+    return VisionModelSpec._(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      files: List.unmodifiable(files),
+    ).fromMirror(baseUrl);
+  }
+
+  @override
+  final String id;
+  @override
+  final String name;
+  @override
+  final String license;
+  @override
+  final String licenseUrl;
+  @override
+  final List<RemoteFile> files;
+
+  /// Changes only the download host/path, preserving all pinned bytes.
+  VisionModelSpec fromMirror(String baseUrl) {
+    final base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
+    if (!['http', 'https'].contains(base.scheme) ||
+        !base.hasAuthority ||
+        base.query.isNotEmpty ||
+        base.fragment.isNotEmpty) {
+      throw ArgumentError.value(
+        baseUrl,
+        'baseUrl',
+        'expected HTTP(S) directory',
+      );
+    }
+    return VisionModelSpec._(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      files: List.unmodifiable([
+        for (final file in files)
+          RemoteFile(
+            file.name,
+            base.resolve(file.name).toString(),
+            size: file.size,
+            sha256: file.sha256,
+          ),
+      ]),
+    );
+  }
+}
+
 /// A model [ModelStore] can install: a GGUF checkpoint and the matching
 /// Hugging Face model's config, tokenizer and license.
-final class ModelSpec {
+final class ModelSpec extends InstallableModel {
   const ModelSpec({
     required this.id,
     required this.name,
@@ -28,20 +139,22 @@ final class ModelSpec {
   });
 
   /// The model's directory name in a store.
+  @override
   final String id;
+  @override
   final String name;
 
   /// The license the weights come under, which an app should show before
   /// downloading them, and where to read it.
+  @override
   final String license;
+  @override
   final String licenseUrl;
 
   final RemoteFile gguf, config, tokenizer, licenseFile;
 
+  @override
   List<RemoteFile> get files => [config, tokenizer, licenseFile, gguf];
-
-  /// Bytes to download.
-  int get downloadBytes => files.fold(0, (sum, f) => sum + f.size);
 
   /// This model with every file fetched from [baseUrl] instead, as
   /// `[baseUrl]/[RemoteFile.name]`: a mirror an app hosts, or a test
@@ -114,7 +227,7 @@ final class ModelSpec {
 
 enum InstallStage { downloading, building, done }
 
-/// Where an [ModelStore.install] stands.
+/// Where a [ModelStore.install] stands.
 final class InstallProgress {
   const InstallProgress(this.stage, {this.bytes = 0, this.totalBytes = 0});
 
@@ -134,11 +247,27 @@ final class ModelStore {
 
   final String directory;
 
-  /// The bundle [LocalModel.load] takes, once [model] is installed.
-  String bundlePath(ModelSpec model) => '$directory/${model.id}/bundle';
+  /// The installed path for [LocalModel.load] or [LocalVisionModel.loadBundle].
+  String bundlePath(InstallableModel model) {
+    _checkId(model.id);
+    return '$directory/${model.id}/bundle';
+  }
 
-  bool isInstalled(ModelSpec model) =>
-      Directory(bundlePath(model)).existsSync();
+  /// Checks installation presence and, for VL, pinned manifest identity.
+  /// Payload integrity is checked by [LocalVisionModel.loadBundle] when loading.
+  bool isInstalled(InstallableModel model) {
+    final bundle = bundlePath(model);
+    if (!Directory(bundle).existsSync()) return false;
+    if (model is VisionModelSpec) {
+      final manifest = File('$bundle/vl_bundle.json');
+      final pinned = model.files.first;
+      return manifest.existsSync() &&
+          manifest.lengthSync() == pinned.size &&
+          sha256.convert(manifest.readAsBytesSync()).toString() ==
+              pinned.sha256;
+    }
+    return true;
+  }
 
   /// Downloads [model]'s files and builds its bundle, reporting progress.
   /// What a previous install left half done is resumed; a lost connection
@@ -148,9 +277,13 @@ final class ModelStore {
   /// model runs at a time: a second throws [StateError]. The stream ends
   /// with [InstallStage.done], or with an error.
   ///
-  /// Needs about the download size again in free space while building; the
-  /// downloads are deleted afterwards.
-  Stream<InstallProgress> install(ModelSpec model, {int retries = 3}) {
+  /// Text models need about the download size again in free space while
+  /// building; downloads are deleted afterwards. Vision bundles are validated
+  /// in an isolate during [InstallStage.building], then renamed into place,
+  /// without a second copy or quantization. Cancellation during verification
+  /// waits for it to finish and leaves the downloads unpublished.
+  Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
+    _checkId(model.id);
     final key = '$directory/${model.id}';
     if (!_installing.add(key)) {
       throw StateError('${model.id} is already being installed in $directory');
@@ -168,10 +301,19 @@ final class ModelStore {
       final total = model.downloadBytes;
       try {
         if (!isInstalled(model)) {
+          if (model is VisionModelSpec &&
+              Directory(bundlePath(model)).existsSync()) {
+            throw StateError(
+              'installed VL manifest differs; remove ${model.id} before replacing it',
+            );
+          }
           final downloads = Directory('$directory/${model.id}/downloads')
             ..createSync(recursive: true);
           var done = 0;
           for (final file in model.files) {
+            File(
+              '${downloads.path}/${file.name}',
+            ).parent.createSync(recursive: true);
             for (var attempt = 0; ; attempt++) {
               try {
                 await downloadFile(
@@ -203,8 +345,14 @@ final class ModelStore {
               totalBytes: total,
             ),
           );
-          await _build(model, downloads.path, bundlePath(model));
-          await downloads.delete(recursive: true);
+          if (model is VisionModelSpec) {
+            await _verifyVision(downloads.path);
+            if (cancelled) return;
+            downloads.renameSync(bundlePath(model));
+          } else {
+            await _build(model as ModelSpec, downloads.path, bundlePath(model));
+            await downloads.delete(recursive: true);
+          }
         }
         report(
           InstallProgress(InstallStage.done, bytes: total, totalBytes: total),
@@ -237,9 +385,24 @@ final class ModelStore {
   static final _installing = <String>{};
 
   /// Deletes [model]'s bundle and any downloads it left.
-  Future<void> remove(ModelSpec model) async {
+  Future<void> remove(InstallableModel model) async {
+    _checkId(model.id);
+    if (_installing.contains('$directory/${model.id}')) {
+      throw StateError('cannot remove ${model.id} during installation');
+    }
     final dir = Directory('$directory/${model.id}');
     if (dir.existsSync()) await dir.delete(recursive: true);
+  }
+
+  // Keep the isolate closure outside install's context, which holds unsendable
+  // stream controllers, clients and futures.
+  static Future<void> _verifyVision(String directory) =>
+      Isolate.run(() => validateVlBundle(directory));
+
+  static void _checkId(String id) {
+    if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$').hasMatch(id)) {
+      throw ArgumentError.value(id, 'model.id', 'expected a directory name');
+    }
   }
 
   /// Builds the bundle from the downloads in another isolate, so that an

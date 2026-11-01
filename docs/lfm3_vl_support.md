@@ -199,9 +199,11 @@ preprocessing differences cannot silently pass.
    varied scenes, documents, small text and multi-image prompts.
 2. Optimize the vision encoder/projector with native or GPU execution and measure
    memory, latency and sustained behavior on target devices.
-3. Add a downloadable VL model specification and image-file decoding adapters.
+3. Publish a hosted VL catalog entry and add image-file decoding adapters.
    Standalone Q8/Q4 packaging is implemented by `pack-vl` and
-   `LocalVisionModel.loadBundle`; see the [bundle report](lfm3_vl_bundle_2026-11-01.md).
+   `LocalVisionModel.loadBundle`; `VisionModelSpec.fromManifest` and
+   `ModelStore.install` install app-hosted bundles using pinned manifest bytes.
+   See the [app guide](vision_chat_api.md) and [bundle report](lfm3_vl_bundle_2026-11-01.md).
    Add video after single-image correctness.
 
 Metadata and synthetic operator tests remain fast automated checks. The separate

@@ -82,5 +82,7 @@ Synthetic tests check exact retained tensor/cache bytes, standalone relocation
 with original directories hidden, source-versus-bundle inference, Q4 packing,
 corruption and incomplete-input cleanup. Real-checkpoint Q4 bundle quality is
 not yet evaluated. Disk savings do not reduce the CPU vision encoder's float32
-working memory, or establish phone memory/latency. Automated VL installation,
-image decoding adapters and device performance work remain separate tasks.
+working memory, or establish phone memory/latency. `ModelStore` now installs
+app-hosted bundles via `VisionModelSpec.fromManifest`; see the
+[installation guide](vision_chat_api.md#install-a-hosted-vl-bundle). A built-in
+hosted catalog entry, image decoding adapters and device performance work remain.

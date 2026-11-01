@@ -189,45 +189,71 @@ Future<void> packVlBundle(
   }
 }
 
+/// Validated version-one layout, shared by installers and runtime loaders.
+final class VlBundleManifest {
+  VlBundleManifest._(this.weights, this.files);
+
+  final String weights;
+  final Map<String, ({int bytes, String sha256})> files;
+
+  factory VlBundleManifest.parse(String json) {
+    final value = jsonDecode(json);
+    if (value is! Map ||
+        value['version'] != 1 ||
+        value['kind'] != 'lfm3-vl' ||
+        !['q8', 'q4'].contains(value['weights']) ||
+        value['files'] is! Map) {
+      throw const FormatException('unsupported VL bundle manifest');
+    }
+    final weights = value['weights'] as String;
+    final files = value['files'] as Map;
+    final expected = _files(weights);
+    if (files.length != expected.length ||
+        expected.any((name) => !files.containsKey(name))) {
+      throw const FormatException(
+        'VL bundle file list differs from required layout',
+      );
+    }
+    final checked = <String, ({int bytes, String sha256})>{};
+    for (final name in expected) {
+      final entry = files[name];
+      if (entry is! Map ||
+          entry['bytes'] is! int ||
+          (entry['bytes'] as int) <= 0 ||
+          entry['sha256'] is! String ||
+          !RegExp(r'^[0-9a-f]{64}$').hasMatch(entry['sha256'] as String)) {
+        throw FormatException('invalid VL bundle manifest entry: $name');
+      }
+      checked[name] = (
+        bytes: entry['bytes'] as int,
+        sha256: entry['sha256'] as String,
+      );
+    }
+    return VlBundleManifest._(weights, Map.unmodifiable(checked));
+  }
+}
+
 /// Verifies all required bundle files and their SHA-256 before native loading.
 /// The manifest itself must come from a trusted package/install source; these
 /// checks detect incomplete or modified files, not manifest authenticity.
 Future<void> validateVlBundle(String directory) async {
-  final value = jsonDecode(File('$directory/$_manifest').readAsStringSync());
-  if (value is! Map ||
-      value['version'] != 1 ||
-      value['kind'] != 'lfm3-vl' ||
-      !['q8', 'q4'].contains(value['weights']) ||
-      value['files'] is! Map) {
-    throw const FormatException('unsupported VL bundle manifest');
-  }
-  final weights = value['weights'] as String;
-  final files = value['files'] as Map;
-  final expected = _files(weights);
-  if (files.length != expected.length ||
-      expected.any((name) => !files.containsKey(name))) {
-    throw const FormatException(
-      'VL bundle file list differs from required layout',
-    );
-  }
-  final other = weights == 'q8' ? 'q4' : 'q8';
+  final manifest = VlBundleManifest.parse(
+    File('$directory/$_manifest').readAsStringSync(),
+  );
+  final other = manifest.weights == 'q8' ? 'q4' : 'q8';
   if (File('$directory/language/lfm3-$other.cache').existsSync()) {
     throw const FormatException(
       'VL bundle contains an unrecorded alternative cache',
     );
   }
-  for (final name in expected) {
-    final entry = files[name];
-    final file = File('$directory/$name');
-    if (entry is! Map ||
-        entry['bytes'] is! int ||
-        (entry['bytes'] as int) <= 0 ||
-        entry['sha256'] is! String ||
-        !RegExp(r'^[0-9a-f]{64}$').hasMatch(entry['sha256'] as String) ||
-        !file.existsSync() ||
-        file.lengthSync() != entry['bytes'] ||
-        await _digest(file) != entry['sha256']) {
-      throw FormatException('VL bundle file failed integrity check: $name');
+  for (final entry in manifest.files.entries) {
+    final file = File('$directory/${entry.key}');
+    if (!file.existsSync() ||
+        file.lengthSync() != entry.value.bytes ||
+        await _digest(file) != entry.value.sha256) {
+      throw FormatException(
+        'VL bundle file failed integrity check: ${entry.key}',
+      );
     }
   }
   validateVlBackbone(directory, '$directory/language');

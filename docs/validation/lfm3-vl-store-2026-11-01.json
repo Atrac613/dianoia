@@ -1,0 +1,74 @@
+{
+  "date": "2026-11-01",
+  "environment": {
+    "chip": "Apple M2 Max",
+    "memory": "64 GB",
+    "dart": "3.13.5 (JIT)"
+  },
+  "checkpoint_revision": "ba44bd51db20a2753f28c273a1571ccaa210d954",
+  "bundle_manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+  "download_bytes": 2885204285,
+  "transport": "Loopback HTTP, streaming from the existing pack-vl bundle; no external downloads or publication",
+  "real_installation": {
+    "test": "test/vision_model_store_integration_test.dart",
+    "passed": true,
+    "download_and_installed_layout_identical": true,
+    "downloads_directory_removed": true,
+    "ocr": [
+      {
+        "language_backend": "CPU Q8",
+        "vision_backend": "CPU float32",
+        "text": "東京 123"
+      },
+      {
+        "language_backend": "Metal Q8",
+        "vision_backend": "CPU float32",
+        "text": "東京 123"
+      }
+    ]
+  },
+  "synthetic_http_tests": {
+    "file": "test/vision_model_store_test.dart",
+    "passed": 9,
+    "covers": [
+      "nested files and public inference",
+      "cancel then Range resume and per-model exclusion",
+      "cancel during validation without publishing",
+      "retry cut response",
+      "changed remote payload and manifest",
+      "corrupted completed download recovery",
+      "inconsistent provenance rejection",
+      "pinned manifest identity on replacement",
+      "unsafe IDs, malformed manifests and mirrors"
+    ]
+  },
+  "scope": "Generic app-hosted VL installation using a trusted manifest supplied by the application. No hosted VL catalog URL is added. Q8 actual model checked; device memory/latency and external distribution not validated.",
+  "verification": {
+    "dart_format": "clean",
+    "dart_analyze": "no issues",
+    "dart_tests": {
+      "passed": 151,
+      "skipped": 0,
+      "included": "All local text and VL model integration tests enabled"
+    },
+    "python_comparison_tests_passed": 5,
+    "lab_parity": {
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "CPU Q8",
+        "Metal Q8",
+        "Metal Q4"
+      ],
+      "files": [
+        "hidden.f32",
+        "logits.f32",
+        "gen.i32",
+        "gen_logits.f32"
+      ],
+      "all_byte_identical": true
+    }
+  }
+}

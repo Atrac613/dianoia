@@ -15,7 +15,9 @@
 /// ```
 ///
 /// Decoded RGB image conversations use [LocalVisionModel], [ChatImage] and
-/// [VisionChatSession]. Image encoding currently runs on the CPU.
+/// [VisionChatSession]. Install prebuilt VL bundles with [VisionModelSpec] and
+/// [ModelStore.install], then use [LocalVisionModel.loadBundle]. Image encoding
+/// currently runs on the CPU.
 /// `package:dianoia/lab.dart` exposes the engine's internals.
 library;
 
