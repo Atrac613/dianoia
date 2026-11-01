@@ -67,8 +67,9 @@ class AttachmentPreview extends StatelessWidget {
               image.bytes,
               width: 120,
               height: 90,
+              // One dimension only: both would decode at exactly 240x180
+              // and distort images of any other aspect ratio.
               cacheWidth: 240,
-              cacheHeight: 180,
               fit: BoxFit.contain,
               errorBuilder: (_, _, _) => const SizedBox(
                 width: 120,
