@@ -56,10 +56,14 @@ Future<void> downloadFile(
 }) async {
   final existing = File(path);
   if (existing.existsSync()) {
-    final matches =
-        existing.lengthSync() == file.size &&
-        (await sha256.bind(existing.openRead()).first).toString() ==
-            file.sha256;
+    var matches = existing.lengthSync() == file.size;
+    if (matches) {
+      final digest = _Digest();
+      final hash = sha256.startChunkedConversion(digest);
+      if (!await _feed(existing, hash, cancelled)) return;
+      hash.close();
+      matches = digest.value.toString() == file.sha256;
+    }
     if (cancelled?.call() ?? false) return;
     if (matches) {
       onBytes?.call(file.size);
@@ -85,7 +89,11 @@ Future<void> downloadFile(
         await response.drain<void>();
         throw ModelDownloadException('${file.url}: unexpected content range');
       }
-      await part.openRead().forEach(hash.add);
+      if (!await _feed(part, hash, cancelled)) {
+        // Unread, the response would keep its connection open.
+        await response?.listen(null).cancel();
+        return;
+      }
     case HttpStatus.ok:
       have = 0; // the server sent the whole file
     case final status:
@@ -156,6 +164,21 @@ bool _startsAt(HttpClientResponse response, int from) =>
         .value(HttpHeaders.contentRangeHeader)
         ?.startsWith('bytes $from-') ??
     false;
+
+/// Adds [file]'s bytes to [hash], polling [cancelled] between chunks: a
+/// file on disk can be gigabytes. Returns false, having stopped reading,
+/// once [cancelled] holds.
+Future<bool> _feed(
+  File file,
+  Sink<List<int>> hash,
+  bool Function()? cancelled,
+) async {
+  await for (final chunk in file.openRead()) {
+    if (cancelled?.call() ?? false) return false;
+    hash.add(chunk);
+  }
+  return true;
+}
 
 final class _Digest implements Sink<Digest> {
   late Digest value;

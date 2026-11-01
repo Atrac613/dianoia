@@ -117,6 +117,38 @@ void main() {
     expect(File(path).readAsBytesSync(), content);
   });
 
+  test('cancelling stops checking the bytes already on disk', () async {
+    final server = _Server(content);
+    await server.start();
+    addTearDown(server.stop);
+    final path = '${dir.path}/file.bin';
+    // 3 MB is read in many chunks; cancel at the second poll.
+    var polls = 0;
+    bool cancelled() => ++polls >= 2;
+    File(path).writeAsBytesSync(content);
+    var reported = false;
+    await downloadFile(
+      client,
+      remote(server),
+      path,
+      onBytes: (_) => reported = true,
+      cancelled: cancelled,
+    );
+    expect(polls, 2);
+    expect(reported, isFalse);
+    expect(server.rangeHeaders, isEmpty);
+    expect(File(path).readAsBytesSync(), content);
+
+    File(path).deleteSync();
+    final part = File('$path.part')
+      ..writeAsBytesSync(Uint8List.sublistView(content, 0, 2 << 20));
+    polls = 0;
+    await downloadFile(client, remote(server), path, cancelled: cancelled);
+    expect(polls, 2);
+    expect(part.lengthSync(), 2 << 20);
+    expect(File(path).existsSync(), isFalse);
+  });
+
   test('resumes a cut download with a Range request', () async {
     final server = _Server(content, cutAfter: 1 << 20);
     await server.start();
