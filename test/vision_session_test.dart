@@ -328,6 +328,30 @@ void main() {
     );
 
     test(
+      'a cancel before an asynchronous text callback still ends the wait',
+      () async {
+        final session = model.chat(maxNewTokens: 8);
+        var observed = 0;
+        await expectLater(
+          session
+              .send(
+                'Describe.',
+                images: [_image()],
+                // The first call sees the prompt; cancel after the first step.
+                onLogits: (_) {
+                  if (++observed == 2) session.cancel();
+                },
+                onText: (_) => Completer<bool>().future,
+              )
+              .timeout(const Duration(seconds: 5)),
+          throwsA(isA<VisionRequestCancelled>()),
+        );
+        expect(observed, 2);
+        expect(session.messages, isEmpty);
+      },
+    );
+
+    test(
       'rejecting an overlapping session does not cancel its owner',
       () async {
         final a = model.chat(maxNewTokens: 4), b = model.chat(maxNewTokens: 4);

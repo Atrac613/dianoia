@@ -85,7 +85,7 @@ final class VisionChatRuntime {
   final Lfm3ImageProcessor processor;
   Lfm3VisionEncoder? encoder;
   Completer<void>? _active;
-  Completer<void>? _cancelSignal;
+  Completer<bool>? _waiting;
   Object? _owner;
   bool _cancelled = false, _closing = false;
   Future<void>? _closeFuture;
@@ -111,13 +111,11 @@ final class VisionChatRuntime {
     _active = done;
     _owner = owner;
     _cancelled = false;
-    _cancelSignal = Completer<void>();
     try {
       return await operation();
     } finally {
       _active = null;
       _owner = null;
-      _cancelSignal = null;
       done.complete();
     }
   }
@@ -128,19 +126,37 @@ final class VisionChatRuntime {
 
   void _requestCancel() {
     _cancelled = true;
-    final signal = _cancelSignal;
-    if (signal != null && !signal.isCompleted) signal.complete();
+    final waiting = _waiting;
+    if (waiting != null && !waiting.isCompleted) {
+      waiting.completeError(const VisionRequestCancelled());
+    }
   }
 
+  /// [callback]'s answer for [text]; a cancellation ends the wait for an
+  /// asynchronous one. Only the callback's own future is listened to, so
+  /// nothing accumulates across the tokens of a turn.
   Future<bool> waitForText(
     FutureOr<bool> Function(String) callback,
     String text,
-  ) {
-    final signal = _cancelSignal!;
-    return Future.any([
-      Future<bool>.sync(() => callback(text)),
-      signal.future.then<bool>((_) => throw const VisionRequestCancelled()),
-    ]);
+  ) async {
+    final answer = callback(text);
+    if (answer is bool) return answer;
+    final waiting = _waiting = Completer<bool>();
+    // onLogits or the callback itself may have cancelled already.
+    if (_cancelled) waiting.completeError(const VisionRequestCancelled());
+    answer.then(
+      (value) {
+        if (!waiting.isCompleted) waiting.complete(value);
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!waiting.isCompleted) waiting.completeError(error, stack);
+      },
+    );
+    try {
+      return await waiting.future;
+    } finally {
+      _waiting = null;
+    }
   }
 
   void checkCancelled() {
