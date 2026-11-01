@@ -24,13 +24,18 @@ container=(--device "$DEVICE" --domain-type appDataContainer --domain-identifier
 xcrun devicectl --timeout 60 device install app --device "$DEVICE" "$APP/build/ios/iphoneos/Runner.app"
 manifest_sha="$(shasum -a 256 "$VL_BUNDLE/vl_bundle.json" | awk '{print $1}')"
 remote_bundle="vision-bundle-${manifest_sha:0:12}"
+# The marker is copied only after the whole bundle, so an interrupted copy,
+# which can leave the small manifest behind, is copied again on the next run.
+printf '%s\n' "$manifest_sha" > "$OUT/bundle-complete"
 if xcrun devicectl --timeout 30 device copy from "${container[@]}" \
-  --source "Documents/$remote_bundle/vl_bundle.json" --destination "$OUT/remote-manifest.json" >/dev/null 2>&1 &&
-  cmp -s "$OUT/remote-manifest.json" "$VL_BUNDLE/vl_bundle.json"; then
+  --source "Documents/$remote_bundle.complete" --destination "$OUT/remote-complete" >/dev/null 2>&1 &&
+  cmp -s "$OUT/remote-complete" "$OUT/bundle-complete"; then
   echo 'Reusing device VL bundle; the loader will verify all payload hashes.'
 else
   xcrun devicectl --timeout 600 device copy to "${container[@]}" \
-    --source "$VL_BUNDLE" --destination "Documents/$remote_bundle"
+    --source "$VL_BUNDLE" --destination "Documents/$remote_bundle" --remove-existing-content true
+  xcrun devicectl --timeout 30 device copy to "${container[@]}" \
+    --source "$OUT/bundle-complete" --destination "Documents/$remote_bundle.complete"
 fi
 xcrun devicectl --timeout 30 device copy to "${container[@]}" --source "$IMAGE" --destination Documents/vision-input.image
 # Preserve the earlier text benchmark configuration. A missing configuration

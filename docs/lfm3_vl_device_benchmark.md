@@ -54,7 +54,9 @@ Set `PROMPT`, `EXPECTED`, `RUNS` (default 3), `WAIT_SECONDS` (default 600), or
 `OUT` to override the run. `BACKEND` accepts `cpu` or `gpu`. The default output
 is an ignored timestamped directory under `build/device_bench/vision/`.
 A bundle directory keyed by its manifest hash is retained on the phone for
-repeat runs; every model load still verifies the complete payload. The image is
+repeat runs once a completion marker, copied after the whole bundle, matches;
+an interrupted copy has no marker and is copied again, replacing what it left.
+Every model load still verifies the complete payload. The image is
 replaced per run. This script does not erase earlier benchmark model bundles.
 
 A missing or unfinished record is an interrupted measurement, not a valid
