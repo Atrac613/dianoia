@@ -152,7 +152,7 @@ final class LocalModel {
 /// a quantized CPU/Metal/Vulkan language backbone. Load and run it in an
 /// inference isolate: each vision layer performs synchronous CPU work.
 /// Prepare the checkpoint and quantized backbone with the import/vision-run
-/// tools before loading; ModelStore currently installs text models only.
+/// tools before loading, or install a prebuilt VL bundle with ModelStore.
 final class LocalVisionModel {
   LocalVisionModel._(this._runtime, this.backend);
   final VisionChatRuntime _runtime;

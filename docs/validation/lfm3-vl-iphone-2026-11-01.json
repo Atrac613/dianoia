@@ -1,0 +1,287 @@
+{
+  "date": "2026-11-01",
+  "device": {
+    "model": "iPhone 15 Pro Max",
+    "physical": true
+  },
+  "execution": "Flutter Release, worker isolate; fresh process per backend",
+  "benchmark_code_sha256": "4584c500dfd0f17dbb331e669b94540039479be5c48c5c18f7846bb2bb5e4379",
+  "checkpoint_revision": "ba44bd51db20a2753f28c273a1571ccaa210d954",
+  "source": "pack-vl Q8 bundle, same manifest and OCR PNG for both backends",
+  "measurements": [
+    {
+      "backend": "gpu",
+      "started": "2026-11-01T03:26:11.232911Z",
+      "os_version": "Version 26.7.2 (Build 23H128)",
+      "cores": 6,
+      "build": {
+        "mode": "release",
+        "git_head": "209eb1f8dfa209b01f5ef0aef469a4a74a17a97b",
+        "dirty": true,
+        "vision_bench_sha256": "4584c500dfd0f17dbb331e669b94540039479be5c48c5c18f7846bb2bb5e4379"
+      },
+      "raw_record_sha256": "0cf3b49555735481608c52fe23a37068e4ea24443cf65fcd8734f6b110f929bf",
+      "bundle_manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+      "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "image_width": 384,
+      "image_height": 192,
+      "finished": true,
+      "passed": true,
+      "load_s": 16.918497,
+      "image_decode_s": 0.020061,
+      "elapsed_s": 42.699755,
+      "fresh_first_text_median_s": 7.295586,
+      "subsequent_fresh_first_text_range_s": [
+        7.139828,
+        7.295586
+      ],
+      "fresh_decode_tokens_per_s_median": 17.351772483559195,
+      "memory_samples": 230,
+      "memory_start": {
+        "elapsed_s": 0.000298,
+        "phase": "loading",
+        "rss_bytes": 57458688,
+        "process_peak_rss_bytes": 57458688,
+        "physical_footprint_bytes": 48120584,
+        "gpu_live_buffers": 0,
+        "thermal_state": 0
+      },
+      "memory_after_close": {
+        "elapsed_s": 42.699757,
+        "phase": "done",
+        "rss_bytes": 863010816,
+        "process_peak_rss_bytes": 957988864,
+        "physical_footprint_bytes": 1035224584,
+        "gpu_live_buffers": 0,
+        "thermal_state": 1
+      },
+      "max_sampled_rss_bytes": 955744256,
+      "peak_process_rss_bytes": 957988864,
+      "max_sampled_physical_footprint_bytes": 1074103840,
+      "peak_live_gpu_buffers": 52,
+      "thermal_start": 0,
+      "thermal_end": 1,
+      "thermal_max": 1,
+      "turns": [
+        {
+          "case": "fresh_1",
+          "new_image": true,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 97,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 9.0387,
+          "first_text_s": 9.100053,
+          "decode_s": 0.176981,
+          "decode_tokens_per_s": 16.95097213825213,
+          "wall_s": 9.217866
+        },
+        {
+          "case": "fresh_2",
+          "new_image": true,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 97,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 7.084295,
+          "first_text_s": 7.139828,
+          "decode_s": 0.17138,
+          "decode_tokens_per_s": 17.5049597385926,
+          "wall_s": 7.255867
+        },
+        {
+          "case": "fresh_3",
+          "new_image": true,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 97,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 7.238341,
+          "first_text_s": 7.295586,
+          "decode_s": 0.172893,
+          "decode_tokens_per_s": 17.351772483559195,
+          "wall_s": 7.411405
+        },
+        {
+          "case": "follow_up",
+          "new_image": false,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 124,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 1.664689,
+          "first_text_s": 1.722649,
+          "decode_s": 0.172799,
+          "decode_tokens_per_s": 17.361211581085538,
+          "wall_s": 1.83797
+        }
+      ],
+      "dart_version": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"ios_arm64\""
+    },
+    {
+      "backend": "cpu",
+      "started": "2026-11-01T03:28:20.511397Z",
+      "os_version": "Version 26.7.2 (Build 23H128)",
+      "cores": 6,
+      "build": {
+        "mode": "release",
+        "git_head": "209eb1f8dfa209b01f5ef0aef469a4a74a17a97b",
+        "dirty": true,
+        "vision_bench_sha256": "4584c500dfd0f17dbb331e669b94540039479be5c48c5c18f7846bb2bb5e4379"
+      },
+      "raw_record_sha256": "d2b0e3e1cd5a4430c91637ed286f5c0f64ea4937baa889d9164446163461f6d8",
+      "bundle_manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+      "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "image_width": 384,
+      "image_height": 192,
+      "finished": true,
+      "passed": true,
+      "load_s": 16.814061,
+      "image_decode_s": 0.013991,
+      "elapsed_s": 45.443579,
+      "fresh_first_text_median_s": 8.215174,
+      "subsequent_fresh_first_text_range_s": [
+        8.199327,
+        8.3705
+      ],
+      "fresh_decode_tokens_per_s_median": 17.50567475623348,
+      "memory_samples": 228,
+      "memory_start": {
+        "elapsed_s": 0.000218,
+        "phase": "loading",
+        "rss_bytes": 59703296,
+        "process_peak_rss_bytes": 59703296,
+        "physical_footprint_bytes": 47923976,
+        "gpu_live_buffers": 0,
+        "thermal_state": 1
+      },
+      "memory_after_close": {
+        "elapsed_s": 45.44358,
+        "phase": "done",
+        "rss_bytes": 904871936,
+        "process_peak_rss_bytes": 2863644672,
+        "physical_footprint_bytes": 1012631000,
+        "gpu_live_buffers": 0,
+        "thermal_state": 1
+      },
+      "max_sampled_rss_bytes": 2855927808,
+      "peak_process_rss_bytes": 2863644672,
+      "max_sampled_physical_footprint_bytes": 1033455088,
+      "peak_live_gpu_buffers": 0,
+      "thermal_start": 1,
+      "thermal_end": 1,
+      "thermal_max": 1,
+      "turns": [
+        {
+          "case": "fresh_1",
+          "new_image": true,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 97,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 8.151993,
+          "first_text_s": 8.215174,
+          "decode_s": 0.179231,
+          "decode_tokens_per_s": 16.738175873593296,
+          "wall_s": 8.332119
+        },
+        {
+          "case": "fresh_2",
+          "new_image": true,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 97,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 8.142314,
+          "first_text_s": 8.199327,
+          "decode_s": 0.170269,
+          "decode_tokens_per_s": 17.619179063716825,
+          "wall_s": 8.312643
+        },
+        {
+          "case": "fresh_3",
+          "new_image": true,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 97,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 8.313474,
+          "first_text_s": 8.3705,
+          "decode_s": 0.171373,
+          "decode_tokens_per_s": 17.50567475623348,
+          "wall_s": 8.484925
+        },
+        {
+          "case": "follow_up",
+          "new_image": false,
+          "text": "東京 123",
+          "expected_text_matches": true,
+          "prompt_tokens": 124,
+          "reused_tokens": 0,
+          "generated_tokens": 3,
+          "prefill_s": 3.286298,
+          "first_text_s": 3.343153,
+          "decode_s": 0.176737,
+          "decode_tokens_per_s": 16.974374352851978,
+          "wall_s": 3.463196
+        }
+      ],
+      "dart_version": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"ios_arm64\""
+    }
+  ],
+  "caveats": [
+    "One three-token OCR continuation, three fresh images and one follow-up per backend; not a sustained decode benchmark.",
+    "File caches and power conditions were not controlled; Metal started thermal state 0 and ended 1, CPU ran at state 1.",
+    "Physical footprint is sampled and may miss synchronous peaks; RSS high-water is process lifetime, not total system/GPU residency.",
+    "After-close Dart heap was not forced through GC. GPU buffers returned to zero; no long-run leak conclusion.",
+    "Android was not connected and was not measured."
+  ],
+  "verification": {
+    "dart_format": "clean",
+    "dart_analyze": "no issues",
+    "device_app_flutter_analyze": "no issues",
+    "dart_tests": {
+      "passed": 180,
+      "skipped": 0
+    },
+    "python_comparison_tests_passed": 5,
+    "shell_syntax": "bash -n passed",
+    "lab_parity": {
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "CPU Q8",
+        "Metal Q8",
+        "Metal Q4"
+      ],
+      "files": [
+        "hidden.f32",
+        "logits.f32",
+        "gen.i32",
+        "gen_logits.f32"
+      ],
+      "all_byte_identical": true
+    },
+    "aot_desktop_cli": {
+      "passed": true,
+      "backend": "Metal Q8",
+      "fresh_runs": 1,
+      "fresh_and_followup_text": "東京 123"
+    }
+  }
+}

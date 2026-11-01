@@ -47,6 +47,11 @@
 ///       Runs one raw RGB image and dumps encoder stages, prompt IDs, logits
 ///       and greedy output for real-checkpoint comparison.
 ///
+///   dianoia vision-bench --bundle=DIR --image=FILE --prompt=TEXT --out=FILE.json
+///       [--backend=cpu|gpu|auto --runs=3 --max-new=32 --max-seq=512]
+///       Measures verified load, decode, fresh image turns, visual follow-up,
+///       first text latency and process memory. Optional --expected=TEXT.
+///
 ///   dianoia toolbench --model=DIR --cases=FILE [--weights=... --gpu]
 ///       Asks each case of FILE (example/tool_cases.json) greedily with its
 ///       tools and checks the tool call against the expected name and
@@ -120,6 +125,7 @@ Future<void> main(List<String> args) async {
     'import-gguf': _importGguf,
     'import-vl-backbone': _importVlBackbone,
     'vision-run': _visionRun,
+    'vision-bench': _visionBench,
     'pack-vl': _packVl,
     'toolbench': _toolbench,
     'chatbench': _chatbench,
@@ -127,7 +133,7 @@ Future<void> main(List<String> args) async {
   final command = args.isEmpty ? null : commands[args.first];
   if (command == null) {
     stderr.writeln(
-      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|pack-vl|toolbench|chatbench '
+      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|vision-bench|pack-vl|toolbench|chatbench '
       '--key=value ...',
     );
     exitCode = 2;
@@ -681,6 +687,31 @@ Future<int> _visionRun(Map<String, String> flags) async {
     await model.close();
   }
   return 0;
+}
+
+Future<int> _visionBench(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final output = File(require('out'));
+  if (FileSystemEntity.typeSync(output.path, followLinks: false) !=
+      FileSystemEntityType.notFound) {
+    throw ArgumentError('--out must be a new file');
+  }
+  output.parent.createSync(recursive: true);
+  final record = await benchmarkVisionBundle(
+    bundle: require('bundle'),
+    imagePath: require('image'),
+    prompt: require('prompt'),
+    backend: InferenceBackend.values.byName(flags['backend'] ?? 'gpu'),
+    contextLength: int.parse(flags['max-seq'] ?? '512'),
+    threads: int.parse(flags['native-threads'] ?? '4'),
+    maxNewTokens: int.parse(flags['max-new'] ?? '32'),
+    runs: int.parse(flags['runs'] ?? '3'),
+    expectedText: flags['expected'],
+    log: stdout.writeln,
+    onRecord: (r) =>
+        output.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(r)),
+  );
+  return record['passed'] == true ? 0 : 1;
 }
 
 Future<int> _packVl(Map<String, String> flags) async {

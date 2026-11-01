@@ -8,8 +8,9 @@ each conversation. `ChatTurn` is the same result type used by text chat.
 The language backbone can run on CPU, Metal or Vulkan where the existing engine
 supports it. The vision encoder/projector currently uses the float32 CPU
 reference implementation. Public-API OCR and follow-up tests have run on macOS
-CPU and Metal. Phone memory/latency and Vulkan vision conversations are not yet
-validated. Run loading and inference in a single worker isolate: each vision
+CPU and Metal. Initial physical iPhone timing/memory results are recorded in
+the [device report](lfm3_vl_iphone_validation_2026-11-01.md); Android/Vulkan vision
+conversations remain unvalidated. Run loading and inference in a single worker isolate: each vision
 layer performs synchronous CPU work, yielding between layers for cancellation.
 
 ## Prepare local files

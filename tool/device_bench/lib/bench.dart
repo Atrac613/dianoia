@@ -60,6 +60,28 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
       ? (jsonDecode(configFile.readAsStringSync()) as Map)
             .cast<String, Object?>()
       : const <String, Object?>{};
+  if (config['mode'] == 'vision') {
+    final output = File('$docs/bench/vision-latest.json');
+    output.parent.createSync(recursive: true);
+    return benchmarkVisionBundle(
+      bundle: '$docs/${config['bundle'] as String}',
+      imagePath: '$docs/${config['image'] as String}',
+      prompt: config['prompt'] as String,
+      backend: InferenceBackend.values.byName(
+        config['backend'] as String? ?? 'gpu',
+      ),
+      contextLength: (config['context_length'] as num?)?.toInt() ?? 512,
+      threads: (config['threads'] as num?)?.toInt() ?? 4,
+      maxNewTokens: (config['max_new_tokens'] as num?)?.toInt() ?? 32,
+      runs: (config['runs'] as num?)?.toInt() ?? 3,
+      expectedText: config['expected_text'] as String?,
+      log: log,
+      onRecord: (r) {
+        r['build'] = config['build'];
+        output.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(r));
+      },
+    );
+  }
   final bundle = config['bundle'] as String? ?? 'LFM3-1.7B-device';
   final weights = WeightFormat.values.byName(
     config['weights'] as String? ?? 'q8',

@@ -197,8 +197,9 @@ preprocessing differences cannot silently pass.
 
 1. Broaden evaluation beyond one photograph and two clean OCR cards, including
    varied scenes, documents, small text and multi-image prompts.
-2. Optimize the vision encoder/projector with native or GPU execution and measure
-   memory, latency and sustained behavior on target devices.
+2. Optimize the vision encoder/projector with native or GPU execution and broaden
+   target-device evaluation. `vision-bench` and the device app now record public-API
+   timings and process memory; see the [benchmark guide](lfm3_vl_device_benchmark.md).
 3. Publish a hosted VL catalog entry.
    Standalone Q8/Q4 packaging is implemented by `pack-vl` and
    `LocalVisionModel.loadBundle`; `VisionModelSpec.fromManifest` and

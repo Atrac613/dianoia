@@ -23,6 +23,8 @@ Use `ChatImage.encoded` or `ChatImage.fromFile` for still PNG/JPEG inputs.
 the [Q8 bundle report](docs/lfm3_vl_bundle_2026-11-01.md) records size and parity.
 The [integration notes](docs/lfm3_vl_support.md) cover the reference encoder and
 `vision-run` validation command. Image encoding currently runs on the CPU.
+Use [`vision-bench`](docs/lfm3_vl_device_benchmark.md) for timing and process-memory
+measurements on desktop or the dedicated iPhone benchmark app.
 
 ## What runs where
 
