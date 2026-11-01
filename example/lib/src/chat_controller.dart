@@ -31,6 +31,10 @@ final class ChatMessage {
 enum Setup { starting, needsModel, installing, loading, ready, failed }
 
 class ChatController extends ChangeNotifier {
+  ChatController({this.model = ModelSpec.lfm3Q4});
+
+  final ModelSpec model;
+  bool _disposed = false;
   final messages = <ChatMessage>[];
 
   Setup setup = Setup.starting;
@@ -51,7 +55,6 @@ class ChatController extends ChangeNotifier {
   bool replying = false;
 
   SendPort? _commands;
-  Isolate? _worker;
   ReceivePort? _events;
 
   bool get ready => setup == Setup.ready;
@@ -59,10 +62,20 @@ class ChatController extends ChangeNotifier {
   Future<void> start() async {
     final events = _events = ReceivePort();
     events.listen((event) => _handle(event as ChatEvent));
-    _worker = await Isolate.spawn(runChatWorker, (
-      events.sendPort,
-      await _modelLocation(),
-    ));
+    try {
+      final location = await _modelLocation();
+      if (_disposed) {
+        events.close();
+        return;
+      }
+      await Isolate.spawn(runChatWorker, (events.sendPort, location, model));
+    } catch (e) {
+      events.close();
+      if (_disposed) return;
+      setup = Setup.failed;
+      status = '$e';
+      notifyListeners();
+    }
   }
 
   /// Downloads and builds the model: only when the user asked to.
@@ -99,6 +112,14 @@ class ChatController extends ChangeNotifier {
   }
 
   void _handle(ChatEvent event) {
+    if (_disposed) {
+      // Isolate.spawn may complete after the route has already been popped.
+      if (event case WorkerStarted(:final commands)) {
+        commands.send(const CloseWorker());
+        _events?.close();
+      }
+      return;
+    }
     switch (event) {
       case WorkerStarted(:final commands):
         _commands = commands;
@@ -143,8 +164,11 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  static Future<ModelLocation> _modelLocation() async {
-    const name = 'LFM3-1.7B-QAD-Q4';
+  Future<ModelLocation> _modelLocation() async {
+    // Keep the existing developer sideload path for LFM3.
+    final name = model.id == ModelSpec.lfm3Q4.id
+        ? 'LFM3-1.7B-QAD-Q4'
+        : model.id;
     if (Platform.isWindows) {
       // The support directory is in the roaming profile, which is no place
       // for a 1 GB model, and Documents is the user's own folder: keep both
@@ -174,8 +198,14 @@ class ChatController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _worker?.kill(priority: Isolate.immediate);
-    _events?.close();
+    _disposed = true;
+    final commands = _commands;
+    if (commands != null) {
+      commands.send(const CloseWorker());
+      _events?.close();
+    }
+    // Without a command port yet, keep listening for WorkerStarted so a
+    // worker that is still starting can also shut down cleanly.
     super.dispose();
   }
 }

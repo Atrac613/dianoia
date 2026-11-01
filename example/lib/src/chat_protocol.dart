@@ -60,6 +60,11 @@ final class CancelInstall extends ChatCommand {
   const CancelInstall();
 }
 
+/// Stops pending work and releases the model before the worker exits.
+final class CloseWorker extends ChatCommand {
+  const CloseWorker();
+}
+
 // Worker to UI.
 
 sealed class ChatEvent {

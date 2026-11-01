@@ -17,46 +17,64 @@ const _system =
 /// `--dart-define=DIANOIA_MODEL_MIRROR=URL` fetches the model from a mirror
 /// (example/tool/serve_model.dart, say) instead of Hugging Face.
 const _mirror = String.fromEnvironment('DIANOIA_MODEL_MIRROR');
-final _spec = _mirror.isEmpty
-    ? ModelSpec.lfm3Q4
-    : ModelSpec.lfm3Q4.fromMirror(_mirror);
 
-/// The worker isolate's entry point.
-Future<void> runChatWorker((SendPort, ModelLocation) args) async {
-  final (out, location) = args;
+/// The worker isolate's entry point, with the model selected by the UI.
+Future<void> runChatWorker((SendPort, ModelLocation, ModelSpec) args) async {
+  final (out, location, selected) = args;
+  final spec = _mirror.isEmpty ? selected : selected.fromMirror(_mirror);
   final store = ModelStore(location.storeDir);
   final commands = ReceivePort();
   out.send(WorkerStarted(commands.sendPort));
 
   ChatSession? session;
+  LocalModel? model;
+  Future<void>? loading, replying;
+  var closing = false;
   StreamSubscription<InstallProgress>? install;
   var stopRequested = false;
 
   Future<void> open(String dir) async {
     out.send(const WorkerProgress('Loading the model…'));
     try {
-      final model = await LocalModel.load(dir);
-      final chat = model.chat(system: _system);
+      final loaded = await LocalModel.load(dir);
+      model = loaded;
+      if (closing) return;
+      final chat = loaded.chat(system: _system);
       await chat.warmUp();
       session = chat;
-      out.send(WorkerReady(model.backend.name.toUpperCase()));
+      if (!closing) out.send(WorkerReady(loaded.backend.name.toUpperCase()));
     } catch (e) {
       out.send(WorkerFailed('$e'));
     }
   }
 
+  Future<void> close() async {
+    closing = true;
+    stopRequested = true;
+    try {
+      await install?.cancel();
+      await loading;
+      await replying;
+      await model?.close();
+    } finally {
+      commands.close();
+      Isolate.exit();
+    }
+  }
+
   commands.listen((command) {
+    if (closing) return;
     switch (command as ChatCommand) {
       case SendMessage(:final text):
         stopRequested = false;
-        unawaited(_reply(session!, text, out, () => stopRequested));
+        replying = _reply(session!, text, out, () => stopRequested);
       case StopReply():
         stopRequested = true;
       case NewChat():
         session?.clear();
       case InstallModel():
         install ??= store
-            .install(_spec)
+            .install(spec)
             .listen(
               (p) => out.send(InstallUpdate(p.stage, p.bytes, p.totalBytes)),
               onError: (Object e) {
@@ -64,25 +82,27 @@ Future<void> runChatWorker((SendPort, ModelLocation) args) async {
                 out.send(InstallFailed('$e'));
               },
               onDone: () {
-                if (install == null) return; // failed
+                if (install == null || closing) return; // failed or leaving
                 install = null;
-                unawaited(open(store.bundlePath(_spec)));
+                loading = open(store.bundlePath(spec));
               },
             );
       case CancelInstall():
         unawaited(install?.cancel());
         install = null;
-        out.send(ModelNeeded(_spec));
+        out.send(ModelNeeded(spec));
+      case CloseWorker():
+        unawaited(close());
     }
   });
 
   final sideLoaded = _sideLoaded(location, out);
   if (sideLoaded != null) {
-    await open(sideLoaded);
-  } else if (store.isInstalled(_spec)) {
-    await open(store.bundlePath(_spec));
+    await (loading = open(sideLoaded));
+  } else if (store.isInstalled(spec)) {
+    await (loading = open(store.bundlePath(spec)));
   } else {
-    out.send(ModelNeeded(_spec));
+    out.send(ModelNeeded(spec));
   }
 }
 

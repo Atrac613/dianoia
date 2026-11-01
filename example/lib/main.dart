@@ -1,37 +1,17 @@
-/// A simple chat with LFM3, run on this device by dianoia.
+/// A simple chat with an on-device model selected at launch.
 ///
-/// The model bundle (`LFM3-1.7B-QAD-Q4`, written by `dianoia import-gguf`)
-/// goes into the app's documents; see README.md.
+/// Model bundles can be downloaded in the app or copied into the app's
+/// documents; see README.md.
 library;
 
 import 'package:flutter/material.dart';
 
-import 'src/chat_controller.dart';
-import 'src/chat_page.dart';
+import 'src/model_selection_page.dart';
 
 void main() => runApp(const DianoiaExampleApp());
 
-class DianoiaExampleApp extends StatefulWidget {
+class DianoiaExampleApp extends StatelessWidget {
   const DianoiaExampleApp({super.key});
-
-  @override
-  State<DianoiaExampleApp> createState() => _DianoiaExampleAppState();
-}
-
-class _DianoiaExampleAppState extends State<DianoiaExampleApp> {
-  final _chat = ChatController();
-
-  @override
-  void initState() {
-    super.initState();
-    _chat.start();
-  }
-
-  @override
-  void dispose() {
-    _chat.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -41,6 +21,6 @@ class _DianoiaExampleAppState extends State<DianoiaExampleApp> {
       colorSchemeSeed: Colors.indigo,
       brightness: Brightness.dark,
     ),
-    home: ChatPage(controller: _chat),
+    home: const ModelSelectionPage(),
   );
 }
