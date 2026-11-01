@@ -16,6 +16,10 @@ dispatch per Dart call.
 > internals with no stability promise. Planned: LFM3 audio and general GGUF
 > models.
 
+Experimental LFM3-VL image inference is available through the lab APIs and
+`vision-run` validation command; see the [integration notes](docs/lfm3_vl_support.md).
+The app-facing chat API remains text-only.
+
 ## What runs where
 
 | Target | CPU kernels | GPU | Measured (LFM3-1.7B, QAD Q4_0, GPU) |

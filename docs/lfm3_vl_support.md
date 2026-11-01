@@ -1,8 +1,8 @@
 # LFM3-VL-2B integration
 
-Status: implementation in progress. Importing the VL language backbone is
-supported; a CPU reference vision encoder is implemented. The lab API connects image embeddings to VL prompts. Public image chat and
-optimized vision inference are not implemented.
+Status: experimental lab support. Real-checkpoint RGB-to-answer smoke checks
+pass for CPU float32 and a CPU vision encoder with Q8/Metal language inference.
+Public image chat and optimized vision inference are not implemented.
 
 ## Verified upstream structure
 
@@ -58,7 +58,8 @@ dart run dianoia import-vl-backbone --model=/path/to/LFM3-VL-2B \
 The importer validates every required language tensor's name, shape, dtype and
 byte range, then writes the original tensor bytes under engine language names.
 It copies only the language backbone, tokenizer and nested text config, retaining
-the original config as `vl_config.json`. Vision weights remain in the source.
+the original config as `vl_config.json`. It also writes `vl_backbone.json` with
+source and output cache fingerprints for the validation command. Vision weights remain in the source.
 Output is published after the copy completes; existing output is rejected.
 Copying uses a 1 MiB buffer rather than materializing large tensors in memory.
 The output is a full-weight checkpoint, not a quantized device bundle: existing
@@ -68,8 +69,8 @@ backbone comparisons; the text-only chat renderer is not a VL chat template.
 Tests compare imported BF16 bytes and CPU logits against a canonical miniature
 checkpoint containing all three language layer types, and check truncated or
 incomplete input rejection. Actual checkpoint metadata was inspected at revision
-`ba44bd51db20a2753f28c273a1571ccaa210d954`; full VL-weight inference remains
-unverified. Only the official single-file checkpoint layout is supported.
+`ba44bd51db20a2753f28c273a1571ccaa210d954`; real VL-weight inference results are recorded in
+[the validation report](lfm3_vl_validation_2026-11-01.md). Only the official single-file checkpoint layout is supported.
 
 ## RGB image preprocessing
 
@@ -170,19 +171,33 @@ sequence also exercises Q8 embedding lookup after cache reload. It exposed a
 crash in temporary external typed-view reads under the Dart 3.13.5 JIT; direct
 native-pointer reads preserve the lookup arithmetic and pass this regression.
 
+## Real-checkpoint validation tools
+
+See [the 2026-11-01 validation report](lfm3_vl_validation_2026-11-01.md) for
+reproduction commands, checkpoint identity, numerical bounds and measured results.
+The `vision-run` CLI accepts a decoded RGB file and a newly imported backbone,
+checks the import fingerprints, and dumps preprocessing, every vision stage,
+prompt IDs, prefill/decode logits and generated token IDs. The fingerprints use
+the existing cache policy (safetensors header/size and config), not a cryptographic
+hash of the tensor payload. The recorded checkpoint was separately verified
+against its upstream LFS SHA-256.
+
+`tool/vision_reference.py` creates matching dumps with the checkpoint's actual
+Hugging Face processor and model, CPU float32 eager attention and greedy decoding.
+`tool/vision_compare.py` requires exact preprocessing, IDs and generated tokens,
+with explicit numerical bounds for vision and language outputs. Quantized logit
+bounds can be set separately without weakening encoder checks. Five Python tests
+ensure incomplete evidence, changed tokens, nonfinite/truncated features and
+preprocessing differences cannot silently pass.
+
 ## Remaining integration
 
-1. Compare the imported real VL backbone's intermediate outputs against upstream
-   inference, including projected input embeddings.
-2. Compare the full-size vision encoder and projector against upstream using
-   real VL weights, then optimize native/GPU execution.
-3. Compare complete image-conditioned prompts, logits and generated answers
-   against the upstream real VL model.
-4. Add a downloadable model specification and public image chat API after
-   end-to-end parity. Add video after single-image correctness.
+1. Extend real-model validation to natural images, OCR and Japanese prompts.
+2. Optimize the vision encoder/projector with native or GPU execution and measure
+   memory, latency and sustained behavior on target devices.
+3. Add a downloadable model specification and public image chat API, including
+   generation and cancellation. Add video after single-image correctness.
 
-Metadata tests validate the published VL configuration and rejection of
-unsupported or inconsistent configurations. Existing Q4 language-model tests
-exercise embedding replacement across chunk
-boundaries and protection against text-only prefix reuse. The separate encoder tests validate synthetic CPU arithmetic; real-model image
-understanding and VL model quality remain unverified.
+Metadata and synthetic operator tests remain fast automated checks. The separate
+real-checkpoint runs validate three known synthetic color/spatial cases; they do
+not establish general image-answer accuracy or phone performance.
