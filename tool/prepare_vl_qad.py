@@ -6,22 +6,37 @@ reassemble the two F16 temporal patchifier slices as exact F32 values.
 No training or matrix requantization is performed here.
 """
 from __future__ import annotations
+
 import argparse
 import json
 import math
-from pathlib import Path
 import re
 import shutil
 import struct
+from pathlib import Path
+from typing import Any
 
 
 def read_gguf(path: Path) -> dict:
+    """Reads a GGUF v3 file's metadata and tensor table.
+
+    Args:
+        path: The GGUF file.
+
+    Returns:
+        A dict with 'metadata' (arrays kept as their lengths), 'data_start'
+        (the aligned offset of the tensor data) and 'tensors' (name, dims
+        with the fastest first, type id and offset).
+    """
     with path.open('rb') as f:
-        def read(fmt: str):
+        def read(fmt: str) -> Any:
+            """One little-endian value of struct format fmt."""
             return struct.unpack('<' + fmt, f.read(struct.calcsize('<' + fmt)))[0]
         def string() -> str:
+            """A length-prefixed UTF-8 string."""
             return f.read(read('Q')).decode()
-        def value(t: int):
+        def value(t: int) -> Any:
+            """A metadata value of type t; arrays are skipped."""
             if t == 8:
                 return string()
             if t == 9:
@@ -49,6 +64,7 @@ def read_gguf(path: Path) -> dict:
 
 
 def canonical(name: str) -> str:
+    """The Hugging Face name of an mmproj vision or projector tensor."""
     projector = {'mm.0': 'linear_1', 'mm.2': 'linear_2', 'mm.input_norm': 'layer_norm'}
     for prefix, target in projector.items():
         if name.startswith(prefix + '.'):
@@ -69,6 +85,7 @@ def canonical(name: str) -> str:
 
 
 def main() -> None:
+    """Writes the unpacked vision checkpoint to --out."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mmproj', type=Path, required=True)
     parser.add_argument('--config', type=Path, required=True)
