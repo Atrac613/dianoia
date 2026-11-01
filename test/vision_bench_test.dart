@@ -103,6 +103,18 @@ void main() {
     );
   });
 
+  test(
+    'a differently worded follow-up does not fail the fresh turns',
+    () async {
+      final fresh = ((await run())['turns'] as List).cast<Map>();
+      expect(fresh.last['text'], isNot(fresh.first['text']));
+      final record = await run(expected: fresh.first['text'] as String);
+      final turns = (record['turns'] as List).cast<Map>();
+      expect(turns.map((t) => t['expected_text_matches']), [true, true, false]);
+      expect(record['passed'], isTrue);
+    },
+  );
+
   test('decode failure records an error and closes the loaded model', () async {
     Map<String, Object?>? finalRecord;
     await expectLater(

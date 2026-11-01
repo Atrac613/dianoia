@@ -26,8 +26,10 @@ The output must be a new file. Use `--backend=cpu` for a CPU process and
 [image token budget](vision_chat_api.md#image-token-budget), 1024 by default;
 the record keeps the request and the budget in effect. Quantization comes from the
 bundle; it is not rebuilt. Without `--expected`, matching fresh answers is a
-repeatability check, not evidence of answer correctness. The command returns
-nonzero on a quality mismatch or an exception.
+repeatability check, not evidence of answer correctness. `--expected` grades
+the fresh turns; the follow-up's match is recorded but not graded, since it may
+restate its earlier answer in other words. The command returns nonzero on a
+quality mismatch or an exception.
 
 ## Physical iPhone
 

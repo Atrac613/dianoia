@@ -167,9 +167,11 @@ Future<Map<String, Object?>> benchmarkVisionBundle({
     last.clear();
     record['fresh_answers_identical'] =
         turns.take(runs).map((t) => t['text']).toSet().length == 1;
+    // The follow-up asks again after its own answer and may rightly word it
+    // differently, so its match is recorded but not graded.
     record['passed'] =
         record['fresh_answers_identical'] == true &&
-        turns.every((t) => t['expected_text_matches'] != false);
+        turns.take(runs).every((t) => t['expected_text_matches'] != false);
   } catch (error) {
     record['error'] = '$error';
     rethrow;
