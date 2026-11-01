@@ -48,8 +48,10 @@ Raw tensors, images, downloaded implementation files, weights and caches remain
 under ignored `build/vl-validation/` and are not committed.
 
 This establishes the complete connection for these three known color/spatial
-cases. Natural photographs, OCR, Japanese answers, multi-image reasoning and
-phone latency/quality have not been evaluated. Single-run timings are diagnostic
+cases. This initial run did not cover natural photographs, OCR, Japanese answers,
+multi-image reasoning or phone latency/quality. A subsequent
+[natural-image/OCR/Japanese follow-up](lfm3_vl_extended_validation_2026-11-01.md)
+adds one photograph and two OCR cards. Single-run timings are diagnostic
 observations, not a sustained performance benchmark.
 
 ## Reproduction

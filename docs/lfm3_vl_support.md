@@ -173,7 +173,8 @@ native-pointer reads preserve the lookup arithmetic and pass this regression.
 
 ## Real-checkpoint validation tools
 
-See [the 2026-11-01 validation report](lfm3_vl_validation_2026-11-01.md) for
+See [the initial validation report](lfm3_vl_validation_2026-11-01.md) and
+[the natural-image/OCR/Japanese follow-up](lfm3_vl_extended_validation_2026-11-01.md) for
 reproduction commands, checkpoint identity, numerical bounds and measured results.
 The `vision-run` CLI accepts a decoded RGB file and a newly imported backbone,
 checks the import fingerprints, and dumps preprocessing, every vision stage,
@@ -192,12 +193,14 @@ preprocessing differences cannot silently pass.
 
 ## Remaining integration
 
-1. Extend real-model validation to natural images, OCR and Japanese prompts.
+1. Broaden evaluation beyond one photograph and two clean OCR cards, including
+   varied scenes, documents, small text and multi-image prompts.
 2. Optimize the vision encoder/projector with native or GPU execution and measure
    memory, latency and sustained behavior on target devices.
 3. Add a downloadable model specification and public image chat API, including
    generation and cancellation. Add video after single-image correctness.
 
 Metadata and synthetic operator tests remain fast automated checks. The separate
-real-checkpoint runs validate three known synthetic color/spatial cases; they do
-not establish general image-answer accuracy or phone performance.
+real-checkpoint runs validate three synthetic color/spatial cases and four
+natural-image/OCR/Japanese prompts. They do not establish general image-answer
+accuracy or phone performance.
