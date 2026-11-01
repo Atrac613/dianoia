@@ -628,6 +628,7 @@ final class ModelStore {
             if (cancelled) return;
             downloads.renameSync(bundlePath(model));
           } else if (model is VisionGgufSpec) {
+            _removeStaging('$directory/${model.id}');
             final partial = Directory('${bundlePath(model)}.partial');
             try {
               if (partial.existsSync()) partial.deleteSync(recursive: true);
@@ -639,6 +640,7 @@ final class ModelStore {
               if (partial.existsSync()) partial.deleteSync(recursive: true);
             }
           } else if (model is VisionCheckpointSpec) {
+            _removeStaging('$directory/${model.id}');
             final partial = Directory('${bundlePath(model)}.partial');
             try {
               await _buildVision(
@@ -682,6 +684,18 @@ final class ModelStore {
       },
     );
     return out.stream;
+  }
+
+  /// Deletes the randomly named staging directories that a VL build of a
+  /// killed process left in [modelDir]; its finally blocks never ran.
+  /// Only one install of a model runs at a time, so none is in use.
+  static void _removeStaging(String modelDir) {
+    for (final entry in Directory(modelDir).listSync(followLinks: false)) {
+      final name = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (entry is Directory && name.startsWith('.dianoia-vl-')) {
+        entry.deleteSync(recursive: true);
+      }
+    }
   }
 
   static Future<void> _buildQad(

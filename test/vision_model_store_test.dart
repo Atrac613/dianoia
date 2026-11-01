@@ -287,8 +287,14 @@ void main() {
       Directory('${store.bundlePath(invalid)}.partial.backbone').existsSync(),
       isFalse,
     );
+    // What a killed process's build leaves: its finally blocks never ran.
+    final stale = Directory(
+      '${store.directory}/${checkpoint.id}/.dianoia-vl-bundle-killed',
+    )..createSync(recursive: true);
+    File('${stale.path}/model.safetensors').writeAsStringSync('stale');
     await store.install(checkpointSpec()).drain<void>();
     expect(store.isInstalled(checkpoint), isTrue);
+    expect(stale.existsSync(), isFalse);
   });
 
   test('upstream checkpoint catalog and path validation', () {
