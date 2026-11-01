@@ -9,6 +9,11 @@ over while keeping the system prompt's state. The model runs on the GPU
 kernels when there is no usable GPU, in a worker isolate so the UI never
 waits on it.
 
+The root screen lists the supported models with their download sizes and
+licenses (currently LFM3-1.7B QAD Q4_0). Selecting a model opens its chat and
+loads it if already installed. Back returns to model selection and releases
+the chat worker; opening a model again starts a fresh conversation.
+
 The model is not bundled. Without one the app offers to download it,
 naming its size (1.07 GB) and license; `ModelStore.install` then fetches
 Liquid's published files from Hugging Face, checks each one's SHA-256,
@@ -41,6 +46,7 @@ which the app's main manifest declares.
 | `lib/src/chat_worker.dart` | The worker isolate: installs and loads the model, and answers through `ChatSession.send(onText:)` |
 | `lib/src/chat_protocol.dart` | The messages between the UI and the worker |
 | `lib/src/chat_controller.dart` | The UI-side state, a `ChangeNotifier` |
+| `lib/src/model_selection_page.dart` | The root model list and ownership of the selected chat worker |
 | `lib/src/model_setup.dart` | The download offer and its progress |
 | `lib/src/chat_page.dart`, `message_bubble.dart` | The screen |
 

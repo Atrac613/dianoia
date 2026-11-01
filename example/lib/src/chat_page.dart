@@ -52,7 +52,9 @@ class _ChatPageState extends State<ChatPage> {
     builder: (context, _) => Scaffold(
       appBar: AppBar(
         title: Text(
-          _chat.backend == null ? 'Dianoia' : 'LFM3 · ${_chat.backend}',
+          _chat.backend == null
+              ? _chat.model.name
+              : '${_chat.model.name} · ${_chat.backend}',
         ),
         actions: [
           IconButton(
