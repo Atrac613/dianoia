@@ -38,7 +38,7 @@ void importVlBackbone(String modelDir, String outDir) {
   final st = SafetensorsFile.open(source.path);
   Directory? staging;
   try {
-    final shapes = _languageShapes(config.text);
+    final shapes = lfm3LanguageTensorShapes(config.text);
     final names = {
       for (final name in shapes.keys)
         Lfm3VlConfig.languageTensorName(name): name,
@@ -97,7 +97,8 @@ void importVlBackbone(String modelDir, String outDir) {
   }
 }
 
-Map<String, List<int>> _languageShapes(Lfm3Config c) {
+/// Canonical language tensor names and shapes, shared by import and packing.
+Map<String, List<int>> lfm3LanguageTensorShapes(Lfm3Config c) {
   final h = c.hiddenSize;
   final shapes = <String, List<int>>{
     'model.embed_tokens.weight': [c.vocabSize, h],

@@ -22,7 +22,8 @@ final class Lfm3VisionEncoder {
     final st = SafetensorsFile.open('$modelDir/model.safetensors');
     try {
       return Lfm3VisionEncoder._(c, {
-        for (final e in _shapes(c).entries) e.key: st.readF32(e.key, e.value),
+        for (final e in lfm3VisionTensorShapes(c).entries)
+          e.key: st.readF32(e.key, e.value),
       });
     } finally {
       st.close();
@@ -340,7 +341,8 @@ double _erf(double value) {
   return value < 0 ? -result : result;
 }
 
-Map<String, List<int>> _shapes(Lfm3VlConfig config) {
+/// Required vision/projector checkpoint tensor names and shapes for I/O.
+Map<String, List<int>> lfm3VisionTensorShapes(Lfm3VlConfig config) {
   final c = config.vision;
   final h = c.hiddenSize;
   const v = Lfm3VlConfig.visionPrefix, p = Lfm3VlConfig.projectorPrefix;

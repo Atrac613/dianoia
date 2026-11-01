@@ -35,6 +35,9 @@ Future<void> prepareVisionFixture(Directory root) async {
   });
   File('${source.path}/config.json').writeAsStringSync(jsonEncode(config));
   writeSyntheticTokenizer(source.path);
+  File(
+    '${source.path}/LICENSE',
+  ).writeAsStringSync('Synthetic test weights generated at runtime.\n');
   final processor =
       jsonDecode(
             File(

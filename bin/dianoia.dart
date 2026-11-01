@@ -35,7 +35,12 @@
 ///
 ///   dianoia import-vl-backbone --model=VL_DIR --out=NEW_DIR
 ///       Copies the VL language backbone into standalone engine layout;
-///       retains vl_config.json, with image inference still pending.
+///       retains vl_config.json for matching vision inference.
+///
+///   dianoia pack-vl --model=VL_DIR --backbone=IMPORTED_DIR --out=NEW_DIR
+///       [--weights=q8|q4]
+///       Packs a standalone VL directory with unchanged vision/embedding bytes,
+///       native language cache and a per-file SHA-256 manifest.
 ///
 ///   dianoia vision-run --model=VL_DIR --backbone=IMPORTED_DIR --rgb=FILE
 ///       --height=H --width=W --prompt=TEXT --out=NEW_DIR [--weights=f32 --gpu]
@@ -115,13 +120,14 @@ Future<void> main(List<String> args) async {
     'import-gguf': _importGguf,
     'import-vl-backbone': _importVlBackbone,
     'vision-run': _visionRun,
+    'pack-vl': _packVl,
     'toolbench': _toolbench,
     'chatbench': _chatbench,
   };
   final command = args.isEmpty ? null : commands[args.first];
   if (command == null) {
     stderr.writeln(
-      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|toolbench|chatbench '
+      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|pack-vl|toolbench|chatbench '
       '--key=value ...',
     );
     exitCode = 2;
@@ -674,6 +680,24 @@ Future<int> _visionRun(Map<String, String> flags) async {
   } finally {
     await model.close();
   }
+  return 0;
+}
+
+Future<int> _packVl(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  _loadNative(flags, needed: true);
+  final output = require('out');
+  await packVlBundle(
+    require('model'),
+    require('backbone'),
+    output,
+    weights: WeightFormat.values.byName(flags['weights'] ?? 'q8'),
+  );
+  final bytes = Directory(output)
+      .listSync(recursive: true)
+      .whereType<File>()
+      .fold(0, (sum, file) => sum + file.lengthSync());
+  stdout.writeln('wrote standalone VL bundle: $output ($bytes bytes)');
   return 0;
 }
 

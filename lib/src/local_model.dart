@@ -11,6 +11,7 @@ import 'native.dart';
 import 'quant.dart';
 import 'tokenizer.dart';
 import 'vision_backbone.dart';
+import 'vision_bundle.dart';
 import 'vision_config.dart';
 import 'vision_encoder.dart';
 import 'vision_image.dart';
@@ -205,6 +206,25 @@ final class LocalVisionModel {
       await language.close();
       rethrow;
     }
+  }
+
+  /// Loads a portable bundle produced by `dianoia pack-vl`. Verifies every
+  /// recorded file's size and SHA-256 before opening native model resources.
+  /// The original checkpoint and full imported backbone are not needed.
+  static Future<LocalVisionModel> loadBundle(
+    String directory, {
+    InferenceBackend backend = InferenceBackend.auto,
+    int contextLength = 2048,
+    int threads = 4,
+  }) async {
+    await validateVlBundle(directory);
+    return load(
+      directory,
+      backboneDir: '$directory/language',
+      backend: backend,
+      contextLength: contextLength,
+      threads: threads,
+    );
   }
 
   VisionChatSession chat({

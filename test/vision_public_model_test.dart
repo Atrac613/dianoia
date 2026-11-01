@@ -1,7 +1,12 @@
 // The app-facing API alone, with actual VL weights. Never downloads weights.
+@Timeout(Duration(minutes: 10))
+library;
+
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dianoia/dianoia.dart';
+import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -50,6 +55,67 @@ void main() {
       },
       skip: source == null || backbone == null || validation == null
           ? 'set DIANOIA_VL_DIR, DIANOIA_VL_BACKBONE and DIANOIA_VL_VALIDATION_DIR'
+          : false,
+    );
+  }
+  final bundle = Platform.environment['DIANOIA_VL_BUNDLE'];
+  for (final backend in [InferenceBackend.cpu, InferenceBackend.gpu]) {
+    test(
+      'standalone VL bundle preserves every OCR logit (${backend.name})',
+      () async {
+        final original = await LocalVisionModel.load(
+          source!,
+          backboneDir: backbone!,
+          backend: backend,
+          contextLength: 512,
+        );
+        addTearDown(original.close);
+        final packed = await LocalVisionModel.loadBundle(
+          bundle!,
+          backend: backend,
+          contextLength: 512,
+        );
+        addTearDown(packed.close);
+        final image = ChatImage.rgb(
+          File('$validation/reference-ocr-ja/input.rgb').readAsBytesSync(),
+          width: 384,
+          height: 192,
+        );
+        final expected = <String>[], actual = <String>[];
+        String digest(Float32List values) => sha256
+            .convert(
+              values.buffer.asUint8List(
+                values.offsetInBytes,
+                values.lengthInBytes,
+              ),
+            )
+            .toString();
+        final a = await original
+            .chat(maxNewTokens: 32)
+            .send(
+              '画像に書かれた文字を、そのまま書き起こしてください。',
+              images: [image],
+              onLogits: (v) => expected.add(digest(v)),
+            );
+        final b = await packed
+            .chat(maxNewTokens: 32)
+            .send(
+              '画像に書かれた文字を、そのまま書き起こしてください。',
+              images: [image],
+              onLogits: (v) => actual.add(digest(v)),
+            );
+        expect(a.text, '東京 123');
+        expect(b.text, a.text);
+        expect(b.generatedTokens, a.generatedTokens);
+        expect(expected, hasLength(a.generatedTokens + 1));
+        expect(actual, orderedEquals(expected));
+      },
+      skip:
+          source == null ||
+              backbone == null ||
+              validation == null ||
+              bundle == null
+          ? 'set VL model/backbone/validation directories and DIANOIA_VL_BUNDLE'
           : false,
     );
   }
