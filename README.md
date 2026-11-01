@@ -18,6 +18,7 @@ dispatch per Dart call.
 
 Experimental LFM3-VL image conversations use `LocalVisionModel`, `ChatImage`
 and `VisionChatSession`; see the [app API guide](docs/vision_chat_api.md).
+Use `ChatImage.encoded` or `ChatImage.fromFile` for still PNG/JPEG inputs.
 `pack-vl` builds a standalone Q8/Q4 bundle for `LocalVisionModel.loadBundle`;
 the [Q8 bundle report](docs/lfm3_vl_bundle_2026-11-01.md) records size and parity.
 The [integration notes](docs/lfm3_vl_support.md) cover the reference encoder and

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'chat_session.dart';
+import 'image_decode.dart';
 import 'model.dart';
 import 'tokenizer.dart';
 import 'tool_calls.dart';
@@ -12,11 +13,46 @@ import 'vision_encoder.dart';
 import 'vision_image.dart';
 import 'vision_prompt.dart';
 
-/// An owned, immutable copy of packed RGB uint8 pixels. Decode image files,
-/// convert to RGB and apply orientation before constructing this value.
+/// Owned, immutable RGB uint8 pixels supplied directly or decoded from PNG/JPEG.
 final class ChatImage {
   ChatImage.rgb(Uint8List pixels, {required this.width, required this.height})
     : _pixels = _copy(pixels, width, height);
+
+  ChatImage._owned(this._pixels, this.width, this.height);
+
+  /// Decodes a still PNG/JPEG, applying JPEG EXIF orientation and compositing
+  /// alpha over white. Does not resize or apply ICC color conversion. Run in
+  /// the inference worker isolate: decoding is synchronous CPU work.
+  /// Throws FormatException for invalid, unsupported or over-budget images;
+  /// nonpositive limits throw ArgumentError. PNG samples use stored orientation.
+  factory ChatImage.encoded(
+    Uint8List bytes, {
+    int maxEncodedBytes = defaultMaxEncodedImageBytes,
+    int maxPixels = defaultMaxDecodedImagePixels,
+  }) {
+    final decoded = decodeImageRgb(
+      bytes,
+      maxEncodedBytes: maxEncodedBytes,
+      maxPixels: maxPixels,
+    );
+    return ChatImage._owned(decoded.pixels, decoded.width, decoded.height);
+  }
+
+  /// Reads a bounded local file and decodes it like [ChatImage.encoded].
+  /// File I/O is asynchronous; decoding runs on the calling isolate. File
+  /// extensions are ignored, and URLs are not fetched. I/O errors propagate.
+  static Future<ChatImage> fromFile(
+    String path, {
+    int maxEncodedBytes = defaultMaxEncodedImageBytes,
+    int maxPixels = defaultMaxDecodedImagePixels,
+  }) async {
+    final decoded = await readImageRgb(
+      path,
+      maxEncodedBytes: maxEncodedBytes,
+      maxPixels: maxPixels,
+    );
+    return ChatImage._owned(decoded.pixels, decoded.width, decoded.height);
+  }
 
   final int width, height;
   final Uint8List _pixels;

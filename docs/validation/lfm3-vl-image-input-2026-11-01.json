@@ -1,0 +1,123 @@
+{
+  "date": "2026-11-01",
+  "environment": {
+    "chip": "Apple M2 Max",
+    "memory": "64 GB",
+    "dart": "3.13.5 (JIT)",
+    "image": "4.12.0",
+    "fixture_generator_pillow": "13.0.0"
+  },
+  "checkpoint_revision": "ba44bd51db20a2753f28c273a1571ccaa210d954",
+  "bundle_manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+  "image_policy": {
+    "formats": [
+      "still PNG",
+      "JPEG"
+    ],
+    "max_encoded_bytes": 33554432,
+    "max_decoded_pixels": 16000000,
+    "jpeg_exif_orientation": "applied once",
+    "png_orientation": "stored pixels",
+    "alpha_background_rgb": [
+      255,
+      255,
+      255
+    ],
+    "rgb8_conversion": "nearest integer in encoded channel space",
+    "icc_color_conversion": false,
+    "resizing_in_adapter": false
+  },
+  "synthetic_validation": {
+    "unit_tests_passed": 22,
+    "public_png_to_rgb_inference_parity_passed": true,
+    "all_eight_jpeg_exif_orientations_passed": true,
+    "jpeg_pixel_tolerance": 1,
+    "file_growth_budget_test_passed": true,
+    "overflow_header_budget_test_passed": true,
+    "fixtures_regenerated_byte_identically": true,
+    "generator_sha256": "db7d0453e7ee4f8ac8a92fd116a27fc194a61982fe70137d1c8eddaf25a255e0",
+    "fixture_sha256": {
+      "animated.png": "8b93965cd114aae7ff5481c4c7a440e831b1aa735f5f0b18db273e0bee28d46f",
+      "gradient.png": "a9b58fe9eeb52492824eff84476bdb466d575a2e6448fe721359498c2168b6f6",
+      "gray-alpha.png": "f324b5248c36f1cda82981e0c424129e3d8795637623ce613d4eefa67497a792",
+      "gray.png": "4f9d4a01d621853265e1b1202d84652bf07b1c80b4a74ac1da1030e709246d08",
+      "gray16.png": "1513cde105a8f4c053bee23889c61f9a9938db59bc13a130ea37e149a053418a",
+      "indexed.png": "2dd71e22551eda07985bf062f748c8e87b4b8a99de010493e1e30e2e25fee973",
+      "large-header.jpg": "526f06da7794dcfed1473909a6c4f58adfa457f184680ff61d5b217772430f14",
+      "large-header.png": "7352907f6355ff7c96f0c73090a102d9675a61a6b6ac141bb59b362a75b89984",
+      "one-frame-apng.png": "8ad1042a8188a1d539eb48ff47e9cf9cd9d3b6bb0e1266d906c57851ff879d54",
+      "orientation-1.jpg": "6968f1398d3926569ba54b0c6c11ebae324141214339e82a99de31569d78f539",
+      "orientation-2.jpg": "8a3cf0ee91c492a6a1a872e572f6d637bb2735679cfd9ac9267386de6d619f15",
+      "orientation-3.jpg": "f7211078a1daa76fbc1d9c5eca9bb84ec49ad518773adb7e6b8effde41432df5",
+      "orientation-4.jpg": "cb0122f94be4f3454f0e9aa7ddf0811e65568d2c4cbc969fe64a62e69993377d",
+      "orientation-5.jpg": "8740be080bc8c91326c77c150d80a4516306f52816f118caa745a31b9bcb5108",
+      "orientation-6.jpg": "c2112976c4791d7d8b2a0e6a79283185a5d54434a766888fe3de54a5c2e1f93d",
+      "orientation-7.jpg": "1fd38ca0ef94a09b585b8cdf2756cd8a8aa9ba5d1d24d91079a4bd6c6809f08d",
+      "orientation-8.jpg": "c10218e9bdecfbd1753037e098847a2b6e617fc3dce87838967c0090f3685a44",
+      "overflow-header.png": "e63eb230c57a59bbedf359307b18cbeab7f6ea66db2de59860bd06cd9fe86554",
+      "rgb.png": "a01077e4caa7ab9af31d71572d288b29088499bab61aeb181e82dd4fbde528a4",
+      "rgba.png": "a6e7c4c0d2686838c9d7e801272946029baeba0be693a06ae5e4b139d7206b32",
+      "unsupported.gif": "2fff30469cea2129b7df62fd5be5b3fef4fd0e8bfe26c0204bc980d3ad808833"
+    }
+  },
+  "real_input_tests": {
+    "file": "test/vision_public_model_test.dart",
+    "png_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+    "reference_rgb_sha256": "61600be1f65b6de9c97c6133d8ac2a0eb82edddcd3e99676730b787ac0a1a4c6",
+    "oriented_dimensions": [
+      384,
+      192
+    ],
+    "jpeg_generation": {
+      "source": "ocr-ja.png",
+      "raster_rotation_degrees": -90,
+      "exif_orientation": 6,
+      "encoder": "image 4.12.0",
+      "quality": 95
+    },
+    "results": [
+      {
+        "language_backend": "CPU Q8",
+        "vision_backend": "CPU float32",
+        "png_text": "東京 123",
+        "jpeg_text": "東京 123",
+        "png_all_observed_logits_byte_identical_to_rgb": true
+      },
+      {
+        "language_backend": "Metal Q8",
+        "vision_backend": "CPU float32",
+        "png_text": "東京 123",
+        "jpeg_text": "東京 123",
+        "png_all_observed_logits_byte_identical_to_rgb": true
+      }
+    ]
+  },
+  "verification": {
+    "dart_tests": {
+      "passed": 176,
+      "skipped": 0
+    },
+    "dart_format": "clean",
+    "dart_analyze": "no issues",
+    "python_comparison_tests_passed": 5,
+    "lab_parity": {
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "CPU Q8",
+        "Metal Q8",
+        "Metal Q4"
+      ],
+      "files": [
+        "hidden.f32",
+        "logits.f32",
+        "gen.i32",
+        "gen_logits.f32"
+      ],
+      "all_byte_identical": true
+    }
+  },
+  "scope": "One clean Japanese OCR card for real image-file inputs. General OCR quality and phone memory/latency are not established; encoded decoding is synchronous on the calling isolate."
+}

@@ -30,3 +30,4 @@ export 'src/vision_image.dart';
 export 'src/vision_encoder.dart';
 export 'src/vision_prompt.dart';
 export 'src/vision_bundle.dart';
+export 'src/image_decode.dart';

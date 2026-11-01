@@ -25,7 +25,8 @@ The loader validates source/backbone import fingerprints, processor dimensions
 and vision special-token IDs. As with existing caches, fingerprints cover the
 safetensors header/size and config; verify downloaded payload hashes separately.
 `ModelStore` installs text checkpoints and prebuilt VL bundles. Loading itself
-does not download weights, prepare a backbone or decode image files.
+does not download weights or prepare a backbone. Use the image adapters below
+to decode local PNG/JPEG inputs.
 
 ## Build a standalone bundle
 
@@ -169,11 +170,67 @@ Future<void> askImage(Uint8List rgb, int width, int height) async {
 }
 ```
 
-Supply packed RGB uint8 data with exactly `width * height * 3` bytes. The caller
-must decode PNG/JPEG, convert color channels and apply orientation first.
-`ChatImage.rgb` copies pixels when constructed. Image lists, messages and tool
+Supply packed RGB uint8 data with exactly `width * height * 3` bytes to
+`ChatImage.rgb`; it copies pixels when constructed. For caller-decoded images,
+convert to RGB and apply orientation before construction. Image lists, messages and tool
 schemas are copied before asynchronous work can observe caller mutations.
 The API never fetches URLs or file paths in content parts.
+
+## PNG/JPEG input
+
+Use encoded bytes or a local file directly:
+
+```dart
+final fromBytes = ChatImage.encoded(pngOrJpegBytes);
+final fromFile = await ChatImage.fromFile('/path/to/photo.jpg');
+final turn = await chat.send('画像を説明してください。', images: [fromFile]);
+```
+
+The adapter detects PNG/JPEG by their contents and returns owned RGB8 pixels.
+JPEG EXIF orientations 1–8 (including reflections) are applied exactly once;
+`width` and `height` describe the oriented image. PNGs use their stored pixel
+orientation; PNG EXIF metadata is not applied. Gray, palette, RGB and alpha PNGs
+are converted to RGB, including 16-bit grayscale. Alpha is composited over white
+in the encoded channel space, with nearest-integer RGB8 rounding. ICC color
+profile conversion is not performed. Use `ChatImage.rgb` for a platform decoder's
+color-managed pixels or other file formats.
+
+By default, both adapters accept at most **32 MiB encoded bytes** and
+**16,000,000 decoded pixels**. Limits must be positive and can be configured:
+
+```dart
+final image = await ChatImage.fromFile(
+  '/path/to/photo.jpg',
+  maxEncodedBytes: 16 * 1024 * 1024,
+  maxPixels: 8000000,
+);
+```
+
+The byte limit is checked before decoding; file reads are bounded even if the
+file grows after the initial size check. Pixel limits are passed to both codecs
+before raster allocation, with header and output checks. Unsupported, malformed,
+animated or over-budget input raises `FormatException`; invalid limits raise
+`ArgumentError`. Local file I/O errors propagate. Animated PNG (including a
+one-frame APNG) is rejected. No network URLs are fetched.
+
+`encoded` decodes synchronously. `fromFile` awaits file I/O, then decodes on the
+calling isolate. Run these in the same worker isolate as the model. Decoding is
+not part of an active chat request and is not interrupted by `chat.cancel()`.
+Both adapters decode at the original resolution; the model's processor performs
+its existing resize later. A `ChatImage` is created before the conversation's
+context-budget check, so its decode budgets apply independently of token limits.
+The implementation uses [image](https://pub.dev/packages/image) `^4.12.0`, whose
+PNG/JPEG decoders expose per-instance pixel limits.
+
+Tests use independently generated Pillow fixtures for PNG channel conversion,
+all eight JPEG EXIF orientations, unsupported animation, bad checksums, large
+headers and byte budgets. A file-growth test checks the read limit; a synthetic
+chat test requires PNG input and manually constructed RGB to produce identical
+logits. Optional real-model tests in `vision_public_model_test.dart` compare all
+RGB/PNG logit bytes and read the same Japanese OCR card from an oriented JPEG
+on CPU and Metal. Both backends passed on 2026-11-01; see the
+[image-input validation record](validation/lfm3-vl-image-input-2026-11-01.json).
+Enable `DIANOIA_VL_BUNDLE` and `DIANOIA_VL_VALIDATION_DIR`.
 
 ## Message layout and tools
 

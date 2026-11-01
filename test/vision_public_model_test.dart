@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:dianoia/dianoia.dart';
 import 'package:crypto/crypto.dart';
+import 'package:image/image.dart' as image;
 import 'package:test/test.dart';
 
 void main() {
@@ -116,6 +117,67 @@ void main() {
               validation == null ||
               bundle == null
           ? 'set VL model/backbone/validation directories and DIANOIA_VL_BUNDLE'
+          : false,
+    );
+  }
+  for (final backend in [InferenceBackend.cpu, InferenceBackend.gpu]) {
+    test(
+      'public PNG and oriented JPEG OCR (${backend.name})',
+      () async {
+        final model = await LocalVisionModel.loadBundle(
+          bundle!,
+          backend: backend,
+          contextLength: 512,
+        );
+        addTearDown(model.close);
+        final pngPath = '$validation/ocr-ja.png';
+        // A camera-shaped JPEG stores a counterclockwise raster and EXIF 6.
+        // Decoding must restore the card's original landscape orientation.
+        final camera = image.copyRotate(
+          image.decodePng(File(pngPath).readAsBytesSync())!,
+          angle: -90,
+        );
+        camera.exif.imageIfd.orientation = 6;
+        final jpeg = ChatImage.encoded(image.encodeJpg(camera, quality: 95));
+        expect(jpeg.width, 384);
+        expect(jpeg.height, 192);
+        final images = [
+          ChatImage.rgb(
+            File('$validation/reference-ocr-ja/input.rgb').readAsBytesSync(),
+            width: 384,
+            height: 192,
+          ),
+          await ChatImage.fromFile(pngPath),
+          jpeg,
+        ];
+        final digests = <List<String>>[];
+        for (final input in images) {
+          final logits = <String>[];
+          final turn = await model
+              .chat(maxNewTokens: 32)
+              .send(
+                '画像に書かれた文字を、そのまま書き起こしてください。',
+                images: [input],
+                onLogits: (v) => logits.add(
+                  sha256
+                      .convert(
+                        v.buffer.asUint8List(v.offsetInBytes, v.lengthInBytes),
+                      )
+                      .toString(),
+                ),
+              );
+          expect(turn.text, '東京 123');
+          expect(logits, hasLength(turn.generatedTokens + 1));
+          digests.add(logits);
+        }
+        expect(
+          digests[1],
+          orderedEquals(digests[0]),
+          reason: 'lossless PNG must preserve RGB logits',
+        );
+      },
+      skip: bundle == null || validation == null
+          ? 'set DIANOIA_VL_BUNDLE and DIANOIA_VL_VALIDATION_DIR'
           : false,
     );
   }

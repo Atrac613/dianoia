@@ -120,6 +120,47 @@ void main() {
     );
 
     test(
+      'encoded and file PNG inputs preserve RGB logits and own their pixels',
+      () async {
+        final pixels = Uint8List.fromList([
+          for (var y = 0; y < 8; y++)
+            for (var x = 0; x < 8; x++) ...[x * 31, y * 29, (x + y) * 17],
+        ]);
+        final bytes = File(
+          'test/fixtures/image_input/gradient.png',
+        ).readAsBytesSync();
+        final encoded = ChatImage.encoded(bytes);
+        bytes.fillRange(0, bytes.length, 0);
+        final fromFile = await ChatImage.fromFile(
+          'test/fixtures/image_input/gradient.png',
+        );
+        List<Float32List>? expected;
+        for (final image in [
+          ChatImage.rgb(pixels, width: 8, height: 8),
+          encoded,
+          fromFile,
+        ]) {
+          final actual = <Float32List>[];
+          await model
+              .chat(maxNewTokens: 3)
+              .send(
+                'Describe.',
+                images: [image],
+                onLogits: (v) => actual.add(Float32List.fromList(v)),
+              );
+          expect(actual, hasLength(4));
+          if (expected == null) {
+            expected = actual;
+          } else {
+            for (var i = 0; i < actual.length; i++) {
+              expect(actual[i], orderedEquals(expected[i]));
+            }
+          }
+        }
+      },
+    );
+
+    test(
       'interleaved images and tool responses remain bound across turns',
       () async {
         final session = model.chat(maxNewTokens: 1);
