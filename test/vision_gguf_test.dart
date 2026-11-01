@@ -136,6 +136,84 @@ void main() {
     },
   );
 
+  test('QAD identity includes every pin and its generated manifest', () async {
+    await store.install(spec).drain<void>();
+    expect(
+      store.isInstalled(spec.fromMirror('https://example.com/qad/')),
+      isTrue,
+    );
+    for (final role in [
+      'language',
+      'vision',
+      'config',
+      'processor',
+      'tokenizer',
+      'license',
+    ]) {
+      RemoteFile change(String key, RemoteFile f) => role != key
+          ? f
+          : RemoteFile(f.name, f.url, size: f.size, sha256: '0' * 64);
+      final changed = VisionGgufSpec(
+        id: spec.id,
+        name: spec.name,
+        license: spec.license,
+        licenseUrl: spec.licenseUrl,
+        language: change('language', spec.language),
+        vision: change('vision', spec.vision),
+        config: change('config', spec.config),
+        processor: change('processor', spec.processor),
+        tokenizer: change('tokenizer', spec.tokenizer),
+        licenseFile: change('license', spec.licenseFile),
+      );
+      expect(store.isInstalled(changed), isFalse, reason: role);
+      await expectLater(store.install(changed).drain<void>(), throwsStateError);
+    }
+    final path = store.bundlePath(spec);
+    final manifest = File('$path/vl_bundle.json');
+    final original = manifest.readAsStringSync();
+    // A valid but different manifest cannot reuse the previous source receipt.
+    manifest.writeAsStringSync('$original\n');
+    expect(store.isInstalled(spec), isFalse);
+    manifest.writeAsStringSync(original);
+    expect(store.isInstalled(spec), isTrue);
+    final receipt = File('$path/qad_source.json');
+    receipt.writeAsStringSync('{}');
+    expect(store.isInstalled(spec), isFalse);
+    receipt.deleteSync();
+    expect(store.isInstalled(spec), isFalse);
+  });
+
+  test(
+    'mirror normalization and validation are shared by all source specs',
+    () {
+      for (final mirror in <InstallableModel Function(String)>[
+        ModelSpec.lfm3Q4.fromMirror,
+        VisionCheckpointSpec.lfm3VlQ4.fromMirror,
+        spec.fromMirror,
+      ]) {
+        final a = mirror('https://example.com/models');
+        final b = mirror('https://example.com/models/');
+        expect(a.files.map((f) => f.url), b.files.map((f) => f.url));
+        for (final url in [
+          'file:///tmp/model',
+          'https://example.com/x?q=1',
+          'https://example.com/x#part',
+          '/relative',
+        ]) {
+          expect(() => mirror(url), throwsArgumentError);
+        }
+      }
+      final mirrored = VisionGgufSpec.lfm3VlQadQ4.fromMirror(
+        'https://example.com/',
+      );
+      expect(
+        mirrored.installedBytes,
+        VisionGgufSpec.lfm3VlQadQ4.installedBytes,
+      );
+      expect(mirrored.setupBytes, VisionGgufSpec.lfm3VlQadQ4.setupBytes);
+    },
+  );
+
   test('cancel setup leaves no published bundle and can resume', () async {
     final stopped = Completer<void>();
     late StreamSubscription<InstallProgress> sub;

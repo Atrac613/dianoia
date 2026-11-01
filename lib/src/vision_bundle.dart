@@ -162,13 +162,7 @@ Future<void> packVlBundle(
           Q8Cache.keyFor('$root/language', weights: weights.name),
           matrices,
         );
-        File('$root/language/vl_backbone.json').writeAsStringSync(
-          jsonEncode({
-            'version': 1,
-            'source_key': Q8Cache.keyFor(root),
-            'backbone_key': Q8Cache.keyFor('$root/language'),
-          }),
-        );
+        writeVlBackboneIdentity(root, '$root/language');
         final files = <String, Object?>{};
         for (final name in _files(weights.name)) {
           final file = File('$root/$name');

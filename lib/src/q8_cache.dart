@@ -199,19 +199,22 @@ final class Q8Cache {
         ..writeFromSync(header);
       for (final (name, format, rows, cols) in shapes) {
         final m = matrix(name);
-        final (qsLength, scalesLength) = _byteLengths(format, rows, cols);
-        if (m.format != format ||
-            m.qsBytes.length != qsLength ||
-            m.scaleBytes.length != scalesLength) {
-          throw StateError('$name is not a $format [$rows, $cols] matrix');
+        try {
+          final (qsLength, scalesLength) = _byteLengths(format, rows, cols);
+          if (m.format != format ||
+              m.qsBytes.length != qsLength ||
+              m.scaleBytes.length != scalesLength) {
+            throw StateError('$name is not a $format [$rows, $cols] matrix');
+          }
+          final e = tensors[name] as Map<String, Object?>;
+          out
+            ..setPositionSync(e['qs'] as int)
+            ..writeFromSync(m.qsBytes)
+            ..setPositionSync(e['scales'] as int)
+            ..writeFromSync(m.scaleBytes);
+        } finally {
+          done?.call(m);
         }
-        final e = tensors[name] as Map<String, Object?>;
-        out
-          ..setPositionSync(e['qs'] as int)
-          ..writeFromSync(m.qsBytes)
-          ..setPositionSync(e['scales'] as int)
-          ..writeFromSync(m.scaleBytes);
-        done?.call(m);
       }
     } finally {
       out.closeSync();

@@ -9,10 +9,18 @@ import 'package:dianoia/dianoia.dart';
 import 'package:dianoia_example/src/message_bubble.dart';
 import 'package:dianoia_example/src/model_setup.dart';
 import 'package:flutter/material.dart';
+import 'package:dianoia_example/src/model_size.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('model sizes format numeric estimates consistently', () {
+    expect(gigabytes(1540284520), '1.54');
+    expect(gigabytes(5000000000, compact: true), '5');
+    expect(gigabytes(10500000000, compact: true), '10.5');
+    expect(gigabytes(0, compact: true), '0');
+  });
+
   Widget host(ChatMessage message) => MaterialApp(
     home: Scaffold(body: MessageBubble(message: message)),
   );
@@ -25,7 +33,7 @@ void main() {
     expect(find.text(ModelSpec.lfm3Q4.name), findsOneWidget);
     expect(find.text(ExampleModel.lfm3Vl.name), findsOneWidget);
     expect(find.textContaining('1.45 GB download'), findsOneWidget);
-    expect(find.textContaining('1.54 GB installed'), findsOneWidget);
+    expect(find.textContaining('1.54 GB after setup'), findsOneWidget);
     final vl = ExampleModel.lfm3Vl.downloadSpec as VisionGgufSpec;
     expect(vl.language.name, 'LFM3-VL-2B-QAD-Q4_0.gguf');
     expect(vl.vision.name, 'mmproj-LFM3-VL-2B-BF16.gguf');

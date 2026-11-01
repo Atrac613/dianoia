@@ -40,7 +40,7 @@ class MessageBubble extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (message.image case final image?)
-                    AttachmentPreview(image: image),
+                    ThumbnailPreview(image: image),
                   if (message.text.isNotEmpty)
                     SelectableText(
                       message.text,

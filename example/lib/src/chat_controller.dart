@@ -18,9 +18,12 @@ import 'example_model.dart';
 enum ChatRole { user, assistant }
 
 final class ChatMessage {
-  ChatMessage(this.role, this.text, {this.image});
+  ChatMessage(this.role, this.text, {ImageAttachment? image})
+    : image = image == null
+          ? null
+          : image.thumbnail ?? ImageThumbnail(image.name, null);
 
-  final ImageAttachment? image;
+  final ImageThumbnail? image;
 
   final ChatRole role;
   String text;

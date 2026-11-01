@@ -1,4 +1,5 @@
 import 'package:dianoia/dianoia.dart';
+import 'model_size.dart';
 
 /// Models offered by the example, downloaded or supplied as local bundles.
 enum ExampleModel {
@@ -15,7 +16,10 @@ enum ExampleModel {
 
   InstallableModel get downloadSpec =>
       isVision ? VisionGgufSpec.lfm3VlQadQ4 : ModelSpec.lfm3Q4;
-  String get sizeLabel => isVision
-      ? '${(downloadSpec.downloadBytes / 1e9).toStringAsFixed(2)} GB download · 1.54 GB installed'
-      : '${(ModelSpec.lfm3Q4.downloadBytes / 1e9).toStringAsFixed(2)} GB download';
+  String get sizeLabel {
+    final spec = downloadSpec;
+    final installed = spec.installedBytes;
+    return '${gigabytes(spec.downloadBytes)} GB download'
+        '${installed == null ? '' : ' · ${gigabytes(installed)} GB after setup'}';
+  }
 }

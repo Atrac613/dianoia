@@ -7,7 +7,7 @@ import 'dart:typed_data';
 
 import 'gguf.dart';
 import 'native.dart';
-import 'q8_cache.dart';
+import 'vision_backbone.dart';
 import 'quant.dart';
 import 'vision_bundle.dart';
 import 'vision_config.dart';
@@ -179,13 +179,7 @@ Future<void> importVlQadBundle(
     ).writeAsStringSync(jsonEncode(json['text_config']));
     File('$metadata/tokenizer.json').copySync('${text.path}/tokenizer.json');
     importGguf(language, text.path, backbone);
-    File('$backbone/vl_backbone.json').writeAsStringSync(
-      jsonEncode({
-        'version': 1,
-        'source_key': Q8Cache.keyFor(vision.path),
-        'backbone_key': Q8Cache.keyFor(backbone),
-      }),
-    );
+    writeVlBackboneIdentity(vision.path, backbone);
     await packVlBundle(
       vision.path,
       backbone,

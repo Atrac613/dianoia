@@ -7,6 +7,8 @@ import 'dart:io';
 
 import 'config.dart';
 import 'q8_cache.dart';
+import 'native.dart';
+import 'quant.dart';
 import 'safetensors.dart';
 import 'vision_config.dart';
 
@@ -82,13 +84,7 @@ void importVlBackbone(String modelDir, String outDir) {
     );
     File('${staging.path}/vl_config.json').writeAsStringSync(sourceConfig);
     tokenizer.copySync('${staging.path}/tokenizer.json');
-    File('${staging.path}/vl_backbone.json').writeAsStringSync(
-      jsonEncode({
-        'version': 1,
-        'source_key': Q8Cache.keyFor(modelDir),
-        'backbone_key': Q8Cache.keyFor(staging.path),
-      }),
-    );
+    writeVlBackboneIdentity(modelDir, staging.path);
     staging.renameSync(destination.path);
     staging = null;
   } finally {
@@ -147,5 +143,66 @@ void validateVlBackbone(String modelDir, String backboneDir) {
       identity['source_key'] != Q8Cache.keyFor(modelDir) ||
       identity['backbone_key'] != Q8Cache.keyFor(backboneDir)) {
     throw ArgumentError('backbone provenance does not match the VL checkpoint');
+  }
+}
+
+/// Records the pairing used by importers and portable bundle packing.
+void writeVlBackboneIdentity(String modelDir, String backboneDir) {
+  File('$backboneDir/vl_backbone.json').writeAsStringSync(
+    jsonEncode({
+      'version': 1,
+      'source_key': Q8Cache.keyFor(modelDir),
+      'backbone_key': Q8Cache.keyFor(backboneDir),
+    }),
+  );
+}
+
+/// Quantizes one matrix at a time without constructing an inference model.
+/// Each native allocation is released immediately after it is written.
+void buildVlBackboneCache(String backboneDir, {required WeightFormat weights}) {
+  if (!weights.isNative) throw ArgumentError('expected Q8 or Q4');
+  final shapes = lfm3LanguageTensorShapes(Lfm3Config.load(backboneDir));
+  final tensors = <String, (String, List<int>)>{};
+  for (final e in shapes.entries.where((e) => e.value.length == 2)) {
+    final name =
+        e.key.contains('.self_attn.') || e.key.contains('.feed_forward.')
+        ? e.key.substring(0, e.key.length - '.weight'.length)
+        : e.key;
+    tensors[name] = (e.key, e.value);
+  }
+  String format(String name) =>
+      name == 'model.embed_tokens.weight' ? 'q8' : weights.name;
+  final st = SafetensorsFile.open('$backboneDir/model.safetensors');
+  try {
+    Q8Cache.writeEach(
+      '$backboneDir/lfm3-${weights.name}.cache',
+      Q8Cache.keyFor(backboneDir, weights: weights.name),
+      [
+        for (final e in tensors.entries)
+          (e.key, format(e.key), e.value.$2[0], e.value.$2[1]),
+      ],
+      (name) {
+        final (tensor, shape) = tensors[name]!;
+        if (format(name) == 'q8') {
+          return NativeQ8Matrix.quantizeRows(
+            shape[0],
+            shape[1],
+            (first, count, out) => out.setRange(
+              0,
+              count * shape[1],
+              st.readF32(tensor, shape, rowStart: first, rowEnd: first + count),
+            ),
+          );
+        }
+        return NativeQ4Matrix.quantize(
+          st.readF32(tensor, shape),
+          shape[0],
+          shape[1],
+        );
+      },
+      done: (m) => (m as NativeMatrix).free(),
+    );
+  } finally {
+    st.close();
   }
 }

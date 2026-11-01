@@ -13,13 +13,53 @@ import 'package:crypto/crypto.dart';
 import 'download.dart';
 import 'gguf.dart';
 import 'native.dart';
-import 'model.dart';
 import 'quant.dart';
 import 'vision_backbone.dart';
 import 'vision_bundle.dart';
 import 'vision_gguf.dart';
 
 export 'download.dart' show ModelDownloadException, RemoteFile;
+
+RemoteFile Function(RemoteFile) _mirrorFiles(String baseUrl) {
+  final base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
+  if (!['http', 'https'].contains(base.scheme) ||
+      !base.hasAuthority ||
+      base.query.isNotEmpty ||
+      base.fragment.isNotEmpty) {
+    throw ArgumentError.value(baseUrl, 'baseUrl', 'expected HTTP(S) directory');
+  }
+  return (f) => RemoteFile(
+    f.name,
+    base.resolve(f.name).toString(),
+    size: f.size,
+    sha256: f.sha256,
+  );
+}
+
+// Download URLs are deliberately excluded: mirrors preserve source identity.
+Map<String, Object> _qadSourceIdentity(VisionGgufSpec model) => {
+  'version': 1,
+  for (final entry in {
+    'language': model.language,
+    'vision': model.vision,
+    'config': model.config,
+    'processor': model.processor,
+    'tokenizer': model.tokenizer,
+    'license': model.licenseFile,
+  }.entries)
+    entry.key: {
+      'name': entry.value.name,
+      'bytes': entry.value.size,
+      'sha256': entry.value.sha256,
+    },
+};
+
+String _qadReceipt(VisionGgufSpec model, String bundle) => jsonEncode({
+  'source': _qadSourceIdentity(model),
+  'manifest_sha256': sha256
+      .convert(File('$bundle/vl_bundle.json').readAsBytesSync())
+      .toString(),
+});
 
 /// A pinned checkpoint or prebuilt vision bundle installed by [ModelStore].
 sealed class InstallableModel {
@@ -30,6 +70,15 @@ sealed class InstallableModel {
   String get license;
   String get licenseUrl;
   List<RemoteFile> get files;
+
+  /// Rehosts downloads while preserving every source pin and storage estimate.
+  InstallableModel fromMirror(String baseUrl);
+
+  /// Approximate installed bytes, when known for this pinned conversion.
+  int? get installedBytes => null;
+
+  /// Recommended free bytes during installation, including temporary files.
+  int? get setupBytes => null;
 
   /// Total bytes downloaded, including metadata and license files.
   int get downloadBytes => files.fold(0, (sum, file) => sum + file.size);
@@ -46,6 +95,8 @@ final class VisionCheckpointSpec extends InstallableModel {
     required this.name,
     required this.license,
     required this.licenseUrl,
+    this.installedBytes,
+    this.setupBytes,
     required this.files,
     this.quantization = VisionQuantization.q8,
   });
@@ -59,37 +110,26 @@ final class VisionCheckpointSpec extends InstallableModel {
   @override
   final String licenseUrl;
   @override
+  final int? installedBytes;
+  @override
+  final int? setupBytes;
+  @override
   final List<RemoteFile> files;
 
   final VisionQuantization quantization;
 
+  @override
   VisionCheckpointSpec fromMirror(String baseUrl) {
-    final base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
-    if (!['http', 'https'].contains(base.scheme) ||
-        !base.hasAuthority ||
-        base.query.isNotEmpty ||
-        base.fragment.isNotEmpty) {
-      throw ArgumentError.value(
-        baseUrl,
-        'baseUrl',
-        'expected HTTP(S) directory',
-      );
-    }
+    final at = _mirrorFiles(baseUrl);
     return VisionCheckpointSpec(
       id: id,
       name: name,
       license: license,
       licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
       quantization: quantization,
-      files: List.unmodifiable([
-        for (final f in files)
-          RemoteFile(
-            f.name,
-            base.resolve(f.name).toString(),
-            size: f.size,
-            sha256: f.sha256,
-          ),
-      ]),
+      files: List.unmodifiable(files.map(at)),
     );
   }
 
@@ -101,6 +141,8 @@ final class VisionCheckpointSpec extends InstallableModel {
   /// during conversion, including the temporary full language backbone.
   static const lfm3VlQ8 = VisionCheckpointSpec(
     id: 'lfm3-vl-2b-q8-ba44bd5',
+    installedBytes: 2885204285,
+    setupBytes: 13000000000,
     name: 'LFM3-VL-2B (Q8)',
     license: 'LFM Open License v1.0',
     licenseUrl:
@@ -112,6 +154,8 @@ final class VisionCheckpointSpec extends InstallableModel {
   /// Source download bytes are unchanged; the tied output head stays Q8.
   static const lfm3VlQ4 = VisionCheckpointSpec(
     id: 'lfm3-vl-2b-q4-ba44bd5',
+    installedBytes: 2060427581,
+    setupBytes: 13000000000,
     name: 'LFM3-VL-2B (Q4)',
     license: 'LFM Open License v1.0',
     licenseUrl:
@@ -166,6 +210,8 @@ final class VisionGgufSpec extends InstallableModel {
     required this.name,
     required this.license,
     required this.licenseUrl,
+    this.installedBytes,
+    this.setupBytes,
     required this.language,
     required this.vision,
     required this.config,
@@ -182,6 +228,10 @@ final class VisionGgufSpec extends InstallableModel {
   final String license;
   @override
   final String licenseUrl;
+  @override
+  final int? installedBytes;
+  @override
+  final int? setupBytes;
   final RemoteFile language, vision, config, processor, tokenizer, licenseFile;
   @override
   List<RemoteFile> get files => [
@@ -193,29 +243,16 @@ final class VisionGgufSpec extends InstallableModel {
     vision,
   ];
 
+  @override
   VisionGgufSpec fromMirror(String baseUrl) {
-    final base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
-    if (!['http', 'https'].contains(base.scheme) ||
-        !base.hasAuthority ||
-        base.query.isNotEmpty ||
-        base.fragment.isNotEmpty) {
-      throw ArgumentError.value(
-        baseUrl,
-        'baseUrl',
-        'expected HTTP(S) directory',
-      );
-    }
-    RemoteFile at(RemoteFile f) => RemoteFile(
-      f.name,
-      base.resolve(f.name).toString(),
-      size: f.size,
-      sha256: f.sha256,
-    );
+    final at = _mirrorFiles(baseUrl);
     return VisionGgufSpec(
       id: id,
       name: name,
       license: license,
       licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
       language: at(language),
       vision: at(vision),
       config: at(config),
@@ -232,6 +269,8 @@ final class VisionGgufSpec extends InstallableModel {
   /// 1.45 GB downloaded, about 1.54 GB installed; allow 5 GB during setup.
   static final lfm3VlQadQ4 = VisionGgufSpec(
     id: 'lfm3-vl-2b-qad-q4-b36554c',
+    installedBytes: 1540284520,
+    setupBytes: 5000000000,
     name: 'LFM3-VL-2B (QAD Q4_0)',
     license: VisionCheckpointSpec.lfm3VlQ8.license,
     licenseUrl: VisionCheckpointSpec.lfm3VlQ8.licenseUrl,
@@ -327,32 +366,15 @@ final class VisionModelSpec extends InstallableModel {
   final List<RemoteFile> files;
 
   /// Changes only the download host/path, preserving all pinned bytes.
+  @override
   VisionModelSpec fromMirror(String baseUrl) {
-    final base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
-    if (!['http', 'https'].contains(base.scheme) ||
-        !base.hasAuthority ||
-        base.query.isNotEmpty ||
-        base.fragment.isNotEmpty) {
-      throw ArgumentError.value(
-        baseUrl,
-        'baseUrl',
-        'expected HTTP(S) directory',
-      );
-    }
+    final at = _mirrorFiles(baseUrl);
     return VisionModelSpec._(
       id: id,
       name: name,
       license: license,
       licenseUrl: licenseUrl,
-      files: List.unmodifiable([
-        for (final file in files)
-          RemoteFile(
-            file.name,
-            base.resolve(file.name).toString(),
-            size: file.size,
-            sha256: file.sha256,
-          ),
-      ]),
+      files: List.unmodifiable(files.map(at)),
     );
   }
 }
@@ -365,6 +387,8 @@ final class ModelSpec extends InstallableModel {
     required this.name,
     required this.license,
     required this.licenseUrl,
+    this.installedBytes,
+    this.setupBytes,
     required this.gguf,
     required this.config,
     required this.tokenizer,
@@ -383,6 +407,10 @@ final class ModelSpec extends InstallableModel {
   final String license;
   @override
   final String licenseUrl;
+  @override
+  final int? installedBytes;
+  @override
+  final int? setupBytes;
 
   final RemoteFile gguf, config, tokenizer, licenseFile;
 
@@ -393,18 +421,16 @@ final class ModelSpec extends InstallableModel {
   /// `[baseUrl]/[RemoteFile.name]`: a mirror an app hosts, or a test
   /// server. The sizes and SHA-256 stay pinned, so a mirror can only serve
   /// the published bytes.
+  @override
   ModelSpec fromMirror(String baseUrl) {
-    RemoteFile at(RemoteFile f) => RemoteFile(
-      f.name,
-      '$baseUrl/${f.name}',
-      size: f.size,
-      sha256: f.sha256,
-    );
+    final at = _mirrorFiles(baseUrl);
     return ModelSpec(
       id: id,
       name: name,
       license: license,
       licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
       gguf: at(gguf),
       config: at(config),
       tokenizer: at(tokenizer),
@@ -487,6 +513,8 @@ final class ModelStore {
   }
 
   /// Checks installation presence and, for VL, pinned manifest identity.
+  /// QAD installs also require a receipt matching every source pin and the
+  /// generated manifest. Older installs without that receipt need reinstalling.
   /// Payload integrity is checked by [LocalVisionModel.loadBundle] when loading.
   bool isInstalled(InstallableModel model) {
     final bundle = bundlePath(model);
@@ -504,7 +532,10 @@ final class ModelStore {
         final m = VlBundleManifest.parse(
           File('$bundle/vl_bundle.json').readAsStringSync(),
         );
-        return m.weights == 'q4' && m.inputEmbedding == 'q8-cache';
+        return m.weights == 'q4' &&
+            m.inputEmbedding == 'q8-cache' &&
+            File('$bundle/qad_source.json').readAsStringSync() ==
+                _qadReceipt(model, bundle);
       } on Object {
         return false;
       }
@@ -633,6 +664,9 @@ final class ModelStore {
             try {
               if (partial.existsSync()) partial.deleteSync(recursive: true);
               await _buildQad(model, downloads.path, partial.path);
+              File(
+                '${partial.path}/qad_source.json',
+              ).writeAsStringSync(_qadReceipt(model, partial.path));
               if (cancelled) return;
               partial.renameSync(bundlePath(model));
               await downloads.delete(recursive: true);
@@ -739,17 +773,10 @@ final class ModelStore {
     String downloads,
     String backbone,
     WeightFormat weights,
-  ) => Isolate.run(() async {
+  ) => Isolate.run(() {
     importVlBackbone(downloads, backbone);
     if (!NativeKernels.isLoaded) NativeKernels.load(null);
-    final model = await Lfm3Model.load(
-      backbone,
-      maxSeq: 1,
-      maxChunk: 1,
-      weights: weights,
-      q8CachePath: '$backbone/lfm3-${weights.name}.cache',
-    );
-    await model.close();
+    buildVlBackboneCache(backbone, weights: weights);
   });
 
   static Future<void> _packVision(

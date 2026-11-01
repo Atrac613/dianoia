@@ -21,13 +21,7 @@ Future<void> main(List<String> args) async {
   ).writeAsStringSync(jsonEncode(config['text_config']));
   File('$vision/tokenizer.json').copySync('${text.path}/tokenizer.json');
   importGguf(ggufPath, text.path, backbone);
-  File('$backbone/vl_backbone.json').writeAsStringSync(
-    jsonEncode({
-      'version': 1,
-      'source_key': Q8Cache.keyFor(vision),
-      'backbone_key': Q8Cache.keyFor(backbone),
-    }),
-  );
+  writeVlBackboneIdentity(vision, backbone);
   final gguf = GgufFile.open(ggufPath);
   final cache = Q8Cache.open(
     '$backbone/lfm3-q4.cache',

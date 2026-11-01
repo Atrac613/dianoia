@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:file_selector/file_selector.dart';
 import 'package:dianoia_example/src/image_attachment.dart';
 
@@ -64,6 +65,50 @@ void main() {
       );
     },
   );
+
+  testWidgets('history retains only a bounded thumbnail and its file name', (
+    tester,
+  ) async {
+    final message = (await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawColor(const Color(0xFF336699), BlendMode.src);
+      final picture = recorder.endRecording();
+      final large = await picture.toImage(1024, 512);
+      final png = (await large.toByteData(format: ui.ImageByteFormat.png))!;
+      final source = Uint8List(2 * 1024 * 1024)
+        ..setAll(
+          0,
+          png.buffer.asUint8List(png.offsetInBytes, png.lengthInBytes),
+        );
+      large.dispose();
+      picture.dispose();
+      final picked = (await pickChatImage(
+        chooseFile: () async =>
+            XFile.fromData(source, name: image.name, path: image.name),
+      ))!;
+      final message = ChatMessage(ChatRole.user, 'Describe.', image: picked);
+      expect(message.image!.name, image.name);
+      final thumbnail = message.image!.bytes!;
+      expect(identical(thumbnail.buffer, picked.bytes.buffer), isFalse);
+      expect(thumbnail.length, lessThan(240 * 240 * 4));
+      final codec = await ui.instantiateImageCodec(thumbnail);
+      final frame = await codec.getNextFrame();
+      expect(frame.image.width, 240);
+      expect(frame.image.height, 120);
+      frame.image.dispose();
+      codec.dispose();
+      return message;
+    }))!;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: MessageBubble(message: message)),
+      ),
+    );
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.text(image.name), findsOneWidget);
+    // Attachments supplied without a thumbnail keep only the name in history.
+    expect(ChatMessage(ChatRole.user, '', image: image).image!.bytes, isNull);
+  });
 
   testWidgets('select, preview and send an image with a question', (
     tester,

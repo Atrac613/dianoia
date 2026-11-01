@@ -1,12 +1,14 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'chat_protocol.dart';
 
-/// Read on the UI isolate while the OS picker grants access. Decode and vision
-/// preprocessing happen in the inference worker, never through a picker path.
+/// Read on the UI isolate while the OS picker grants access, retaining a small
+/// thumbnail for history. Model preprocessing runs in the inference worker.
 Future<ImageAttachment?> pickChatImage({
   Future<XFile?> Function()? chooseFile,
 }) async {
@@ -47,12 +49,63 @@ Future<ImageAttachment?> pickChatImage({
   final jpeg =
       data.length >= 3 && data[0] == 255 && data[1] == 216 && data[2] == 255;
   if (!png && !jpeg) throw const FormatException('Choose a PNG or JPEG image.');
-  return ImageAttachment(file.name, data);
+  final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+  try {
+    final descriptor = await ui.ImageDescriptor.encoded(buffer);
+    try {
+      final width = descriptor.width, height = descriptor.height;
+      if (width * height > 16000000) {
+        throw const FormatException(
+          'Choose an image with at most 16000000 pixels.',
+        );
+      }
+      final scale = math.min(1.0, 240 / math.max(width, height));
+      final codec = await descriptor.instantiateCodec(
+        targetWidth: math.max(1, (width * scale).round()),
+        targetHeight: math.max(1, (height * scale).round()),
+      );
+      try {
+        final frame = await codec.getNextFrame();
+        try {
+          final png = (await frame.image.toByteData(
+            format: ui.ImageByteFormat.png,
+          ))!;
+          final thumbnail = Uint8List.fromList(
+            png.buffer.asUint8List(png.offsetInBytes, png.lengthInBytes),
+          );
+          return ImageAttachment(
+            file.name,
+            data,
+            thumbnail: ImageThumbnail(file.name, thumbnail),
+          );
+        } finally {
+          frame.image.dispose();
+        }
+      } finally {
+        codec.dispose();
+      }
+    } finally {
+      descriptor.dispose();
+    }
+  } finally {
+    buffer.dispose();
+  }
 }
 
 class AttachmentPreview extends StatelessWidget {
   const AttachmentPreview({super.key, required this.image, this.onRemove});
   final ImageAttachment image;
+  final VoidCallback? onRemove;
+  @override
+  Widget build(BuildContext context) => ThumbnailPreview(
+    image: image.thumbnail ?? ImageThumbnail(image.name, image.bytes),
+    onRemove: onRemove,
+  );
+}
+
+class ThumbnailPreview extends StatelessWidget {
+  const ThumbnailPreview({super.key, required this.image, this.onRemove});
+  final ImageThumbnail image;
   final VoidCallback? onRemove;
 
   @override
@@ -63,20 +116,21 @@ class AttachmentPreview extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Image.memory(
-              image.bytes,
-              width: 120,
-              height: 90,
-              // One dimension only: both would decode at exactly 240x180
-              // and distort images of any other aspect ratio.
-              cacheWidth: 240,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => const SizedBox(
+            if (image.bytes != null)
+              Image.memory(
+                image.bytes!,
                 width: 120,
                 height: 90,
-                child: Icon(Icons.broken_image_outlined),
+                // One dimension only: both would decode at exactly 240x180
+                // and distort images of any other aspect ratio.
+                cacheWidth: 240,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => const SizedBox(
+                  width: 120,
+                  height: 90,
+                  child: Icon(Icons.broken_image_outlined),
+                ),
               ),
-            ),
             Text(image.name, maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         ),

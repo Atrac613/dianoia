@@ -38,10 +38,18 @@ sealed class ChatCommand {
 
 /// Encoded bytes are copied to the worker; file-picker paths never leave UI.
 final class ImageAttachment {
-  const ImageAttachment(this.name, this.bytes);
+  const ImageAttachment(this.name, this.bytes, {this.thumbnail});
+  final ImageThumbnail? thumbnail;
   static const maxBytes = 32 * 1024 * 1024;
   final String name;
   final Uint8List bytes;
+}
+
+/// At most 240 by 240 pixels, encoded as PNG by the picker.
+final class ImageThumbnail {
+  const ImageThumbnail(this.name, this.bytes);
+  final String name;
+  final Uint8List? bytes;
 }
 
 final class SendMessage extends ChatCommand {

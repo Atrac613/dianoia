@@ -2,6 +2,7 @@ import 'package:dianoia/dianoia.dart';
 import 'package:flutter/material.dart';
 
 import 'chat_controller.dart';
+import 'model_size.dart';
 
 /// Offers to download the model, naming its size and license, and shows
 /// the download and the bundle build.
@@ -27,25 +28,20 @@ class ModelSetup extends StatelessWidget {
               Text(spec.name, style: theme.textTheme.titleLarge),
               const SizedBox(height: 8),
               Text(
-                '${_gb(spec.downloadBytes)} GB to download from Hugging Face, '
+                '${gigabytes(spec.downloadBytes)} GB to download from Hugging Face, '
                 'once. The model then runs on this device: what you type '
                 'stays here, along with any images you send.',
               ),
-              if (spec is VisionGgufSpec) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'Allow at least 5 GB of free storage during download and setup. '
-                  'The installed model uses about 1.54 GB.',
-                ),
-              ],
-              if (spec is VisionCheckpointSpec) ...[
+              if (spec.setupBytes case final bytes?) ...[
                 const SizedBox(height: 12),
                 Text(
-                  'Allow at least 13 GB of free storage during the first '
-                  'download and conversion. The installed '
-                  '${spec.quantization.name.toUpperCase()} model uses about '
-                  '${spec.quantization == VisionQuantization.q4 ? '2.06' : '2.89'} GB.',
+                  'Allow at least ${gigabytes(bytes, compact: true)} GB of free '
+                  'storage during download and setup.',
                 ),
+              ],
+              if (spec.installedBytes case final bytes?) ...[
+                const SizedBox(height: 12),
+                Text('The installed model uses about ${gigabytes(bytes)} GB.'),
               ],
               const SizedBox(height: 12),
               Text('License: ${spec.license}'),
@@ -99,7 +95,7 @@ class ModelSetup extends StatelessWidget {
             ? (chat.spec is VisionGgufSpec
                   ? 'Preparing the model on this device…'
                   : 'Building the model on this device…')
-            : '${_gb(chat.installBytes)} of ${_gb(total)} GB',
+            : '${gigabytes(chat.installBytes)} of ${gigabytes(total)} GB',
       ),
       if (!building)
         Align(
@@ -111,6 +107,4 @@ class ModelSetup extends StatelessWidget {
         ),
     ];
   }
-
-  static String _gb(int bytes) => (bytes / 1e9).toStringAsFixed(2);
 }

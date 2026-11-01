@@ -93,7 +93,14 @@ Q6_K embedding/output head uses the existing Q8 adapter. Both GGUFs are pinned
 at revision `b36554cfd35854b06429900131730cd80f092cdb`; metadata retains the
 original VL pin. `fromMirror` preserves all hashes. Setup runs in an isolate,
 cleans intermediates on failure/cancellation, and publishes the bundle atomically.
-QAD has its own ID, separate from BF16-derived Q4 and Q8.
+QAD has its own ID, separate from BF16-derived Q4 and Q8. A successful install
+writes `qad_source.json`, recording all six source roles, names, byte lengths and
+pinned SHA-256 values, together with the generated bundle manifest's hash.
+`isInstalled` requires that record to match the requested spec; changing only
+the mirror URL preserves identity. Older installs without this record must be
+removed with `store.remove(spec)` and reinstalled. Payload hashes are still
+verified by `loadBundle`. Catalog `installedBytes` and `setupBytes` provide
+optional numeric storage estimates; custom specs can omit them.
 
 The version-one manifest's optional `input_embedding` field defaults to `bf16`
 for existing bundles. QAD bundles explicitly select `q8-cache`: the BF16 table
@@ -118,8 +125,10 @@ This catalog entry pins LiquidAI/LFM3-VL-2B revision
 hashes. Both presets download 3.85 GB; Q4 installs about 2.06 GB and Q8 about
 2.89 GB. Their model IDs differ, so an existing Q8 bundle cannot be reused as Q4.
 Allow at least 13 GB of free storage for the checkpoint, temporary imported
-backbone and packed output together. Quantization and packing use separate
-isolates to release temporary quantized matrices before mapping the packed cache.
+backbone and packed output together. Quantization writes one matrix at a time and releases its native allocation
+after writing it, including on write failure. The Q8 head is quantized from
+bounded row chunks. Quantization and packing use separate isolates, without
+loading a complete inference model to build the cache.
 Downloads resume and are checked again before reuse. Cancellation during
 conversion waits for completion, discards unpublished output and retains the
 downloads. Failed builds remove temporary output; retry rebuilds it.

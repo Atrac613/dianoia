@@ -87,7 +87,10 @@ The VL chat's **Attach image** button opens the native file picker for one
 PNG/JPEG (up to 32 MiB). The draft shows a preview and a remove button. Send it
 with a question or by itself. Sent images appear in the conversation; later
 text questions retain the visual context. New chat clears that context and
-the draft. Image decoding and encoding run in the inference worker. A stop
+the draft. History retains only a PNG thumbnail of at most 240 by 240 pixels
+and the file name, releasing the original attachment after sending. Thumbnail
+decoding runs on the UI isolate; model image decoding and encoding run in the
+inference worker. A stop
 before the first reply text cancels image processing; after text arrives,
 Stop keeps the partial reply. Messages and images stay on the device.
 

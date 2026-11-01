@@ -25,12 +25,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   final originalSpec = selected.downloadSpec;
   final spec = _mirror.isEmpty
       ? originalSpec
-      : switch (originalSpec) {
-          ModelSpec() => originalSpec.fromMirror(_mirror),
-          VisionCheckpointSpec() => originalSpec.fromMirror(_mirror),
-          VisionGgufSpec() => originalSpec.fromMirror(_mirror),
-          VisionModelSpec() => originalSpec.fromMirror(_mirror),
-        };
+      : originalSpec.fromMirror(_mirror);
   final store = ModelStore(location.storeDir);
   final commands = ReceivePort();
   out.send(WorkerStarted(commands.sendPort));
