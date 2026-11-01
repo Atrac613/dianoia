@@ -41,6 +41,36 @@ final class Lfm3VisionEncoder {
     VisionImageInput image, {
     void Function(String stage, Float32List rows)? capture,
   }) {
+    Float32List? result;
+    for (final (stage, rows) in _stages(image)) {
+      capture?.call(stage, Float32List.fromList(rows));
+      result = rows;
+    }
+    return result!;
+  }
+
+  /// Same arithmetic as [encode], yielding to the event loop between stages.
+  /// [checkCancelled] may throw to abort before the next stage is computed.
+  /// A stage itself is synchronous CPU work; run inference in a worker isolate
+  /// when integrating with a UI.
+  Future<Float32List> encodeAsync(
+    VisionImageInput image, {
+    void Function(String stage, Float32List rows)? capture,
+    void Function()? checkCancelled,
+  }) async {
+    await Future<void>.delayed(Duration.zero);
+    checkCancelled?.call();
+    Float32List? result;
+    for (final (stage, rows) in _stages(image)) {
+      capture?.call(stage, Float32List.fromList(rows));
+      result = rows;
+      await Future<void>.delayed(Duration.zero);
+      checkCancelled?.call();
+    }
+    return result!;
+  }
+
+  Iterable<(String, Float32List)> _stages(VisionImageInput image) sync* {
     final c = config.vision;
     if (c.inChannels != 3 ||
         image.patchSize != c.patchSize ||
@@ -65,7 +95,7 @@ final class Lfm3VisionEncoder {
     }
     var x = _linear('${_v}patchifier', image.pixelValues, h, image.patchDim, n);
     x = _norm(x, '${_v}embedding_norm.weight', h, c.normEps);
-    capture?.call('embedding', Float32List.fromList(x));
+    yield ('embedding', x);
     for (var i = 0; i < c.numLayers; i++) {
       final prefix = '${_v}layers.$i.';
       final normed = _norm(x, '${prefix}operator_norm.weight', h, c.normEps);
@@ -82,7 +112,7 @@ final class Lfm3VisionEncoder {
         gate[j] *= up[j];
       }
       _add(x, _linear('${f}w2', gate, h, c.intermediateSize, n));
-      capture?.call('layer.$i', Float32List.fromList(x));
+      yield ('layer.$i', x);
     }
     // LayerNorm precedes merging; it normalizes each vision token alone.
     final normalized = Float32List(x.length);
@@ -125,8 +155,7 @@ final class Lfm3VisionEncoder {
       image.imageTokens,
       bias: true,
     );
-    capture?.call('projected', Float32List.fromList(result));
-    return result;
+    yield ('projected', result);
   }
 
   Float32List _linear(

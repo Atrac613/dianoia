@@ -69,6 +69,35 @@ void main() {
     });
   }
 
+  test('async encoding preserves outputs and yields between stages', () async {
+    final input = syntheticVisionImage(4, 6);
+    final expected = encoder.encode(input);
+    var yielded = false;
+    Future<void>.delayed(Duration.zero, () => yielded = true);
+    final actual = await encoder.encodeAsync(input);
+    expect(yielded, isTrue);
+    expect(actual, orderedEquals(expected));
+  });
+
+  test('async encoding stops at cancellation before the next layer', () async {
+    var cancelled = false;
+    final seen = <String>[];
+    await expectLater(
+      encoder.encodeAsync(
+        syntheticVisionImage(4, 6),
+        capture: (stage, rows) {
+          seen.add(stage);
+          if (stage == 'layer.0') cancelled = true;
+        },
+        checkCancelled: () {
+          if (cancelled) throw StateError('cancelled');
+        },
+      ),
+      throwsStateError,
+    );
+    expect(seen, ['embedding', 'layer.0']);
+  });
+
   test('mismatched preprocessing and nonfinite pixels are rejected', () {
     expect(
       () => encoder.encode(syntheticVisionImage(2, 2, patch: 4)),
