@@ -62,6 +62,9 @@ void main() {
       final copyFile = File('${destination.path}/language/model.safetensors');
       copyFile.parent.createSync();
       copyFile.writeAsStringSync('broken');
+      // Left by an earlier bundle: mirroring must not keep it.
+      final stale = File('${destination.path}/language/lfm3-q8.cache')
+        ..writeAsStringSync('stale');
       final events = ReceivePort();
       final exited = ReceivePort();
       final iterator = StreamIterator<dynamic>(events);
@@ -88,10 +91,9 @@ void main() {
       }
       expect(iterator.current, isA<WorkerFailed>());
       expect(copyFile.readAsStringSync(), 'source');
-      expect(
-        File('${destination.path}/vl_bundle.json').readAsStringSync(),
-        '{}',
-      );
+      expect(stale.existsSync(), isFalse);
+      // The failed copy loses its manifest, so the next launch copies again.
+      expect(File('${destination.path}/vl_bundle.json').existsSync(), isFalse);
       commands.send(const CloseWorker());
       await exited.first.timeout(const Duration(seconds: 5));
     },

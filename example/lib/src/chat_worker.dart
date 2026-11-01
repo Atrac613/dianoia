@@ -45,7 +45,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   var stopRequested = false;
   var replyStarted = false;
 
-  Future<void> open(String dir) async {
+  Future<void> open(String dir, {void Function()? onFailed}) async {
     out.send(const WorkerProgress('Loading the model…'));
     try {
       InferenceBackend backend;
@@ -66,6 +66,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
       }
       if (!closing) out.send(WorkerReady(backend.name.toUpperCase()));
     } catch (e) {
+      onFailed?.call();
       out.send(WorkerFailed('$e'));
     }
   }
@@ -141,7 +142,13 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   try {
     final sideLoaded = _sideLoaded(location, out, vision: selected.isVision);
     if (sideLoaded != null) {
-      await (loading = open(sideLoaded));
+      await (loading = open(
+        sideLoaded,
+        // A copy that fails its checks is copied again on the next launch.
+        onFailed: selected.isVision && location.copyDir != location.dropDir
+            ? () => _forgetCopy(location.copyDir)
+            : null,
+      ));
     } else if (store.isInstalled(spec)) {
       await (loading = open(store.bundlePath(spec)));
     } else {
@@ -163,7 +170,11 @@ String? _sideLoaded(
   if (!File('${location.dropDir}/$cache').existsSync()) return null;
   if (location.copyDir != location.dropDir) {
     out.send(const WorkerProgress('Copying the model to app storage…'));
-    _copyBundle(location.dropDir, location.copyDir, overwrite: vision);
+    if (vision) {
+      _mirrorVisionBundle(location.dropDir, location.copyDir);
+    } else {
+      _copyBundle(location.dropDir, location.copyDir);
+    }
   }
   return location.copyDir;
 }
@@ -223,14 +234,20 @@ Future<void> _reply(
   }
 }
 
-/// Copies nested bundle files into app storage for mapping. VL copies are
-/// refreshed even when sizes match, so a damaged copy can be repaired.
-void _copyBundle(String from, String to, {required bool overwrite}) {
+/// Copies nested bundle files into app storage for mapping, skipping files
+/// already there at the same size.
+void _copyBundle(
+  String from,
+  String to, {
+  bool overwrite = false,
+  String? except,
+}) {
   Directory(to).createSync(recursive: true);
   for (final file in Directory(
     from,
   ).listSync(recursive: true).whereType<File>()) {
     final relative = file.path.substring(Directory(from).path.length + 1);
+    if (relative == except) continue;
     final copy = File('$to/$relative');
     copy.parent.createSync(recursive: true);
     if (!overwrite &&
@@ -240,4 +257,34 @@ void _copyBundle(String from, String to, {required bool overwrite}) {
     }
     file.copySync(copy.path);
   }
+}
+
+/// Reuses the VL copy while its manifest matches the dropped bundle's; the
+/// loader then checks every file against it. Otherwise replaces the whole
+/// copy, so no file of an earlier bundle (such as its other cache) remains.
+void _mirrorVisionBundle(String from, String to) {
+  final manifest = File('$from/vl_bundle.json').readAsBytesSync();
+  final copied = File('$to/vl_bundle.json');
+  if (copied.existsSync() && _sameBytes(copied.readAsBytesSync(), manifest)) {
+    return;
+  }
+  final target = Directory(to);
+  if (target.existsSync()) target.deleteSync(recursive: true);
+  // The manifest goes last: an interrupted copy has none and is redone.
+  _copyBundle(from, to, overwrite: true, except: 'vl_bundle.json');
+  File('$from/vl_bundle.json').copySync(copied.path);
+}
+
+/// Drops the copy's manifest so the next launch copies the bundle again.
+void _forgetCopy(String copyDir) {
+  final manifest = File('$copyDir/vl_bundle.json');
+  if (manifest.existsSync()) manifest.deleteSync();
+}
+
+bool _sameBytes(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
