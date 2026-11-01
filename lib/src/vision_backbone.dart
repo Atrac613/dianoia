@@ -133,3 +133,18 @@ Map<String, List<int>> _languageShapes(Lfm3Config c) {
   }
   return shapes;
 }
+
+/// Checks import fingerprints before pairing a VL encoder with its backbone.
+/// Uses the same metadata-based identity policy as weight caches, not a full
+/// tensor-payload checksum. The importer writes this provenance file.
+void validateVlBackbone(String modelDir, String backboneDir) {
+  final identity = jsonDecode(
+    File('$backboneDir/vl_backbone.json').readAsStringSync(),
+  );
+  if (identity is! Map ||
+      identity['version'] != 1 ||
+      identity['source_key'] != Q8Cache.keyFor(modelDir) ||
+      identity['backbone_key'] != Q8Cache.keyFor(backboneDir)) {
+    throw ArgumentError('backbone provenance does not match the VL checkpoint');
+  }
+}

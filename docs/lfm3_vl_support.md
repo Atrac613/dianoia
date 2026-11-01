@@ -2,7 +2,8 @@
 
 Status: experimental lab support. Real-checkpoint RGB-to-answer smoke checks
 pass for CPU float32 and a CPU vision encoder with Q8/Metal language inference.
-Public image chat and optimized vision inference are not implemented.
+An experimental [app-facing image chat API](vision_chat_api.md) is available.
+Optimized vision inference is not implemented.
 
 ## Verified upstream structure
 
@@ -158,7 +159,8 @@ await prompt.prefill(languageModel, [encoder.encode(image)]);
 
 This low-level lab API requires the caller to use matching VL encoder and
 language weights; it does not establish checkpoint identity or manage generation.
-The public `LocalModel` / `ChatSession` APIs still accept text only.
+The public `LocalModel` / `ChatSession` APIs accept text; `LocalVisionModel`
+and `VisionChatSession` add decoded-RGB image conversations.
 
 `tool/vision_prompt_oracle.py` checks the pinned Jinja template and processor
 image-token replacement via Hugging Face. Thirty cases include multiple images,
@@ -197,8 +199,8 @@ preprocessing differences cannot silently pass.
    varied scenes, documents, small text and multi-image prompts.
 2. Optimize the vision encoder/projector with native or GPU execution and measure
    memory, latency and sustained behavior on target devices.
-3. Add a downloadable model specification and public image chat API, including
-   generation and cancellation. Add video after single-image correctness.
+3. Add a downloadable VL model specification, smaller device packaging and
+   image-file decoding adapters. Add video after single-image correctness.
 
 Metadata and synthetic operator tests remain fast automated checks. The separate
 real-checkpoint runs validate three synthetic color/spatial cases and four

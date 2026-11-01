@@ -14,6 +14,8 @@
 /// print(turn.reply.content);
 /// ```
 ///
+/// Decoded RGB image conversations use [LocalVisionModel], [ChatImage] and
+/// [VisionChatSession]. Image encoding currently runs on the CPU.
 /// `package:dianoia/lab.dart` exposes the engine's internals.
 library;
 
@@ -22,3 +24,5 @@ export 'src/chat_session.dart'
 export 'src/local_model.dart';
 export 'src/model_store.dart';
 export 'src/tool_calls.dart';
+export 'src/vision_session.dart'
+    show ChatImage, VisionChatSession, VisionRequestCancelled;

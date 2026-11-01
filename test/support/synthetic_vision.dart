@@ -4,7 +4,12 @@ import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
 
-void writeSyntheticVisionWeights(String path, Map<String, Object?> shapes) {
+void writeSyntheticVisionWeights(
+  String path,
+  Map<String, Object?> shapes, {
+  bool bf16 = false,
+  bool suppressSpecialEmbeddings = false,
+}) {
   final header = <String, Object?>{};
   final data = BytesBuilder();
   var offset = 0;
@@ -17,22 +22,35 @@ void writeSyntheticVisionWeights(String path, Map<String, Object?> shapes) {
     }
     seed %= 997;
     final norm = entry.key.contains('norm') && entry.key.endsWith('.weight');
-    final bytes = ByteData(count * 4);
+    final bytes = ByteData(count * (bf16 ? 2 : 4));
+    final scalar = ByteData(4);
     for (var i = 0; i < count; i++) {
-      bytes.setFloat32(
-        i * 4,
-        (norm ? 1 : 0) +
-            ((seed + i * 7 + (i ~/ 3) * 11) % 37 - 18) / (norm ? 256 : 64),
-        Endian.little,
-      );
+      var value =
+          (norm ? 1 : 0) +
+          ((seed + i * 7 + (i ~/ 3) * 11) % 37 - 18) / (norm ? 256 : 64);
+      if (suppressSpecialEmbeddings &&
+          entry.key.endsWith('embed_tokens.weight')) {
+        final row = i ~/ shape.last;
+        if (row < 32 || row > 126) value = 0;
+      }
+      if (bf16) {
+        scalar.setFloat32(0, value, Endian.little);
+        bytes.setUint16(
+          i * 2,
+          scalar.getUint32(0, Endian.little) >> 16,
+          Endian.little,
+        );
+      } else {
+        bytes.setFloat32(i * 4, value, Endian.little);
+      }
     }
     header[entry.key] = {
-      'dtype': 'F32',
+      'dtype': bf16 ? 'BF16' : 'F32',
       'shape': shape,
-      'data_offsets': [offset, offset + count * 4],
+      'data_offsets': [offset, offset + bytes.lengthInBytes],
     };
     data.add(bytes.buffer.asUint8List());
-    offset += count * 4;
+    offset += bytes.lengthInBytes;
   }
   final json = utf8.encode(jsonEncode(header));
   final padded = (json.length + 7) ~/ 8 * 8;

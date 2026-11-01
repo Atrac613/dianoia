@@ -574,11 +574,7 @@ Future<int> _visionRun(Map<String, String> flags) async {
   }
   final identity =
       jsonDecode(File('$backbone/vl_backbone.json').readAsStringSync()) as Map;
-  if (identity['version'] != 1 ||
-      identity['source_key'] != Q8Cache.keyFor(vlDir) ||
-      identity['backbone_key'] != Q8Cache.keyFor(backbone)) {
-    throw ArgumentError('backbone provenance does not match the VL checkpoint');
-  }
+  validateVlBackbone(vlDir, backbone);
   final processor = Lfm3ImageProcessor.load(vlDir);
   final image = processor.prepareRgb(
     File(require('rgb')).readAsBytesSync(),

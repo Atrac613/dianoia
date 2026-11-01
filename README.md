@@ -11,14 +11,15 @@ dispatch per Dart call.
 
 > **Status: 0.1.1.** The engine was imported from
 > [dart-llm-lab](#origin) and runs one model family, LFM3, for text chat and
-> tool calling. `package:dianoia/dianoia.dart` is the API for apps and may
+> tool calling and experimental image chat. `package:dianoia/dianoia.dart` is the API for apps and may
 > still change before 1.0; `package:dianoia/lab.dart` exposes the engine's
 > internals with no stability promise. Planned: LFM3 audio and general GGUF
 > models.
 
-Experimental LFM3-VL image inference is available through the lab APIs and
-`vision-run` validation command; see the [integration notes](docs/lfm3_vl_support.md).
-The app-facing chat API remains text-only.
+Experimental LFM3-VL image conversations use `LocalVisionModel`, `ChatImage`
+and `VisionChatSession`; see the [app API guide](docs/vision_chat_api.md).
+The [integration notes](docs/lfm3_vl_support.md) cover the reference encoder and
+`vision-run` validation command. Image encoding currently runs on the CPU.
 
 ## What runs where
 
