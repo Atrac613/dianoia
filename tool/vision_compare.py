@@ -6,13 +6,31 @@ Always requires exact preprocessing, prompt IDs, grid and generated token IDs.
 need separately chosen tolerances. A successful report is not a broad quality
 benchmark. Returns nonzero for any failed check and saves an inspectable report.
 """
+from __future__ import annotations
+
 import argparse
 import json
 from pathlib import Path
+
 import numpy as np
 
 
-def compare(reference, actual, atol, rtol, logits_atol=None, logits_rtol=None):
+def compare(reference: Path, actual: Path, atol: float, rtol: float,
+            logits_atol: float | None = None, logits_rtol: float | None = None) -> dict:
+    """Checks a vision-run dump against an upstream reference dump.
+
+    Args:
+        reference: Directory written by vision_reference.py.
+        actual: Directory written by `dianoia vision-run`.
+        atol: Absolute tolerance for encoder, projector and logit elements.
+        rtol: Relative tolerance, scaled by the reference magnitude.
+        logits_atol: Absolute tolerance for logits only; atol when None.
+        logits_rtol: Relative tolerance for logits only; rtol when None.
+
+    Returns:
+        A JSON-ready report: per-check booleans, with checks['passed'] true
+        only if all hold, and error metrics per compared file.
+    """
     a = json.loads((reference/'meta.json').read_text())
     b = json.loads((actual/'meta.json').read_text())
     report = {'checks': {}, 'metrics': {}}
@@ -51,7 +69,8 @@ def compare(reference, actual, atol, rtol, logits_atol=None, logits_rtol=None):
     return report
 
 
-def main():
+def main() -> None:
+    """Compares the dumps named on the command line; exits 1 on a failure."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--reference', type=Path, required=True)
     p.add_argument('--actual', type=Path, required=True)

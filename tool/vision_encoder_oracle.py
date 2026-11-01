@@ -5,14 +5,17 @@ Requires torch, numpy and torchvision. No model weights are downloaded or saved.
 The fixture contains shapes and outputs; test weights are generated at runtime
 from tensor names and indices by the exact rational formula below.
 """
+from __future__ import annotations
+
 import argparse
 import ast
-from contextlib import nullcontext
 import hashlib
 import json
+import urllib.request
+from collections.abc import Sequence
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
-import urllib.request
 
 import torch
 from torch import nn
@@ -26,7 +29,16 @@ CLASSES = ['Lfm3VlRMSNorm', 'Lfm3VlMLP', 'Lfm3VlVisionRotaryEmbedding',
 FUNCTIONS = ['rotate_half', 'apply_rotary_pos_emb_vision', 'repeat_kv', 'eager_attention_forward']
 
 
-def fill(name, shape):
+def fill(name: str, shape: Sequence[int]) -> torch.Tensor:
+    """Synthetic weights for one tensor, as test/support/synthetic_vision.dart makes them.
+
+    Args:
+        name: Checkpoint tensor name; it seeds the values.
+        shape: Tensor shape.
+
+    Returns:
+        A float32 tensor of small exact rationals; norm weights sit near one.
+    """
     count = 1
     for size in shape:
         count *= size
@@ -37,7 +49,8 @@ def fill(name, shape):
                          (256 if norm_weight else 64) for i in range(count)], dtype=torch.float32).reshape(shape)
 
 
-def main():
+def main() -> None:
+    """Runs the pinned upstream vision layers and writes the encoder oracle."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path)
     parser.add_argument('--out', type=Path, default=Path('test/fixtures/vision/encoder_oracle.json'))

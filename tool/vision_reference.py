@@ -5,13 +5,17 @@ Requires transformers==5.21.0, torch, torchvision and Pillow. Loads only local
 checkpoint files and executes their custom code. RGB decoding includes EXIF
 orientation. Outputs and weights belong in ignored build/ directories.
 """
+from __future__ import annotations
+
 import argparse
 import json
-from pathlib import Path
 import time
+from collections.abc import Callable
+from pathlib import Path
 
 
-def main():
+def main() -> None:
+    """Runs the upstream model on one image and writes its evidence directory."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', type=Path, required=True)
     parser.add_argument('--image', type=Path, required=True)
@@ -39,11 +43,13 @@ def main():
         enable_thinking=args.think, tokenize=True, return_dict=True, return_tensors='pt')
     model = AutoModelForImageTextToText.from_pretrained(args.model, trust_remote_code=True,
         local_files_only=True, dtype=torch.float32, attn_implementation='eager').eval()
-    def dump(name, tensor):
+    def dump(name: str, tensor: torch.Tensor) -> None:
+        """Writes tensor to name in the output as little-endian float32."""
         tensor.detach().float().cpu().contiguous().numpy().astype('<f4').tofile(args.out/name)
     stages = []
-    def hook(stage):
-        def save(module, inputs, output):
+    def hook(stage: str) -> Callable[[torch.nn.Module, tuple, torch.Tensor], None]:
+        """A forward hook that records stage and dumps the module's output."""
+        def save(module: torch.nn.Module, inputs: tuple, output: torch.Tensor) -> None:
             stages.append(stage)
             dump(f'vision_{stage}.f32', output)
         return save

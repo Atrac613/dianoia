@@ -3,9 +3,12 @@
 
 Run with Pillow 13.0.0. Files contain synthetic pixels only, not model weights.
 """
-from pathlib import Path
+from __future__ import annotations
+
 import struct
 import zlib
+from collections.abc import Sequence
+from pathlib import Path
 
 from PIL import Image
 
@@ -13,7 +16,18 @@ ROOT = Path(__file__).resolve().parents[1] / 'test/fixtures/image_input'
 ROOT.mkdir(parents=True, exist_ok=True)
 
 
-def save(mode, size, pixels, name):
+def save(mode: str, size: tuple[int, int], pixels: Sequence, name: str) -> Image.Image:
+    """Writes a Pillow image of mode and size filled with pixels to name.
+
+    Args:
+        mode: Pillow image mode, such as 'RGB' or 'I;16'.
+        size: Width and height.
+        pixels: Row-major pixel values in that mode.
+        name: File name under the fixture directory; its extension picks the format.
+
+    Returns:
+        The image as saved.
+    """
     image = Image.new(mode, size)
     image.putdata(pixels)
     image.save(ROOT / name)
@@ -48,9 +62,13 @@ for orientation in range(1, 9):
 first = Image.new('RGB', (8, 8), (255, 0, 0))
 first.save(ROOT / 'animated.png', save_all=True,
            append_images=[Image.new('RGB', (8, 8), (0, 0, 255))], duration=100, loop=0)
+
+
 # Explicit one-frame APNG: Pillow optimizes a one-frame save to plain PNG.
-def chunk(kind, data):
+def chunk(kind: bytes, data: bytes) -> bytes:
+    """A PNG chunk of kind holding data, with its length and CRC."""
     return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
 
 first.save(ROOT / 'one-frame-apng.png')
 png = (ROOT / 'one-frame-apng.png').read_bytes()

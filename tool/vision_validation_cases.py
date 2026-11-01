@@ -5,17 +5,20 @@ Requires Pillow. Supply the pinned scikit-image astronaut PNG and a local font
 with Japanese glyphs. Font files are never copied. The manifest records source,
 font and decoded image hashes; Pillow is pinned by requirements-vision-validation.
 """
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import unicodedata
+from pathlib import Path
 
 SOURCE = 'https://raw.githubusercontent.com/scikit-image/scikit-image/v0.19.3/skimage/data/astronaut.png'
 SOURCE_SHA256 = '88431cd9653ccd539741b555fb0a46b61558b301d4110412b5bc28b5e3ea6cb5'
 
 
-def main():
+def main() -> None:
+    """Writes the photo and OCR images with their cases.json manifest."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--astronaut', type=Path, required=True)
     p.add_argument('--font', type=Path, required=True)

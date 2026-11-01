@@ -5,14 +5,16 @@ Requires transformers and torch. Uses the lab tokenizer only to render strings;
 no weights or tokenizer file are saved in the fixture. Tool-search cases reuse
 the existing oracle inputs, with an image added to the first user message.
 """
+from __future__ import annotations
+
 import argparse
 import ast
 import copy
 import hashlib
 import json
+import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
-import urllib.request
 
 import torch
 import transformers
@@ -22,7 +24,8 @@ REVISION = 'ba44bd51db20a2753f28c273a1571ccaa210d954'
 BASE = f'https://huggingface.co/LiquidAI/LFM3-VL-2B/raw/{REVISION}/'
 
 
-def main():
+def main() -> None:
+    """Renders and expands each case with the pinned template and processor."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', type=Path, default=Path('../dart-llm-lab/models/LFM3-1.7B'))
     parser.add_argument('--template', type=Path)
@@ -38,7 +41,11 @@ def main():
     exec(compile(ast.Module(body=[method], type_ignores=[]), BASE+'processing_lfm3_vl.py', 'exec'), scope)
     tokenizer = AutoTokenizer.from_pretrained(args.model, local_files_only=True, trust_remote_code=True)
     image = {'type': 'image'}
-    text = lambda value: {'type': 'text', 'text': value}
+
+    def text(value: str) -> dict:
+        """A text content part."""
+        return {'type': 'text', 'text': value}
+
     cases = [
         dict(name='image_then_text', messages=[{'role': 'user', 'content': [image, text('何が見える？')]}], counts=[6]),
         dict(name='two_images', messages=[{'role': 'system', 'content': 'Compare.'},

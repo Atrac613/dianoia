@@ -6,24 +6,27 @@ only the pinned processor source; never downloads weights. Uses the actual
 smart_resize and patchify definitions, torchvision uint8 antialiased bicubic
 resize, and the HF backend's fused (pixel - 127.5) / 127.5 normalization.
 """
+from __future__ import annotations
+
 import argparse
 import ast
 import hashlib
 import json
 import math
-from pathlib import Path
 import urllib.request
+from pathlib import Path
 
 import torch
 import torchvision
-from torchvision.transforms.v2 import functional as tvf
 from torchvision.transforms import InterpolationMode
+from torchvision.transforms.v2 import functional as tvf
 
 REVISION = 'ba44bd51db20a2753f28c273a1571ccaa210d954'
 SOURCE = f'https://huggingface.co/LiquidAI/LFM3-VL-2B/raw/{REVISION}/image_processing_lfm3_vl.py'
 
 
-def main():
+def main() -> None:
+    """Preprocesses the synthetic cases upstream's way and writes their hashes."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, help='optional local upstream processor source')
     parser.add_argument('--out', type=Path, default=Path('test/fixtures/vision/image_oracle.json'))
