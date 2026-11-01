@@ -5,8 +5,15 @@ import 'dart:typed_data';
 import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
 
+import 'support/gpu_host.dart';
+
 void main() {
   final directory = Platform.environment['DIANOIA_LFM3_DIR'];
+  final skip = directory == null
+      ? 'set DIANOIA_LFM3_DIR to a Q4 bundle'
+      : !hostHasGpu
+      ? noGpuSkip
+      : false;
   test('Q8 embeddings survive hot CPU lookup then GPU cache reload', () async {
     NativeKernels.load(null, threads: 2);
     final ids = List.generate(64, (i) => 10 + i);
@@ -47,5 +54,5 @@ void main() {
         await model.close();
       }
     }
-  }, skip: directory == null ? 'set DIANOIA_LFM3_DIR to a Q4 bundle' : false);
+  }, skip: skip);
 }

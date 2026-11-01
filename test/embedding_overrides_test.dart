@@ -4,10 +4,17 @@ import 'dart:typed_data';
 import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
 
+import 'support/gpu_host.dart';
+
 final _modelDir = Platform.environment['DIANOIA_LFM3_DIR'];
 
 void main() {
   for (final gpu in [false, true]) {
+    final skip = _modelDir == null
+        ? 'set DIANOIA_LFM3_DIR to a Q4 bundle'
+        : gpu && !hostHasGpu
+        ? noGpuSkip
+        : false;
     group(gpu ? 'GPU embedding overrides' : 'CPU embedding overrides', () {
       late Lfm3Model model;
       setUpAll(() async {
@@ -73,6 +80,6 @@ void main() {
           expect(model.history, isEmpty);
         }
       });
-    }, skip: _modelDir == null ? 'set DIANOIA_LFM3_DIR to a Q4 bundle' : false);
+    }, skip: skip);
   }
 }

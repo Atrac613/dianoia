@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
 
+import 'support/gpu_host.dart';
 import 'support/synthetic_vision.dart';
 import 'support/synthetic_tokenizer.dart';
 
@@ -186,6 +187,11 @@ void main() {
 
   final modelDir = Platform.environment['DIANOIA_LFM3_DIR'];
   for (final gpu in [false, true]) {
+    final skip = modelDir == null
+        ? 'set DIANOIA_LFM3_DIR to a Q4 bundle'
+        : gpu && !hostHasGpu
+        ? noGpuSkip
+        : false;
     test(
       'encoder rows reach language prefill (${gpu ? 'GPU' : 'CPU'})',
       () async {
@@ -286,7 +292,7 @@ void main() {
         await model.forward(prompt.ids, embeddingOverrides: overrides);
         expect(model.logits, orderedEquals(actual));
       },
-      skip: modelDir == null ? 'set DIANOIA_LFM3_DIR to a Q4 bundle' : false,
+      skip: skip,
     );
   }
 }
