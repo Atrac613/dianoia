@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'chat_controller.dart';
+import 'image_attachment.dart';
 
 /// One message: the user's on the right, the model's on the left, with the
 /// reply's speed (or the reason it failed) underneath.
@@ -34,16 +35,25 @@ class MessageBubble extends StatelessWidget {
                     : scheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: message.text.isEmpty
-                  ? const _Typing()
-                  : SelectableText(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (message.image case final image?)
+                    AttachmentPreview(image: image),
+                  if (message.text.isNotEmpty)
+                    SelectableText(
                       message.text,
                       style: TextStyle(
                         color: mine
                             ? scheme.onPrimaryContainer
                             : scheme.onSurface,
                       ),
-                    ),
+                    )
+                  else if (!mine)
+                    const _Typing(),
+                ],
+              ),
             ),
             if (stats != null)
               Padding(

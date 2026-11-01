@@ -20,12 +20,13 @@ Keep the original LFM3-VL checkpoint, including `config.json`, `tokenizer.json`,
 backbone using `dianoia import-vl-backbone`. Build its Q8 cache with `vision-run`
 as described in the [real-checkpoint report](lfm3_vl_validation_2026-11-01.md).
 `LocalVisionModel.load` uses an existing Q4 cache if present, otherwise Q8, matching
-`LocalModel` bundle selection. The recorded real VL runs use Q8.
+`LocalModel` bundle selection. Real Q4 and Q8 desktop results are compared in
+[the Q4 validation report](lfm3_vl_q4_validation_2026-11-01.md).
 
 The loader validates source/backbone import fingerprints, processor dimensions
 and vision special-token IDs. As with existing caches, fingerprints cover the
 safetensors header/size and config; verify downloaded payload hashes separately.
-`ModelStore` installs text checkpoints and prebuilt VL bundles. Loading itself
+`ModelStore` installs text checkpoints, upstream VL checkpoints and prebuilt VL bundles. Loading itself
 does not download weights or prepare a backbone. Use the image adapters below
 to decode local PNG/JPEG inputs.
 
@@ -43,8 +44,13 @@ BF16 token embeddings and small language tensors, plus the existing Q8 or Q4
 matrix cache. It does not requantize. It includes configuration, tokenizer and
 upstream license, writes a SHA-256 manifest, and publishes the directory only
 after all files are complete. The original directories are unnecessary at runtime.
-Q4 packing requires an existing matching Q4 cache; real-model bundle validation
-currently covers Q8, with Q4 covered by synthetic runtime tests.
+Q4 packing requires an existing matching Q4 cache. Real-model packing preserves
+all OCR logits on CPU and Metal for both formats. The
+[Q4 comparison](lfm3_vl_q4_validation_2026-11-01.md) records its size/speed gains
+and Japanese OCR whitespace difference. PTQ Q4 and Q8 remain available through
+`VisionCheckpointSpec`; the example selects the official QAD Q4 preset.
+A separate [official QAD Q4 evaluation](lfm3_vl_qad_q4_validation_2026-11-01.md)
+checks the GGUF import against llama.cpp and the installed app bundle.
 
 Load the resulting directory with the app-facing API:
 
@@ -68,6 +74,57 @@ The measured Q8 bundle is 2,885,204,285 bytes (2.69 GiB), compared with
 and Q8 cache. This saves 68.9% of disk space in that preparation layout; it does
 not reduce the vision encoder's float32 working memory. See the
 [bundle validation report](lfm3_vl_bundle_2026-11-01.md).
+
+## Install the official QAD Q4 GGUFs
+
+The example's default downloads paired official QAD language and BF16 mmproj
+GGUFs, with pinned config/tokenizer/processor/license files:
+
+```dart
+final spec = VisionGgufSpec.lfm3VlQadQ4;
+final store = ModelStore(modelsDirectory);
+await store.install(spec).drain<void>();
+final model = await LocalVisionModel.loadBundle(store.bundlePath(spec));
+```
+
+The 1.45 GB source download produces an approximately 1.54 GB bundle; allow
+5 GB free during setup. Language Q4 blocks and scales remain unchanged. The
+Q6_K embedding/output head uses the existing Q8 adapter. Both GGUFs are pinned
+at revision `b36554cfd35854b06429900131730cd80f092cdb`; metadata retains the
+original VL pin. `fromMirror` preserves all hashes. Setup runs in an isolate,
+cleans intermediates on failure/cancellation, and publishes the bundle atomically.
+QAD has its own ID, separate from BF16-derived Q4 and Q8.
+
+The version-one manifest's optional `input_embedding` field defaults to `bf16`
+for existing bundles. QAD bundles explicitly select `q8-cache`: the BF16 table
+must be absent and the cache must contain a complete Q8 embedding/head. Both
+policies are validated. The lab packing API accepts `useCacheEmbedding: true`
+for such GGUF imports; `ModelStore` selects it automatically.
+
+## Install the official VL checkpoint
+
+`ModelStore` can download the pinned upstream BF16 checkpoint and build a Q4 or Q8
+bundle on the device, without an app-hosted converted model:
+
+```dart
+final spec = VisionCheckpointSpec.lfm3VlQ4; // Or lfm3VlQ8.
+final store = ModelStore(modelsDirectory);
+await store.install(spec).drain<void>();
+final model = await LocalVisionModel.loadBundle(store.bundlePath(spec));
+```
+
+This catalog entry pins LiquidAI/LFM3-VL-2B revision
+`ba44bd51db20a2753f28c273a1571ccaa210d954` and all five source files' SHA-256
+hashes. Both presets download 3.85 GB; Q4 installs about 2.06 GB and Q8 about
+2.89 GB. Their model IDs differ, so an existing Q8 bundle cannot be reused as Q4.
+Allow at least 13 GB of free storage for the checkpoint, temporary imported
+backbone and packed output together. Quantization and packing use separate
+isolates to release temporary quantized matrices before mapping the packed cache.
+Downloads resume and are checked again before reuse. Cancellation during
+conversion waits for completion, discards unpublished output and retains the
+downloads. Failed builds remove temporary output; retry rebuilds it.
+`fromMirror` changes the source directory while preserving every pinned hash.
+This does not change the trusted-manifest API for prebuilt hosted bundles below.
 
 ## Install a hosted VL bundle
 

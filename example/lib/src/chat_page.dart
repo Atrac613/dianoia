@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'chat_controller.dart';
+import 'chat_protocol.dart';
+import 'image_attachment.dart';
 import 'message_bubble.dart';
 import 'model_setup.dart';
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.controller});
+  const ChatPage({super.key, required this.controller, this.pickImage});
 
   final ChatController controller;
+  final Future<ImageAttachment?> Function()? pickImage;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -16,6 +19,9 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
+  ImageAttachment? _image;
+  bool _picking = false;
+  String? _imageError;
 
   ChatController get _chat => widget.controller;
   bool get _failed => _chat.setup == Setup.failed;
@@ -42,8 +48,38 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _send() {
-    _chat.send(_input.text);
+    if (_picking) return;
+    if (_chat.send(_input.text, image: _image)) {
+      _input.clear();
+      setState(() {
+        _image = null;
+        _imageError = null;
+      });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    setState(() {
+      _picking = true;
+      _imageError = null;
+    });
+    try {
+      final image = await (widget.pickImage ?? pickChatImage)();
+      if (mounted && image != null) setState(() => _image = image);
+    } catch (e) {
+      if (mounted) setState(() => _imageError = '$e');
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  void _newChat() {
+    _chat.newChat();
     _input.clear();
+    setState(() {
+      _image = null;
+      _imageError = null;
+    });
   }
 
   @override
@@ -59,7 +95,9 @@ class _ChatPageState extends State<ChatPage> {
         actions: [
           IconButton(
             tooltip: 'New chat',
-            onPressed: _chat.ready && !_chat.replying ? _chat.newChat : null,
+            onPressed: _chat.ready && !_chat.replying && !_picking
+                ? _newChat
+                : null,
             icon: const Icon(Icons.add_comment_outlined),
           ),
         ],
@@ -113,35 +151,67 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _composer(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 4, 8, 12),
-    child: Row(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: TextField(
-            controller: _input,
-            enabled: _chat.ready,
-            minLines: 1,
-            maxLines: 5,
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _send(),
-            decoration: const InputDecoration(
-              hintText: 'Message',
-              border: OutlineInputBorder(),
-              isDense: true,
+        if (_image case final image?)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: AttachmentPreview(
+              image: image,
+              onRemove: () => setState(() => _image = null),
             ),
           ),
-        ),
-        const SizedBox(width: 4),
-        _chat.replying
-            ? IconButton.filledTonal(
-                tooltip: 'Stop',
-                onPressed: _chat.stop,
-                icon: const Icon(Icons.stop),
-              )
-            : IconButton.filled(
-                tooltip: 'Send',
-                onPressed: _chat.ready ? _send : null,
-                icon: const Icon(Icons.arrow_upward),
+        if (_imageError case final error?)
+          Text(
+            error,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        Row(
+          children: [
+            if (_chat.model.isVision)
+              IconButton(
+                tooltip: 'Attach image',
+                onPressed: _chat.ready && !_chat.replying && !_picking
+                    ? _pickImage
+                    : null,
+                icon: _picking
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add_photo_alternate_outlined),
               ),
+            Expanded(
+              child: TextField(
+                controller: _input,
+                enabled: _chat.ready,
+                minLines: 1,
+                maxLines: 5,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+                decoration: const InputDecoration(
+                  hintText: 'Message',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            _chat.replying
+                ? IconButton.filledTonal(
+                    tooltip: 'Stop',
+                    onPressed: _chat.stop,
+                    icon: const Icon(Icons.stop),
+                  )
+                : IconButton.filled(
+                    tooltip: 'Send',
+                    onPressed: _chat.ready && !_picking ? _send : null,
+                    icon: const Icon(Icons.arrow_upward),
+                  ),
+          ],
+        ),
       ],
     ),
   );

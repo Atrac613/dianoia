@@ -1,0 +1,2031 @@
+{
+  "date": "2026-11-01",
+  "model": "LiquidAI/LFM3-VL-2B-GGUF QAD Q4_0 plus BF16 mmproj",
+  "downloads": {
+    "revision": "b36554cfd35854b06429900131730cd80f092cdb",
+    "files": {
+      "LFM3-VL-2B-QAD-Q4_0.gguf": {
+        "bytes": 1049615648,
+        "sha256": "621c455376cb96a20891697deb9975c6fb47dd5ea98ed3ad1f3b7e8f24f0b1e6"
+      },
+      "mmproj-LFM3-VL-2B-BF16.gguf": {
+        "bytes": 378996032,
+        "sha256": "8e75a88afc0e6a3bcd637becbe720447ea0794934b7b417a1f42d5cfe0d9c288"
+      }
+    }
+  },
+  "host": {
+    "cpu": "Apple M2 Max",
+    "ram_bytes": 68719476736
+  },
+  "reference": {
+    "source_commit": "060b2fea4ed528810ddc91d48fb22b3e4d63eb85",
+    "settings": {
+      "temperature": 0,
+      "seed": 123,
+      "repeat_penalty": 1.0,
+      "threads": 4,
+      "context_length": 512,
+      "max_new_tokens": 32,
+      "language_backend": "Metal",
+      "vision_backend": "CPU",
+      "thinking": false
+    },
+    "template_sha256": "d0be37d2e35a1a2d8ab70dc9509c3a03f74c9536511f688680396638888f9f41",
+    "cli_sha256": "ba171eaff46816d7bb80a66f761ed26b2c9bedbe3f47662cb4527f4932ee86fa",
+    "cases": [
+      {
+        "name": "red",
+        "prompt": "What is the main color? Answer with one color word.",
+        "image": "build/vl-validation/red.png",
+        "image_sha256": "4cb244d414ed57a0a81ad808c62ff855a390b00b01f2f8591fcf8d035317ec78",
+        "text": "Red",
+        "wall_s": 9.957614292012295
+      },
+      {
+        "name": "blue",
+        "prompt": "What is the main color? Answer with one color word.",
+        "image": "build/vl-validation/blue.png",
+        "image_sha256": "449c56497fec01b080d2c8c79a590c3daf28dc5e323227dc36c66d4e5dcca06b",
+        "text": "Blue",
+        "wall_s": 9.779957249993458
+      },
+      {
+        "name": "split",
+        "prompt": "What color is on the left? Answer with one color word.",
+        "image": "build/vl-validation/split.png",
+        "image_sha256": "a36acad39adb239fefab6bca8e05918b1b41fbbfb0f692555edc8aec10a198a4",
+        "text": "Red",
+        "wall_s": 9.78442145898589
+      },
+      {
+        "name": "photo-en",
+        "prompt": "What is the person wearing? Answer in a short phrase.",
+        "image": "build/vl-validation/extended/astronaut.png",
+        "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+        "text": "Suit",
+        "wall_s": 9.89431866700761
+      },
+      {
+        "name": "photo-ja",
+        "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+        "image": "build/vl-validation/extended/astronaut.png",
+        "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+        "text": "宇宙飛行士の服を着ています。",
+        "wall_s": 9.868139665981289
+      },
+      {
+        "name": "ocr-latin",
+        "prompt": "Read the code after CODE. Return only the code.",
+        "image": "build/vl-validation/extended/ocr-latin.png",
+        "image_sha256": "57db13de82743f3db47f0c308471840a5230e740ce46d6dc01465303c774c98d",
+        "text": "AB42",
+        "wall_s": 11.021861540997634
+      },
+      {
+        "name": "ocr-ja",
+        "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+        "image": "build/vl-validation/extended/ocr-ja.png",
+        "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+        "text": "東京 123",
+        "wall_s": 11.066893499984872
+      }
+    ],
+    "finished": true
+  },
+  "import_audit": {
+    "q4_matrices_byte_identical": 153,
+    "q4_payloads": {
+      "blk.0.ffn_down.weight": {
+        "cache_name": "model.layers.0.feed_forward.w2",
+        "nibbles_sha256": "fa94583eaef449c87fd6b8b6a30075c0678188ffe76f4fbce8c95a2fd6b5a1cb",
+        "scales_sha256": "05626b834c5d2368ecd45e2803a9738308a987c33f3832d1fb52c195c8d34e5c"
+      },
+      "blk.0.ffn_gate.weight": {
+        "cache_name": "model.layers.0.feed_forward.w1",
+        "nibbles_sha256": "bbe076f189b4d4f7bbe00844a4e484100cfe42bfdf3f467b8df073c11845c0e4",
+        "scales_sha256": "6fb28719b033eccf4f29075ddca41081fe604d02feeb15fc1965967bdc082a88"
+      },
+      "blk.0.ffn_up.weight": {
+        "cache_name": "model.layers.0.feed_forward.w3",
+        "nibbles_sha256": "64eb00563cb72ebefe5c3a0ac0a151340e7f4449969ed625d294ff939b14458e",
+        "scales_sha256": "693833575727cf661d2abf5fb511959cb0b3195decf0965cd9469ecabf96df43"
+      },
+      "blk.0.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.0.conv.in_proj.weight",
+        "nibbles_sha256": "91b655c82e51955836b7d8390f7f8ef566583f9ce5ee519e06fedd3c7c1bc5e8",
+        "scales_sha256": "4fd3855c7d033871e1187abc16cd8bc9e8a896843ec8e68c3209aa73f7bbacd6"
+      },
+      "blk.0.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.0.conv.out_proj.weight",
+        "nibbles_sha256": "7c81bc400931f3411d6ea1877eaf3b9f09a4da2de97ac40c1e030688c2bec090",
+        "scales_sha256": "49a10121c34652c580a112492899c7cd77cb16f4e42245119877c5a81ce9c002"
+      },
+      "blk.1.ffn_down.weight": {
+        "cache_name": "model.layers.1.feed_forward.w2",
+        "nibbles_sha256": "d29e48ce22a5fc822a4e922491a38471d445600e7bb7ceac3b0b86d75105ab2f",
+        "scales_sha256": "33913c453eb77a5564452ce36fda28d1778d937aedb1b15dc8b80547c568a252"
+      },
+      "blk.1.ffn_gate.weight": {
+        "cache_name": "model.layers.1.feed_forward.w1",
+        "nibbles_sha256": "3de3cb2fe8a3ef06a096e9e307de7e6ba716d0bbf6a88f5511058549554cc4c2",
+        "scales_sha256": "bdd9cbf2d6422848f935829eb1e1bbaf73547c94c37b91f39ad693338fa34d12"
+      },
+      "blk.1.ffn_up.weight": {
+        "cache_name": "model.layers.1.feed_forward.w3",
+        "nibbles_sha256": "5a87258c19dbc690a8606a2877b39b789da1d5f251cdc9ea4fe92f79c90618ca",
+        "scales_sha256": "41c4582ca0a645e5e12818afe6d59c07c5b184ed0d7e7dad6be914c18346ae73"
+      },
+      "blk.1.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.1.conv.in_proj.weight",
+        "nibbles_sha256": "0163c7d9d7f8af57a346e660409395afd4f41341293f4d96eab19a8059df75cc",
+        "scales_sha256": "addf9b9d76d9ab583689c022f11718992f15b4d660c21673a223fc69c582dfb2"
+      },
+      "blk.1.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.1.conv.out_proj.weight",
+        "nibbles_sha256": "1852960c27e96514435dfbf714c30c3e27c07cef814aafc67c9341bc4de9947b",
+        "scales_sha256": "39cd501361bd6312e532f8571015a8a791819535c3fb8c808575a97b840826e9"
+      },
+      "blk.2.attn_gate.weight": {
+        "cache_name": "model.layers.2.self_attn.gate_proj",
+        "nibbles_sha256": "33ac5aa3eebba809037085171d7c106a07a2e84e9ef8faff6985bc27547409e8",
+        "scales_sha256": "190e99b6800b566693cd87f1492a5f0111a3b20377ddc2986c59e5111a79e0e0"
+      },
+      "blk.2.attn_k.weight": {
+        "cache_name": "model.layers.2.self_attn.k_proj",
+        "nibbles_sha256": "f7b01d60e79057a62248b78b0505a54da4a6b3d38d3359d1246201cb473a93b6",
+        "scales_sha256": "4e2f971b202f13aea10ba7aee24273f5caf904ebb9c364d088e6e10ba4b53838"
+      },
+      "blk.2.attn_output.weight": {
+        "cache_name": "model.layers.2.self_attn.o_proj",
+        "nibbles_sha256": "260706ee492cfabe6440cd09a7bc1dd19f7b855db275285571b7c6d7d50a0dca",
+        "scales_sha256": "82802b5cb539773c5c6ea6aec3241607a99d1d3f0c8dd6b87a86ab608d4a8631"
+      },
+      "blk.2.attn_q.weight": {
+        "cache_name": "model.layers.2.self_attn.q_proj",
+        "nibbles_sha256": "8e6fec57c469eab3f19be922aaee9e827fe2c5cb40c24022d4e6b355d24d23a4",
+        "scales_sha256": "4800ed1aafd3d1d30597a6bf9ff1ac8cc15ee0443eade30e63b59612475bc938"
+      },
+      "blk.2.attn_v.weight": {
+        "cache_name": "model.layers.2.self_attn.v_proj",
+        "nibbles_sha256": "519b4455eb555b4f096ad6d0584ce1a38ddb8e3ea543a251f43c7aa0e87c9a03",
+        "scales_sha256": "6520f6277ad57581b039945df0b7b6c1832e7deae6a5d051cfcb9703f3ec7d91"
+      },
+      "blk.2.ffn_down.weight": {
+        "cache_name": "model.layers.2.feed_forward.w2",
+        "nibbles_sha256": "8f9f94ae0dee1c3db844ab342c577dc9c00df336ec9c8c575d3efd1e749703f5",
+        "scales_sha256": "424a799bd60f220c594ffcd5ea8b444c373a67f3454361e83b5900c7aca11dc6"
+      },
+      "blk.2.ffn_gate.weight": {
+        "cache_name": "model.layers.2.feed_forward.w1",
+        "nibbles_sha256": "c9ce31228644d4d36e9957270aefcc6d1cc3fd7f82673a369cd3090858bc1a46",
+        "scales_sha256": "3c04a6e500093fcb7109454edd01ef6f5e342ce8e1bdd58367f4174ee0bc181e"
+      },
+      "blk.2.ffn_up.weight": {
+        "cache_name": "model.layers.2.feed_forward.w3",
+        "nibbles_sha256": "51d0bc3bade920e9575afa6d779d63133a2dbd1abed4c727d55b35863bd45ba3",
+        "scales_sha256": "16db9d8669a36f558d0545fee8e14f225bb4dcb9b9be2b5492d08f5636daf7af"
+      },
+      "blk.3.ffn_down.weight": {
+        "cache_name": "model.layers.3.feed_forward.w2",
+        "nibbles_sha256": "52d94640313cc39a0f6e12cba813abdf2bea9fd0e6c54fc80898c3a2c7007382",
+        "scales_sha256": "8f288ee927a26a73963d9afb3de31948a937665d4bb86a50e8c0bfd68badce2d"
+      },
+      "blk.3.ffn_gate.weight": {
+        "cache_name": "model.layers.3.feed_forward.w1",
+        "nibbles_sha256": "211961e4edcb6b018d1deaf6b69ef90327abe3b6e88c9ab5ea84863d13ac337c",
+        "scales_sha256": "28b68a148f74cbd62d03c064bbd8830e5607f725ac8318a750ae3817f11efa46"
+      },
+      "blk.3.ffn_up.weight": {
+        "cache_name": "model.layers.3.feed_forward.w3",
+        "nibbles_sha256": "e477da727082c50a3d978c93249b3ce6690b40fb741a782d86f890b278fbfd68",
+        "scales_sha256": "f7b3c4b4908808a66a40f6ea399e1a241497b9b65e75cf5f2c3dd9e286c30cd6"
+      },
+      "blk.3.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.3.conv.in_proj.weight",
+        "nibbles_sha256": "3110d142991fb68d8f581188cb0b8ee3d48567fc59de41443bc59a6a993533ec",
+        "scales_sha256": "742fadad28ea18615e9899d5be627646db869e04fd4175db1fe61d76749731c8"
+      },
+      "blk.3.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.3.conv.out_proj.weight",
+        "nibbles_sha256": "67e5eaaaf4e6e33b531763c78733588281d7cc52bdf22a6d495fdbbcebc72a73",
+        "scales_sha256": "158df5f1a62b4a689beebd5fa6d2dff347561108bdc6c04de6492d8e74758fbe"
+      },
+      "blk.4.attn_gate.weight": {
+        "cache_name": "model.layers.4.self_attn.gate_proj",
+        "nibbles_sha256": "e2e41fe7073e620a18b4107a58cfdce71e96dffbe50c3af87ffe42336dee0332",
+        "scales_sha256": "2a413c5c055912008a65634d20b9930734f97a3b7799a98159f9a85e1ac0365c"
+      },
+      "blk.4.attn_k.weight": {
+        "cache_name": "model.layers.4.self_attn.k_proj",
+        "nibbles_sha256": "c5d37eaabbce026da9136a2cf63021be412554720f6ed22621305b899a0cb6ea",
+        "scales_sha256": "3f8f4bd70b8ed7771e78b3b0782ab38375ac9508ab3a134f1567e5653d550936"
+      },
+      "blk.4.attn_output.weight": {
+        "cache_name": "model.layers.4.self_attn.o_proj",
+        "nibbles_sha256": "5000aac6aba202fface7e8d0d21a9a80d0fafccc5fd9ee2c2b6dd2179b0eb88a",
+        "scales_sha256": "eb2f22a359169d8b5e1bf9fae0e7ae274f2c1b69a16d4dfdfc82500c7d4f849b"
+      },
+      "blk.4.attn_q.weight": {
+        "cache_name": "model.layers.4.self_attn.q_proj",
+        "nibbles_sha256": "8ce366ca810404c44d9512c6e6bd98d7e6aec0a352778f7edc2bfe98110c1734",
+        "scales_sha256": "284b0b3052b5049dc2d695fca43251d0a6148e704666c1b815c7714f71758f5d"
+      },
+      "blk.4.attn_v.weight": {
+        "cache_name": "model.layers.4.self_attn.v_proj",
+        "nibbles_sha256": "f4a7d80b4e1c9c28245d55c731f1eb71a9ccc9c4e95f51383268622bbce2eedd",
+        "scales_sha256": "a972be67dd177d6bef00ca1c95538e4483f8c7537a8e685f4f84ae0557b92b1a"
+      },
+      "blk.4.ffn_down.weight": {
+        "cache_name": "model.layers.4.feed_forward.w2",
+        "nibbles_sha256": "721c02cdb095877d55171197ca2fcca0e6761031accd207979e1c94385b676b3",
+        "scales_sha256": "f6d3f6fee5fbd2c6f45c4eeb1a7eedd3abe726585baa77ebab59d59288e45ad6"
+      },
+      "blk.4.ffn_gate.weight": {
+        "cache_name": "model.layers.4.feed_forward.w1",
+        "nibbles_sha256": "f137a908c1fd9c526c18979a654bf768d26a28a6cb5b9d547616930b1a8c4366",
+        "scales_sha256": "20dd932ac9221f41fc737f26572dd683e7747fb172b087bb0d620442cf137f94"
+      },
+      "blk.4.ffn_up.weight": {
+        "cache_name": "model.layers.4.feed_forward.w3",
+        "nibbles_sha256": "100da7180451107a05958623f39559377162f6d31ae538fcd3aa3ca9a2946791",
+        "scales_sha256": "60a958598c6ff3ee47b2c3dd3283257f7080c6d0a0d7a7675176da9ad511cac9"
+      },
+      "blk.5.ffn_down.weight": {
+        "cache_name": "model.layers.5.feed_forward.w2",
+        "nibbles_sha256": "9458d9bae5f4ef3373528c1c0fed297eed70ef68cd5d9e92c5bca9b9f9ade087",
+        "scales_sha256": "2c7a4f4ea8b7047e0488ca8619656343b7641d53256413f8d8500d43be676e0b"
+      },
+      "blk.5.ffn_gate.weight": {
+        "cache_name": "model.layers.5.feed_forward.w1",
+        "nibbles_sha256": "b577b6f815fad61741103d47ef317a7f415f080d4a5bd6b84a13b748eda54e86",
+        "scales_sha256": "2306f9249a7b90907d0f6dc0b64f5b54e84dc95d38736b8927db90db476ea7cf"
+      },
+      "blk.5.ffn_up.weight": {
+        "cache_name": "model.layers.5.feed_forward.w3",
+        "nibbles_sha256": "67567fb2735983b6cc9c4e531392e2ff8861304753465021ac6fe080ab378846",
+        "scales_sha256": "077acc898f8335fd9269f125b021c812888018f517c3277b8bab0c9456787c1c"
+      },
+      "blk.5.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.5.conv.in_proj.weight",
+        "nibbles_sha256": "857c55410bb38521807c2ed0fbcf0ab184ef1ddfa6ad040fd0801e7e6e9c2986",
+        "scales_sha256": "6106e615934ea84ed925677b0c2d52336de546d6ec0f9b77cfba1a71d96ccb2b"
+      },
+      "blk.5.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.5.conv.out_proj.weight",
+        "nibbles_sha256": "3ece18ad6f8206c8df2eb801b325f6df2962136ee23431b22603a86b19859bc9",
+        "scales_sha256": "21c4e43440569ef268c0943a64623c6bda5a8dbc115807575eab584d497d2783"
+      },
+      "blk.6.attn_gate.weight": {
+        "cache_name": "model.layers.6.self_attn.gate_proj",
+        "nibbles_sha256": "0bc8bdb262b9bb6b86d87637b2122de13a42aed660b95909bf630eab4b767306",
+        "scales_sha256": "4becbe8ead7bb6da04b323416f988f21217367cba53db7103a90c38c2baf3831"
+      },
+      "blk.6.attn_k.weight": {
+        "cache_name": "model.layers.6.self_attn.k_proj",
+        "nibbles_sha256": "49bf84c3e8f994a554805d6f21d6d9adf8c0597fff90adc169cd5ed5d428ea74",
+        "scales_sha256": "5dd56c5899115c4f2a66d1bd8d83ee666e9270e1f27e58f3f0381db449387af6"
+      },
+      "blk.6.attn_output.weight": {
+        "cache_name": "model.layers.6.self_attn.o_proj",
+        "nibbles_sha256": "457a5d95cfbc5bd1079da31e59ce21dcbcb8789f4a1e99f1a35698d6f603b964",
+        "scales_sha256": "d922e1880c46644ccd26d86629404b4457311fef366e66661f72a06d51e21fb5"
+      },
+      "blk.6.attn_q.weight": {
+        "cache_name": "model.layers.6.self_attn.q_proj",
+        "nibbles_sha256": "d1bbe22c51b835b5a6c770012f38502e307f9452948798d7018a4cdc70a27e70",
+        "scales_sha256": "c587cf854cb5951c69978be99b8d9c444b5936548ce2396c3668e9def6b42af5"
+      },
+      "blk.6.attn_v.weight": {
+        "cache_name": "model.layers.6.self_attn.v_proj",
+        "nibbles_sha256": "fe09209cd6b0751c95f3e9869aa257cbeba6ee038a2568f9d8932310d78cee33",
+        "scales_sha256": "18b6003db134a48bb72eba89899f7e3634ab0b3bfa049f4b3996d207f219b656"
+      },
+      "blk.6.ffn_down.weight": {
+        "cache_name": "model.layers.6.feed_forward.w2",
+        "nibbles_sha256": "1fd8156b16975c8b2a0436ca3916d5d6556491e4f0170918df851de3c3ebfcf8",
+        "scales_sha256": "627988bca77cc0d5978219a20f47a1a55d411bfa2f828d3d410ce90486810fd4"
+      },
+      "blk.6.ffn_gate.weight": {
+        "cache_name": "model.layers.6.feed_forward.w1",
+        "nibbles_sha256": "65afe2b86d2e0d1f5b4eb08bd51b1683d787902125e121a23dd6cbbfd0a0df52",
+        "scales_sha256": "ca1a67791eda4aaed4b4837fa70ad40456d9ae17c29148800cfa0f5cc2a98260"
+      },
+      "blk.6.ffn_up.weight": {
+        "cache_name": "model.layers.6.feed_forward.w3",
+        "nibbles_sha256": "6650a18973f7fb0124e798c4c0a705ee2c6c5ecb4f7b734314ea142d296adccd",
+        "scales_sha256": "72921547af25b5fe4d791a4b2a62d6f56ed217457c8157865aa884b2e05e94d4"
+      },
+      "blk.7.ffn_down.weight": {
+        "cache_name": "model.layers.7.feed_forward.w2",
+        "nibbles_sha256": "9d0e4282cdc45b15be94935d5cbd7eaac87debdf9117412dd6c1564621527526",
+        "scales_sha256": "eed3516c3a7b78cff292df326e34fda5d4583e980f37155c902acaee45f918cd"
+      },
+      "blk.7.ffn_gate.weight": {
+        "cache_name": "model.layers.7.feed_forward.w1",
+        "nibbles_sha256": "ef5ee94fc2c7a7c33230cd4997091b9c81924741b32ba982f2de433687878575",
+        "scales_sha256": "f2ee1d5e2a1f710ea2952fee37d4fffde7ac5c6179c2273d65033e841be43b81"
+      },
+      "blk.7.ffn_up.weight": {
+        "cache_name": "model.layers.7.feed_forward.w3",
+        "nibbles_sha256": "60b64b26159198eea4292cf1ad268dba27eb01d75877ba69516c0a42873dc3ae",
+        "scales_sha256": "4af54e71309790c7409a348f4282e03969efc33a6339e153779287467375fdbc"
+      },
+      "blk.7.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.7.conv.in_proj.weight",
+        "nibbles_sha256": "79459257f1bec1177c03d87376c5cc52e4ed9721cb85db35ecec0a928f4e37d8",
+        "scales_sha256": "2cb9a0fae44600750f4efd99c6fad984afc0c7d3a73e90ce610ee7b73a38d29e"
+      },
+      "blk.7.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.7.conv.out_proj.weight",
+        "nibbles_sha256": "4442490b548266cfbffbf894c81e0c0262d4e1d3b462a60584d55e3e43c9a706",
+        "scales_sha256": "2c47ce6875f667d66c335d05c6a3e403dc0c9eef89f0e62e231203f7278ccb05"
+      },
+      "blk.8.attn_gate.weight": {
+        "cache_name": "model.layers.8.self_attn.gate_proj",
+        "nibbles_sha256": "9f26aa94549884be6732c37dad0cad95325b4042a686b008de80269bfa02f137",
+        "scales_sha256": "483d13f8bbd92cabbf9979c36790cdf00fdb64caa0dcb0ad86f6c3feaa972b61"
+      },
+      "blk.8.attn_k.weight": {
+        "cache_name": "model.layers.8.self_attn.k_proj",
+        "nibbles_sha256": "3c541e067e7c1d7806795e578263020e640ddaa14289f9f6ad7b39f63bba05f4",
+        "scales_sha256": "7e9ceada99ca0c843abdf40bd40568cd8fcf85f30f0272f1e5f5801df174e41d"
+      },
+      "blk.8.attn_output.weight": {
+        "cache_name": "model.layers.8.self_attn.o_proj",
+        "nibbles_sha256": "748bcf6a8ff8224e98e7aa7a3114afac1f50d7d0a38ea9be1b01825eabbed047",
+        "scales_sha256": "2ba3c089c1dfd0d426326b5ef8aa118e33754adab738406edd0a78e2a59a2595"
+      },
+      "blk.8.attn_q.weight": {
+        "cache_name": "model.layers.8.self_attn.q_proj",
+        "nibbles_sha256": "db688fbfd579e3eab53891ce158e91572efaf034e3a9f5273c0a2f4d25ec2f50",
+        "scales_sha256": "00431377dd29a1659b45e57f521553cfc748bbee23762edeb5c2f25f08b4b054"
+      },
+      "blk.8.attn_v.weight": {
+        "cache_name": "model.layers.8.self_attn.v_proj",
+        "nibbles_sha256": "6a91a562a8deb40e34cc0f36c2d79deec16196e3eec4326d4ed3494065765a40",
+        "scales_sha256": "eae7f0e8df49e84d5dea3f15aa48b9736eb0ad52d1d3708f3456f65ad32c66fd"
+      },
+      "blk.8.ffn_down.weight": {
+        "cache_name": "model.layers.8.feed_forward.w2",
+        "nibbles_sha256": "ac15cd2d22d382a0ad5ae100e1d5c0e759c676147f70c0ffda5a772e74055537",
+        "scales_sha256": "e6956c3fdc4a1a32fe17eb628535af819b257897871d3473c0582101eed687c9"
+      },
+      "blk.8.ffn_gate.weight": {
+        "cache_name": "model.layers.8.feed_forward.w1",
+        "nibbles_sha256": "027d1eb6db33b4c5fe2f5f23337f2d9b54eb6dc144af41ebaeee92a3a5c99b63",
+        "scales_sha256": "02402f76562748f4deebd80184089c33bd8baa74af5cff88f641036454b8da7d"
+      },
+      "blk.8.ffn_up.weight": {
+        "cache_name": "model.layers.8.feed_forward.w3",
+        "nibbles_sha256": "a2badde98a15a292fbf744fcfb6d093c8a518d0dc9c67565f8190166203a8aee",
+        "scales_sha256": "c55728379252d23a62907cbc99713cf7ad2ed2bcb84a3bb480d901dca95d07c5"
+      },
+      "blk.9.ffn_down.weight": {
+        "cache_name": "model.layers.9.feed_forward.w2",
+        "nibbles_sha256": "7cac1d6dcd010a4056077bbc0b5216bbcdd353fb725222192cb9440d88bee604",
+        "scales_sha256": "fb3a966295aeb8b3da8721431e531f8dae0d00ac13d98ff035bc2d1e51b9a1e5"
+      },
+      "blk.9.ffn_gate.weight": {
+        "cache_name": "model.layers.9.feed_forward.w1",
+        "nibbles_sha256": "55608a7a77093a01a34e5588812b9354d511ccf79a0222ede6b59f3cd90c9248",
+        "scales_sha256": "f8c37c9261ace8c5f4de803974ce48fdea9fb9f9cb95861802f9b9690a585a5d"
+      },
+      "blk.9.ffn_up.weight": {
+        "cache_name": "model.layers.9.feed_forward.w3",
+        "nibbles_sha256": "b758e0e51baf76a5b8746d6b28f27da2779d58d1888d902f0238a8fbbe10c458",
+        "scales_sha256": "83a9f1ce65d6067a573966e2ccc16b5782a1871af1843e1708200d3938dfbeca"
+      },
+      "blk.9.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.9.conv.in_proj.weight",
+        "nibbles_sha256": "69ca8fe79e2ca85d48690c02f2d5a8cb02a6c556909f913c497816e989b3562f",
+        "scales_sha256": "91268758724fc1958781acfc1e254918c02a3d396acade53dda2edacc719552d"
+      },
+      "blk.9.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.9.conv.out_proj.weight",
+        "nibbles_sha256": "1ac8de67049e78fd47fa3bb58b72653a9c4218073387ab6326fa374cfb3edc7d",
+        "scales_sha256": "c10073dded8dc1b0f9900026745db31384fcd696a3f2f3499914a9c3a6f64627"
+      },
+      "blk.10.attn_gate.weight": {
+        "cache_name": "model.layers.10.self_attn.gate_proj",
+        "nibbles_sha256": "e9ee4ec9dbc13ec6c4329c180d89e525433d70b8e025859155c23ca16474c681",
+        "scales_sha256": "4e92782cb1079b2063f2bab0782b293c2a2916181d6ccc03656b3de34cb1b966"
+      },
+      "blk.10.attn_k.weight": {
+        "cache_name": "model.layers.10.self_attn.k_proj",
+        "nibbles_sha256": "196a6704dbb93ee519952519c666549d7ea787d59752db0147577670345409ce",
+        "scales_sha256": "89abf33103f297f09a053b2b537f6ff1475ab38ffb0cf9084786338aa393cec0"
+      },
+      "blk.10.attn_output.weight": {
+        "cache_name": "model.layers.10.self_attn.o_proj",
+        "nibbles_sha256": "949e8bfa8a7aa3fbf291bd5f85e9a38230cdec17201862b7c1cdcba60a2354f5",
+        "scales_sha256": "b1725dd4fa7185e368eae006ba812e68760567342cce4e7d424bd7f64ec9de00"
+      },
+      "blk.10.attn_q.weight": {
+        "cache_name": "model.layers.10.self_attn.q_proj",
+        "nibbles_sha256": "303498121c800b56c1bef78f87634522ebe804b41ce86c30f6afa3c99226ece0",
+        "scales_sha256": "6d65f2a4e17920cccbf20c761de72f31bfaebeccacef775363da75735c5573c5"
+      },
+      "blk.10.attn_v.weight": {
+        "cache_name": "model.layers.10.self_attn.v_proj",
+        "nibbles_sha256": "18ec9ef74b69997aa0eae4d0261d2eabfe96ca354baf39774c6300200a0edf4c",
+        "scales_sha256": "d37b3234391c4ae497ae3fde47323f0c5426423b10073f0c0ee133c260de6b70"
+      },
+      "blk.10.ffn_down.weight": {
+        "cache_name": "model.layers.10.feed_forward.w2",
+        "nibbles_sha256": "c9c81fe283a1caf7ab664f061f59a9e7431d9b80ea48b3e0a387b775ab1612df",
+        "scales_sha256": "dbc11075d9664cbfffbdcd1d916ca491e51e963293c3711973e6cd90161e441b"
+      },
+      "blk.10.ffn_gate.weight": {
+        "cache_name": "model.layers.10.feed_forward.w1",
+        "nibbles_sha256": "231243f1d41204fa8403e6d50e683dd3db0b5ec1ada0a2c81ac09a46b9e12308",
+        "scales_sha256": "cc0a73c6bfcf5bab64bcc345582987a3dbdb2ad2cb63143bd6ab309e93293ee4"
+      },
+      "blk.10.ffn_up.weight": {
+        "cache_name": "model.layers.10.feed_forward.w3",
+        "nibbles_sha256": "a7d3be994e14d6f10174a69f5e9c7cc20bd2e6b722844a9240e0b33b2cba5418",
+        "scales_sha256": "22977bf635a64373cbad5f6f870b832ffbd43303df45256372f284ca74e5b8e1"
+      },
+      "blk.11.ffn_down.weight": {
+        "cache_name": "model.layers.11.feed_forward.w2",
+        "nibbles_sha256": "56fb1620308e0b9fcc31f7a52c428165413c709bdf7c9ae673d21208a195f219",
+        "scales_sha256": "5ae1149cbc5f3c9c7df356d2d82a6bf09c65d593474547bb62af90600692404c"
+      },
+      "blk.11.ffn_gate.weight": {
+        "cache_name": "model.layers.11.feed_forward.w1",
+        "nibbles_sha256": "5ccd552c0486febf11f314fc8f7f1a78f383bbf5f9146e5f44e82881c27f9fba",
+        "scales_sha256": "bb6ed6649b91dda837d05117e16484aa11bb4562ab19a65b1af9994714de0754"
+      },
+      "blk.11.ffn_up.weight": {
+        "cache_name": "model.layers.11.feed_forward.w3",
+        "nibbles_sha256": "85afc2ad3e3337fbcc97a93399b7821188b8b7641e376f88d3b5ee0b4520fdcc",
+        "scales_sha256": "7d86d167e8159c930128052a227193878c05d5ef8628240c646e48bb01fd646b"
+      },
+      "blk.11.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.11.conv.in_proj.weight",
+        "nibbles_sha256": "6ce187c734cff7a89af213fd8b72c606a136ed0c1ca8b6c5c2816f43b5d7893b",
+        "scales_sha256": "9a143d53019f3b176abb0ddfb932e363bd62dc7ef43f4b117d9ec7636758a8fa"
+      },
+      "blk.11.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.11.conv.out_proj.weight",
+        "nibbles_sha256": "07e0cba535673050efdba3a93813fbf3e6616e5ebf393db2640dfb35273314ec",
+        "scales_sha256": "d70b3c93e2ae015c98bb304028f78a0e410f21da83281826cd086934948157be"
+      },
+      "blk.12.attn_gate.weight": {
+        "cache_name": "model.layers.12.self_attn.gate_proj",
+        "nibbles_sha256": "684c52c52466b0400b2811916778a9d7492f32cf2d493e8ffc3eccda5054ae64",
+        "scales_sha256": "4170d732d9566fdb30824de918c652101adf3de97394af2f29d883619ed64ffc"
+      },
+      "blk.12.attn_k.weight": {
+        "cache_name": "model.layers.12.self_attn.k_proj",
+        "nibbles_sha256": "395a98591182255976e2fb96098f39051833b084f424b216b4bce5ea133c83e6",
+        "scales_sha256": "d5bc2265736092db16ac5a30240e256ba921584f421c90802db4a4a151f14792"
+      },
+      "blk.12.attn_output.weight": {
+        "cache_name": "model.layers.12.self_attn.o_proj",
+        "nibbles_sha256": "c025cafe5384875a955bc167a5385e70caffb7ae32a60e32330ec2eb88ebdd9b",
+        "scales_sha256": "a30d9885fb74f730d5e6e433242c4f24e0e3f7e4af1848d833b133b03039894c"
+      },
+      "blk.12.attn_q.weight": {
+        "cache_name": "model.layers.12.self_attn.q_proj",
+        "nibbles_sha256": "8cc3f097fcc9d4e77437905514e454c68314706cad6d15f15af879ab3cdd98d0",
+        "scales_sha256": "816d485383c913e600328bc331a89d2eb22cb66005acdfd13969c0bca9072430"
+      },
+      "blk.12.attn_v.weight": {
+        "cache_name": "model.layers.12.self_attn.v_proj",
+        "nibbles_sha256": "5d518520f5c98ec3dce00713737468209feda3fcc73f517e568d704309f0a67c",
+        "scales_sha256": "f3b6f7c16ccb77a1e6cbafd0d871c16499ea4e69e7b4db76306294f498eedfb1"
+      },
+      "blk.12.ffn_down.weight": {
+        "cache_name": "model.layers.12.feed_forward.w2",
+        "nibbles_sha256": "3f5b9ba609c1bf75cd5c1c7cadb205e42a63d3e8079d068faf2ec9a49ae64544",
+        "scales_sha256": "bbc9f96b99181207f775b671e5cd22d4ce206a05eb7ebd51b79a581d3b70d26e"
+      },
+      "blk.12.ffn_gate.weight": {
+        "cache_name": "model.layers.12.feed_forward.w1",
+        "nibbles_sha256": "1587e9ca6540416868fb9378998797fe6cb4d5ae92a692b336896171e78c2fec",
+        "scales_sha256": "9af78f10fe6b5ce195677dd0e364f196507805a3d7ff10e95bf28f06111153fa"
+      },
+      "blk.12.ffn_up.weight": {
+        "cache_name": "model.layers.12.feed_forward.w3",
+        "nibbles_sha256": "5473ace95fbacc0f63bda7d07c96cafa951b5f9865da250e928a77bd946b8f49",
+        "scales_sha256": "68f351c39da939d5fb0eef742f9aa098168363f3708d949841adaecc62df11ea"
+      },
+      "blk.13.ffn_down.weight": {
+        "cache_name": "model.layers.13.feed_forward.w2",
+        "nibbles_sha256": "0d02ef6a119b3953377993815c3f98ff165a39fc2fa7dee629ecdca1c5e05ec6",
+        "scales_sha256": "8033bd30333b98d416375e5936ba9a0a35c8b5c05d661afe67820b4e1762a547"
+      },
+      "blk.13.ffn_gate.weight": {
+        "cache_name": "model.layers.13.feed_forward.w1",
+        "nibbles_sha256": "9073feb607c344c7660c561d860d8712bdf051058d768b899b963fe050d9f17a",
+        "scales_sha256": "aadaefcd4bdcd9ca1f1f541265a00ba329fa02a078a4f646bf02cb983723ef94"
+      },
+      "blk.13.ffn_up.weight": {
+        "cache_name": "model.layers.13.feed_forward.w3",
+        "nibbles_sha256": "00cd95b29d501ad13cfb140f4e1027e2e2015b2778700de3dd253114154dfff8",
+        "scales_sha256": "267a598f090af0032d05762e17314da1c24ce2bc5a43367018aa2952efbedbd5"
+      },
+      "blk.13.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.13.conv.in_proj.weight",
+        "nibbles_sha256": "425cb7c6c4944cb36f581c2acab761d2d3aa80b2761871e6e75df3d94463933c",
+        "scales_sha256": "aa7c427c1e1cfdff168c9d2e2e2d5db8e77884ba7ed6bed4a1b832cfda432759"
+      },
+      "blk.13.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.13.conv.out_proj.weight",
+        "nibbles_sha256": "20f6b267d132596feb24ebf840a01c794f9abba0a48baca429af9ca0cec6b052",
+        "scales_sha256": "4b64156680caa7f4264406a4ae06daa64dc3c453505d8bb305f9f267b228aeeb"
+      },
+      "blk.14.attn_gate.weight": {
+        "cache_name": "model.layers.14.self_attn.gate_proj",
+        "nibbles_sha256": "6f1d525d4bf93c2ddbc372887847f3c2f603d99a7587ce67a5529a2e3b4cabac",
+        "scales_sha256": "25fe92e21458c946c7bd202b7b8dcca110c28c1467783a333da9b3fab5186c3d"
+      },
+      "blk.14.attn_k.weight": {
+        "cache_name": "model.layers.14.self_attn.k_proj",
+        "nibbles_sha256": "0b9d8625ed591a25d7334af8b51a91f3b8cbfdf6981bc612de2acd2b7cbe55c2",
+        "scales_sha256": "587987215d3b7fa3c88b8ca1e93482fdbd455153a0ed7277e3d22aa65ba1ce23"
+      },
+      "blk.14.attn_output.weight": {
+        "cache_name": "model.layers.14.self_attn.o_proj",
+        "nibbles_sha256": "174d814d8d19ca023670d59b1365e1f3949b4e45d20eacfbfcfceccc15197ccc",
+        "scales_sha256": "da1da630f6bac5f4f496abd8223e390ee6752ec23ef5c1f9880d1edd6ad27c6a"
+      },
+      "blk.14.attn_q.weight": {
+        "cache_name": "model.layers.14.self_attn.q_proj",
+        "nibbles_sha256": "b97aca7affafab11c1967ee3348955556938b3e365b8e50bd489928947259e4a",
+        "scales_sha256": "b79a27c7f2e945701faff1eeb02d49a2dc5ec3403572a526005aeda3e6da1862"
+      },
+      "blk.14.attn_v.weight": {
+        "cache_name": "model.layers.14.self_attn.v_proj",
+        "nibbles_sha256": "5b75b8aeb711d6695eca15a53c100a8cf55592653253fb07c6adbef96ac2b6e6",
+        "scales_sha256": "949ba70a75f13af5bb4b43c820b9f84eecc80618858c327d1d59107c46f44750"
+      },
+      "blk.14.ffn_down.weight": {
+        "cache_name": "model.layers.14.feed_forward.w2",
+        "nibbles_sha256": "84cb83c24efd101cef168b2ac0c33f41258f6556ff38a452d41c66772945bc60",
+        "scales_sha256": "cfcf275ca7631da3760bfa835d9121c9c1fe953ee38367f9f357594fa3f665b9"
+      },
+      "blk.14.ffn_gate.weight": {
+        "cache_name": "model.layers.14.feed_forward.w1",
+        "nibbles_sha256": "c2b6c577cbbf8b2fe08b7d337ea0a505d3075890ec7f3722b7e67599c8fbefac",
+        "scales_sha256": "f4305094ebbd13f9abc16dcba7d1349c77ec62293505978d8dec8c6f5881d225"
+      },
+      "blk.14.ffn_up.weight": {
+        "cache_name": "model.layers.14.feed_forward.w3",
+        "nibbles_sha256": "f94bc6caadab167f98349c6c80019a6283d0ff98ea54fc60a4d224ccb96a7e32",
+        "scales_sha256": "ca89557ecfe7240aa103b55ffd0b8d321fc2c795647c9df133a5e983d729d1f2"
+      },
+      "blk.15.ffn_down.weight": {
+        "cache_name": "model.layers.15.feed_forward.w2",
+        "nibbles_sha256": "8593eaec5abecabac1d951168d297849b0c61c0b46d3c5605fdcfb41c5edc437",
+        "scales_sha256": "27cae2af39fd802c3cc0c8c104e949e2d8ee3b76649b330d486c2f5e36305c8a"
+      },
+      "blk.15.ffn_gate.weight": {
+        "cache_name": "model.layers.15.feed_forward.w1",
+        "nibbles_sha256": "f3698de0ec2bacc652810d552653f4aae42cc87b0a734f90c3ada99b8fdaad53",
+        "scales_sha256": "0e83443aba7e24d785187182edc94536d7c1dc329972eb61679d06fcf6ecd366"
+      },
+      "blk.15.ffn_up.weight": {
+        "cache_name": "model.layers.15.feed_forward.w3",
+        "nibbles_sha256": "cb4f707c2c71e2f5aabc6300814091e6f1bb3994e9856d5fbc765c42f9ff6f07",
+        "scales_sha256": "6952f005e73584e3a562ae20f3531249db1305d72191fd3f3d2ebb17e707d5f3"
+      },
+      "blk.15.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.15.conv.in_proj.weight",
+        "nibbles_sha256": "1a7ad5d62bd491de4ca5694a248ee31305a2a497ffac252ece74d514e8894c74",
+        "scales_sha256": "4b54d4a89a33fd1723ab024e542e79a2f0e3d693d853589491d97baedb455db8"
+      },
+      "blk.15.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.15.conv.out_proj.weight",
+        "nibbles_sha256": "400da6a1f0ccc9b1dcf85687ee81d2689e5e91c1eccb7a1f54b7b90b75f4c5d6",
+        "scales_sha256": "ff95454062d6ae09bf99e3832024ae7886d1d8ba809d280d244a90017da68d3d"
+      },
+      "blk.16.attn_gate.weight": {
+        "cache_name": "model.layers.16.self_attn.gate_proj",
+        "nibbles_sha256": "a252af769f3de6aceae267e885b5ee3e5664c3cf9cead536498a1e8f7abcd6c3",
+        "scales_sha256": "4eead9ce9f918f28a6e6b5bfb033c35d2fa735b171f1092acf45c87386513429"
+      },
+      "blk.16.attn_k.weight": {
+        "cache_name": "model.layers.16.self_attn.k_proj",
+        "nibbles_sha256": "804b9de7bc0874652b88adc13d6c86aa00c025c191884fb7ea225e4c2c5a40c7",
+        "scales_sha256": "14dc95b3bc715d784afcd97fc6a4e7bcdfa954ce99af3990a8273e903acb0a43"
+      },
+      "blk.16.attn_output.weight": {
+        "cache_name": "model.layers.16.self_attn.o_proj",
+        "nibbles_sha256": "79db0e428d2e5f57b10ef08c8ac9d94a2e5e14e780ff22db8a98abd31dcc79ea",
+        "scales_sha256": "83e5c624a7bf8e07e57a3c07fde1aee5d590106d437003ff00931064ebac7a0a"
+      },
+      "blk.16.attn_q.weight": {
+        "cache_name": "model.layers.16.self_attn.q_proj",
+        "nibbles_sha256": "59bb54468ab4da1dccfcc158af548bf405c36a1f72fafac4d3b5e69109ebb56a",
+        "scales_sha256": "9225622d3fae185aa870aeed93ab88eea91f59cbec9f7fc70a36bb3d84fc5a6f"
+      },
+      "blk.16.attn_v.weight": {
+        "cache_name": "model.layers.16.self_attn.v_proj",
+        "nibbles_sha256": "66bb74751972c6e98364f1f6dcabf6606abe2a9acd487f1a4e73aa0b18b7633c",
+        "scales_sha256": "93c088319cb4f5dff745e25f7e321e7ae3b6661c45fd0cc3f49dc0c949e2a71f"
+      },
+      "blk.16.ffn_down.weight": {
+        "cache_name": "model.layers.16.feed_forward.w2",
+        "nibbles_sha256": "cc526e726760f751aa2a53bd72db957e2f0b98671e7ff10e1ee57040bdbc6bc6",
+        "scales_sha256": "8d2faf2ee291f04e8f92647f6a56d4f72895935f3a5c8a8a2e62f0f25aef2797"
+      },
+      "blk.16.ffn_gate.weight": {
+        "cache_name": "model.layers.16.feed_forward.w1",
+        "nibbles_sha256": "a4ddb41df0e34ae0c8ab6bc998dfeb09438719d87314801f9566957cbc795cf9",
+        "scales_sha256": "94ca36a3d6feb7b8848e6f240eb7cf5b274924f6a833b5ef9365ea2c46476fd9"
+      },
+      "blk.16.ffn_up.weight": {
+        "cache_name": "model.layers.16.feed_forward.w3",
+        "nibbles_sha256": "c0be72797d71eb213db2805c1467919640d6c567667ebd87084cfcbcb8504b31",
+        "scales_sha256": "c17a6f76cb8cb19c9412b142296eacd1f2319f0f689952a0936a031d73a68677"
+      },
+      "blk.17.ffn_down.weight": {
+        "cache_name": "model.layers.17.feed_forward.w2",
+        "nibbles_sha256": "25fb5f047d6e12f96de521f2a154790c4f3e86f7f9e1850276372228cefba3fa",
+        "scales_sha256": "802d23ff303e04dc67741c4b7989e11015b17d5b8ce74a78a6e1c887f2c0d4ab"
+      },
+      "blk.17.ffn_gate.weight": {
+        "cache_name": "model.layers.17.feed_forward.w1",
+        "nibbles_sha256": "eb86a010a75232138be10a8813d302824f9f5b892a18febcaf13e3def7172277",
+        "scales_sha256": "44e52bbab7b1aa0ff4b4e010b3207527a65e305c06ef6dff0b79c9f51c6b0a92"
+      },
+      "blk.17.ffn_up.weight": {
+        "cache_name": "model.layers.17.feed_forward.w3",
+        "nibbles_sha256": "2ad5beb03c1f0afb142fac205b020041be0d8b913e7dd1ce72a51b652f984f51",
+        "scales_sha256": "59967dafc8c826fdee5cb7e4d3036422b2710273cbfa63bf913519aea6fc9dd9"
+      },
+      "blk.17.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.17.conv.in_proj.weight",
+        "nibbles_sha256": "4e3de80934bfad3e93ee679ce470199a0b4886cc6b8486b4d5b4f08cd309fa5a",
+        "scales_sha256": "137809bd93888ae5b59719f73e6a95251a210040d2634ab44bc2f813421f26e5"
+      },
+      "blk.17.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.17.conv.out_proj.weight",
+        "nibbles_sha256": "831a99e9d384e171342fd6223e1904c4ce51866d0b80f84b1561c418669501bf",
+        "scales_sha256": "64502f0a302760a6a6600ffae7b26042395a79209abb113836830b23c4e03788"
+      },
+      "blk.18.attn_gate.weight": {
+        "cache_name": "model.layers.18.self_attn.gate_proj",
+        "nibbles_sha256": "b59c94f6593936c2e1aed83ca04085372bbd3bd41f3439c8f4e5c9844c11d73f",
+        "scales_sha256": "d3c375462213ce4f7ea15196644e68345e08c78c52a9252a865e29ad3b3dbee0"
+      },
+      "blk.18.attn_k.weight": {
+        "cache_name": "model.layers.18.self_attn.k_proj",
+        "nibbles_sha256": "830a6f9e9bad98f9f9c927b1b1f1642726cc000b29550fda5cd282d38d4c080a",
+        "scales_sha256": "4e2eca912b8db0150384a419b31227900b508621d5a3e6bb358b32ed874aca9d"
+      },
+      "blk.18.attn_output.weight": {
+        "cache_name": "model.layers.18.self_attn.o_proj",
+        "nibbles_sha256": "91bca1e1465e3af38f6a47e9c2d324ce9ed14cc0de9ad2400514b8b1391986af",
+        "scales_sha256": "b669c99368a7dc1159aefad45517db7609d048e1ac9f81162a058f20f4f40dfe"
+      },
+      "blk.18.attn_q.weight": {
+        "cache_name": "model.layers.18.self_attn.q_proj",
+        "nibbles_sha256": "d11644f5bc0628daf1fde82a5672faffb91bbdb8a078a1ead4edf90cd4a2144c",
+        "scales_sha256": "8c729d8abc2d2c8cf9427c90f34e98f5e4c821d09c26db0876a90ce4a24b3a59"
+      },
+      "blk.18.attn_v.weight": {
+        "cache_name": "model.layers.18.self_attn.v_proj",
+        "nibbles_sha256": "935686589519f4d1d0bc08f93200b3fdd3d2c194f96bb6abc4811bef5e768fe0",
+        "scales_sha256": "09fb7f73c280052baeb27741565611f37797f207f97130abccd66d3e0a62f8b5"
+      },
+      "blk.18.ffn_down.weight": {
+        "cache_name": "model.layers.18.feed_forward.w2",
+        "nibbles_sha256": "4cff132ba87e39b54e88271c078ca418674909f3b2157cb0e6883911d9b587c7",
+        "scales_sha256": "0dc732e634f13639e96c7afc3cb5fbd739273d874a31fbfb47fc49ef7e6cc58b"
+      },
+      "blk.18.ffn_gate.weight": {
+        "cache_name": "model.layers.18.feed_forward.w1",
+        "nibbles_sha256": "5443088afe45619c8a3b5a8f342e8e6c4503f4a21190c82df5772bba4b129696",
+        "scales_sha256": "70972432a661cbe176f815abf8026909814cf2542d891ad6cec489de6ca0e5aa"
+      },
+      "blk.18.ffn_up.weight": {
+        "cache_name": "model.layers.18.feed_forward.w3",
+        "nibbles_sha256": "1cc42f9b10f8052afcd67104d52cbe57c0cbdabc9382a7f77a381b290e707e74",
+        "scales_sha256": "7132d0587eefc257e2ea0268114e1a8c7cb8fb11ceba4b4678c7ac363d08fbc9"
+      },
+      "blk.19.ffn_down.weight": {
+        "cache_name": "model.layers.19.feed_forward.w2",
+        "nibbles_sha256": "101c699641908ca6e5c572d31a09b98255e0a0a4e335308bd26b8f5bfede6692",
+        "scales_sha256": "7815e502c3011949c6d231855aaa9a8df3333dcb4c56e5a8af75aa8ae4055466"
+      },
+      "blk.19.ffn_gate.weight": {
+        "cache_name": "model.layers.19.feed_forward.w1",
+        "nibbles_sha256": "96fa25a54b3abed1466d189db15f9dd481b49cc0515872c836c58b56fabf64a1",
+        "scales_sha256": "9a1b0d9712ab68fa89bd9b340469057485d0c148fd5ed0e24188d9e9165f8c6f"
+      },
+      "blk.19.ffn_up.weight": {
+        "cache_name": "model.layers.19.feed_forward.w3",
+        "nibbles_sha256": "5e311038b878e167910997d6b73e5e7daf67bf3ea20e94ba7871f299f2da6ee0",
+        "scales_sha256": "c3c1f45fd4acbf9d350b0c67f77da444d786be12610395c887174912b2e7a500"
+      },
+      "blk.19.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.19.conv.in_proj.weight",
+        "nibbles_sha256": "b051e4692a23fe3fc955bb7c3e9ca9981c6238e98fd1cbffdec262e5280080ce",
+        "scales_sha256": "5b35ca75abc2ca75e986be5126d23f4ffa0338f07932e818c8edcb1adeebed32"
+      },
+      "blk.19.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.19.conv.out_proj.weight",
+        "nibbles_sha256": "b643ad813bbb70f82f2e81f79ff949d188b16254d578560e95d602b7166fcee4",
+        "scales_sha256": "250278a4d06c92132e08186ab8e28a2e9e698e080f11c7d8050c87a28e0b602b"
+      },
+      "blk.20.attn_gate.weight": {
+        "cache_name": "model.layers.20.self_attn.gate_proj",
+        "nibbles_sha256": "46e9f134a224eda41d22c530845e620a1a1de1a11551a06466e95624f00e5d1b",
+        "scales_sha256": "eee4b9d888328274848888255a341f3624b267b0c5acd3d3fbabbe13d80c5b35"
+      },
+      "blk.20.attn_k.weight": {
+        "cache_name": "model.layers.20.self_attn.k_proj",
+        "nibbles_sha256": "429d87787cb2551ef6bc96f7cee546afe283d9cb0b1232b6a3b5e79e8e7dfb4e",
+        "scales_sha256": "8bef86d897608026433a4028ddb19c03814091756f4896a5effa17d9184f9f7b"
+      },
+      "blk.20.attn_output.weight": {
+        "cache_name": "model.layers.20.self_attn.o_proj",
+        "nibbles_sha256": "1fea0df4b793f77c5226c592a7b371b69269fdd68e1c6282e959b86ac9de7b9e",
+        "scales_sha256": "7810943a06da81f46b155c3bae316bca1c331c7f7cfd9bea8258eb969faf1920"
+      },
+      "blk.20.attn_q.weight": {
+        "cache_name": "model.layers.20.self_attn.q_proj",
+        "nibbles_sha256": "79b85d6ebcef415f7cbe1db8c7d4cadef6749e4a52c195743e500abb116c419c",
+        "scales_sha256": "1d7aa697e686a5aa00419acadb94cb2108e51e1f3e41cdc5f1054dd3ff2c5946"
+      },
+      "blk.20.attn_v.weight": {
+        "cache_name": "model.layers.20.self_attn.v_proj",
+        "nibbles_sha256": "ce46deeb086b51ec82c152b7748dade28806bdc17a579e82b0066160b1bc0292",
+        "scales_sha256": "5f0e37e23e73d35726f25bad164fb81d2a628120144d0a2c5bce8b0ccc9dfc55"
+      },
+      "blk.20.ffn_down.weight": {
+        "cache_name": "model.layers.20.feed_forward.w2",
+        "nibbles_sha256": "bd07296112d3a0a0e67cfc09374b9ed6a38752415532cee69793b186316ff85f",
+        "scales_sha256": "8ba8159fd582433094f3841de287512dec1572ca743a79e747b9e04805ecf500"
+      },
+      "blk.20.ffn_gate.weight": {
+        "cache_name": "model.layers.20.feed_forward.w1",
+        "nibbles_sha256": "175791d20236c288f2d39466d1f8e67eb7c36f5a6063a84bf079161aba87dcab",
+        "scales_sha256": "9e90389b853ceb619cd9feff6e9c935259bc4f0f9498f56ff5515046b374707a"
+      },
+      "blk.20.ffn_up.weight": {
+        "cache_name": "model.layers.20.feed_forward.w3",
+        "nibbles_sha256": "f8c197ac6b5c9e2f67d63d49acf33f92d98d95a34056af33ade696017483dfbc",
+        "scales_sha256": "dfc06ee76be29801d3dca2b4e4015d8817877e7035357ed4f2cc508466276f5e"
+      },
+      "blk.21.ffn_down.weight": {
+        "cache_name": "model.layers.21.feed_forward.w2",
+        "nibbles_sha256": "fdb4c42dd4d365a8d5eb2dfba11da5c007e55bd47235723f140f15eeaa3dfde3",
+        "scales_sha256": "91e9439a2d76546275083d5935cfd62e0077a1a58159eaf10ca2abd2f62cbdbf"
+      },
+      "blk.21.ffn_gate.weight": {
+        "cache_name": "model.layers.21.feed_forward.w1",
+        "nibbles_sha256": "d6bead38f6f3083dffc46f6ed7895857092b5c87a80523dfd0a36ab1c5a08377",
+        "scales_sha256": "49bbf29623579531a35bdd013cb9c77dc677b59283d6ce541de93c83739a67a9"
+      },
+      "blk.21.ffn_up.weight": {
+        "cache_name": "model.layers.21.feed_forward.w3",
+        "nibbles_sha256": "dd224b49bf546aad24a824090abaece9797298fdf97e3ae21e8fb5348adb3012",
+        "scales_sha256": "1d39fe6397f883d09e68b3329189b8028760907c12709ab99f837f0582544f7c"
+      },
+      "blk.21.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.21.conv.in_proj.weight",
+        "nibbles_sha256": "89f81122a6deba03c07d7a90f1672fe9ee5ac85d4b67c1e29b69e09e111b8b9f",
+        "scales_sha256": "38f103fefce0c3bca06651739467e8a039796bdafeb938698533d163a6d46865"
+      },
+      "blk.21.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.21.conv.out_proj.weight",
+        "nibbles_sha256": "cf30e8fac2982a29e4e0ac4b91dc672d394d1cffdd37cefaeef33956e9c3edb3",
+        "scales_sha256": "1101a8ff3fe0c1f595e23f060fd8a21abd768a4aeff0bf3fe745896d51dd4ca6"
+      },
+      "blk.22.attn_gate.weight": {
+        "cache_name": "model.layers.22.self_attn.gate_proj",
+        "nibbles_sha256": "abc6f743c4e656448fea61f10b45966ff1a4e07977c11d6ab7ca88b4f070ef30",
+        "scales_sha256": "17afdcc3fa5fe8d43adb7318e829188151fe35d942fbfb26feb953459070aeee"
+      },
+      "blk.22.attn_k.weight": {
+        "cache_name": "model.layers.22.self_attn.k_proj",
+        "nibbles_sha256": "e8ad7759fac45c3fd84f0a819994237dfdd9babbda5264178a2ff18263d96405",
+        "scales_sha256": "111ca2327c7ab6fe2e80997934d565fa17dc77f702458af93e2123affc0932a9"
+      },
+      "blk.22.attn_output.weight": {
+        "cache_name": "model.layers.22.self_attn.o_proj",
+        "nibbles_sha256": "29606d40f541d26dfb5dc31223a5e32ec2e9bfa03fc48078fc58ad90a13a403a",
+        "scales_sha256": "d26ff92e415f6d1a50d58083f24c368a562b844fed641d7d70fe5f64a6ef4d28"
+      },
+      "blk.22.attn_q.weight": {
+        "cache_name": "model.layers.22.self_attn.q_proj",
+        "nibbles_sha256": "50c2844e1140ab55e6c3c9904729cd6f42df9efd7ce242f2bde636bf3ff740f1",
+        "scales_sha256": "ca85efd6ccbaf997c4a8aefc17420b91b7ee9a4751c99c43c233ff866104efab"
+      },
+      "blk.22.attn_v.weight": {
+        "cache_name": "model.layers.22.self_attn.v_proj",
+        "nibbles_sha256": "e76fefa3159bffb961b2c5237c617f890a06330534e8a17386c66781ac5260a1",
+        "scales_sha256": "4704bb657d992ca034f84b07e4c27667324d137566e060ab8a9fac49b5c8c6a8"
+      },
+      "blk.22.ffn_down.weight": {
+        "cache_name": "model.layers.22.feed_forward.w2",
+        "nibbles_sha256": "a13b745e2a6c088f66c668bf5807a43d03f18bebc08fbb76e8ed196349b53c7d",
+        "scales_sha256": "754444e549fdf9f15fda66b81a833b6eb36d61a91fa7884cbf05537dda4cb29e"
+      },
+      "blk.22.ffn_gate.weight": {
+        "cache_name": "model.layers.22.feed_forward.w1",
+        "nibbles_sha256": "164bfacd2a306cac8d2e1ff9340aafd8cd03676fd525461a9a88862b63f5299f",
+        "scales_sha256": "6aac045eecc7d49116c329d4ab1a74b2659c278edae6da087e1aca1fc082933d"
+      },
+      "blk.22.ffn_up.weight": {
+        "cache_name": "model.layers.22.feed_forward.w3",
+        "nibbles_sha256": "fc2c4a8c7ba1e5b323d26846bdc6922e28d4126137cc34c317aa79f63bebe32a",
+        "scales_sha256": "fa2e6a4ff3245a7afba6acca00eaf229b073ef3cae4abb5bbbf10f2ce79a3afa"
+      },
+      "blk.23.ffn_down.weight": {
+        "cache_name": "model.layers.23.feed_forward.w2",
+        "nibbles_sha256": "3c3053a648b6cd8ce77fd462665fafc39a5f7b4e92b2690a1ce1d267e670de00",
+        "scales_sha256": "c1e2d654a0da670df0eba0b09d8118020fb016dce634f7365f0e9a1531a6149a"
+      },
+      "blk.23.ffn_gate.weight": {
+        "cache_name": "model.layers.23.feed_forward.w1",
+        "nibbles_sha256": "821386515a60a7a3c36d8b95edb0a0ab609b2087ae3b5961f3f1c069c6252f22",
+        "scales_sha256": "7c5d31a8e804faa081c0176c008373e1ca5ca324288d0c3cb4bfb68f71dd31bc"
+      },
+      "blk.23.ffn_up.weight": {
+        "cache_name": "model.layers.23.feed_forward.w3",
+        "nibbles_sha256": "9f20e9ac1be5db434e40fbb3d9f39d696a22dcff710e66b5f3edf4c78cdd349f",
+        "scales_sha256": "cae7de74a394326a61ea66aabb9271d6a3c91d80b43d54f04c43f49101ab10df"
+      },
+      "blk.23.shortconv.in_proj.weight": {
+        "cache_name": "model.layers.23.conv.in_proj.weight",
+        "nibbles_sha256": "e51fc729b3db04736f7cf8ae762711baab0a198aae4596c1de4bdcee09685300",
+        "scales_sha256": "490258044ff94b5c2de3757b95a859b75c5ba9363a151f561e359cedf2cc4520"
+      },
+      "blk.23.shortconv.out_proj.weight": {
+        "cache_name": "model.layers.23.conv.out_proj.weight",
+        "nibbles_sha256": "c9dbe92c6d417c3c3081e5b3434d8a5634fd99416b56a433d609b29a77870ad5",
+        "scales_sha256": "811ca40eb72ba6293630bf900dd3e5f97d3ed58b0e6648169b87fe65557edea6"
+      }
+    },
+    "embedding_policy": "GGUF Q6_K embedding is converted to Q8 for tied head AND input lookup by the existing dianoia GGUF importer.",
+    "files": {
+      "build/vl-qad-validation/vision/model.safetensors": {
+        "bytes": 382148296,
+        "sha256": "448723d984729ebfe9e027d517758e3ba03a0102a9ecbd661d39d3fa5ebd5aaf"
+      },
+      "build/vl-qad-validation/vision/LICENSE": {
+        "bytes": 10574,
+        "sha256": "30adf9d6478191fb87f2424f63ba0728598335aaf99cd2848ef17e8e545fe94b"
+      },
+      "build/vl-qad-validation/vision/config.json": {
+        "bytes": 2905,
+        "sha256": "18a02e8b5963e38c98683e2c948705ea45220d75f017e9b4bdd9cf54692e6dc3"
+      },
+      "build/vl-qad-validation/vision/tokenizer.json": {
+        "bytes": 17908258,
+        "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+      },
+      "build/vl-qad-validation/vision/processor_config.json": {
+        "bytes": 1535,
+        "sha256": "d3d5c3f9dc3d3f25c3177ba8bb05938b53c51799244af1ca6406cde78924b84e"
+      },
+      "build/vl-qad-validation/backbone/model.safetensors": {
+        "bytes": 1564792,
+        "sha256": "e5488b0a685d83f9082cb772c5b33c2cfc2a3b603eed72ee30a1c5b62d5d7c4c"
+      },
+      "build/vl-qad-validation/backbone/config.json": {
+        "bytes": 943,
+        "sha256": "c56e0e65937bef9c61189588514702efe00b8f300694de3003e164586412b8c5"
+      },
+      "build/vl-qad-validation/backbone/lfm3-q4.cache": {
+        "bytes": 1120737280,
+        "sha256": "3409eed095c4355759194c86582ce469eece32b0b6bdebae136a5ae10d04d13a"
+      },
+      "build/vl-qad-validation/backbone/tokenizer.json": {
+        "bytes": 17908258,
+        "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+      },
+      "build/vl-qad-validation/backbone/vl_backbone.json": {
+        "bytes": 80,
+        "sha256": "f1699471f3f28dc1f7fa1857ef810566eaa8fd94f5fab9a9c226d6bd503957fb"
+      }
+    }
+  },
+  "metrics": [
+    {
+      "backend": "gpu",
+      "weights": "qad-q4",
+      "median_first_text_s": 4.587402,
+      "aggregate_decode_tokens_per_s": 123.76109982364042,
+      "process_peak_rss_bytes": 1085636608,
+      "sampled_peak_footprint_bytes": 1103038264,
+      "runtime_bytes": 1540282921,
+      "fresh_reference_matches": 21,
+      "fresh_turns": 21
+    },
+    {
+      "backend": "cpu",
+      "weights": "qad-q4",
+      "median_first_text_s": 5.658034,
+      "aggregate_decode_tokens_per_s": 43.7977623723204,
+      "process_peak_rss_bytes": 2229452800,
+      "sampled_peak_footprint_bytes": 1092929792,
+      "runtime_bytes": 1540282921,
+      "fresh_reference_matches": 21,
+      "fresh_turns": 21
+    }
+  ],
+  "runs": [
+    {
+      "version": 1,
+      "executable_sha256": "6722e6d205ee75340bfe9274ceb071f674bdcc2e1fcefd8127577b306eee5bdb",
+      "git_head": "f8485c7b4c9cd254642c049ad3871fd1bc11e961",
+      "source_sha256": {
+        "tool/validate_vl_quantization.dart": "f816b9f62b8b8e6f9a6c0a11a12f276f9d467e15b70b639076571c4dc7106e88",
+        "lib/src/model.dart": "b29a7bde6a3882a5bdb2d730a2eff59863279663b0419eef8e902ea2f39a9709",
+        "lib/src/shard.dart": "eb0662a12f8ebed5b0608c6748c1acf90c641121a2080e00f372287511cc276c",
+        "lib/src/native.dart": "107cdaecf3e1bf2048abf694e55c43a6a7cefa4104fed1a5f3d103b1c1db0036",
+        "lib/src/vision_session.dart": "c66cb58aed46bef5cf692101d96fcdda06d5d9708cab486454be74bfc136061e",
+        "lib/src/gpu.dart": "d840b582844180f4bd8e2ac1a18df9d3733c468b7a93297a965b9d9e1729b57f"
+      },
+      "started": "2026-11-01T06:47:57.306880Z",
+      "os": "Version 27.2 (Build 26B123)",
+      "dart": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"macos_arm64\"",
+      "backend_requested": "gpu",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "fresh_runs": 3,
+      "finished": true,
+      "memory_scope": "fresh AOT process; RSS high-water and 100ms physical-footprint samples, which can miss synchronous peaks; no forced GC",
+      "cases": [
+        {
+          "name": "red",
+          "image": "build/vl-validation/red.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "4cb244d414ed57a0a81ad808c62ff855a390b00b01f2f8591fcf8d035317ec78",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.70544,
+              "first_text_s": 4.713539,
+              "decode_s": 0.008162,
+              "tokens_per_s": 122.51899044351873,
+              "wall_s": 4.713709
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.559288,
+              "first_text_s": 4.567287,
+              "decode_s": 0.008106,
+              "tokens_per_s": 123.3654083395016,
+              "wall_s": 4.567435
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.590865,
+              "first_text_s": 4.598923,
+              "decode_s": 0.008164,
+              "tokens_per_s": 122.48897599216072,
+              "wall_s": 4.599071
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Reddish",
+              "passed": false,
+              "prompt_tokens": 114,
+              "generated_tokens": 3,
+              "prefill_s": 0.336686,
+              "first_text_s": 0.344935,
+              "decode_s": 0.024575,
+              "tokens_per_s": 122.07527975584944,
+              "wall_s": 0.361328
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "blue",
+          "image": "build/vl-validation/blue.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Blue",
+          "image_sha256": "449c56497fec01b080d2c8c79a590c3daf28dc5e323227dc36c66d4e5dcca06b",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.572512,
+              "first_text_s": 4.58049,
+              "decode_s": 0.008063,
+              "tokens_per_s": 124.02331638348008,
+              "wall_s": 4.580627
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.564872,
+              "first_text_s": 4.572667,
+              "decode_s": 0.007894,
+              "tokens_per_s": 126.67848999239929,
+              "wall_s": 4.572807
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.623408,
+              "first_text_s": 4.631294,
+              "decode_s": 0.007977,
+              "tokens_per_s": 125.36041118214868,
+              "wall_s": 4.631429
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 114,
+              "generated_tokens": 1,
+              "prefill_s": 0.33756,
+              "first_text_s": 0.345881,
+              "decode_s": 0.0084,
+              "tokens_per_s": 119.04761904761905,
+              "wall_s": 0.346028
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "split",
+          "image": "build/vl-validation/split.png",
+          "prompt": "What color is on the left? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "a36acad39adb239fefab6bca8e05918b1b41fbbfb0f692555edc8aec10a198a4",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.559095,
+              "first_text_s": 4.566888,
+              "decode_s": 0.00787,
+              "tokens_per_s": 127.06480304955527,
+              "wall_s": 4.567029
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.600011,
+              "first_text_s": 4.608149,
+              "decode_s": 0.008232,
+              "tokens_per_s": 121.47716229348883,
+              "wall_s": 4.608298
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.508272,
+              "first_text_s": 4.51624,
+              "decode_s": 0.008074,
+              "tokens_per_s": 123.8543472875898,
+              "wall_s": 4.516388
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 116,
+              "generated_tokens": 1,
+              "prefill_s": 0.341344,
+              "first_text_s": 0.349582,
+              "decode_s": 0.008327,
+              "tokens_per_s": 120.09126936471719,
+              "wall_s": 0.349729
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "photo-en",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "What is the person wearing? Answer in a short phrase.",
+          "contains": "spacesuit",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.508173,
+              "first_text_s": 4.516174,
+              "decode_s": 0.016114,
+              "tokens_per_s": 124.11567580985479,
+              "wall_s": 4.52435
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.460103,
+              "first_text_s": 4.468152,
+              "decode_s": 0.016159,
+              "tokens_per_s": 123.77003527446006,
+              "wall_s": 4.476303
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.537752,
+              "first_text_s": 4.545886,
+              "decode_s": 0.016253,
+              "tokens_per_s": 123.05420537746878,
+              "wall_s": 4.554045
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 115,
+              "generated_tokens": 2,
+              "prefill_s": 0.34596,
+              "first_text_s": 0.354257,
+              "decode_s": 0.016424,
+              "tokens_per_s": 121.77301509985386,
+              "wall_s": 0.362464
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "photo-ja",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+          "contains": "宇宙服",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 4.573034,
+              "first_text_s": 4.582211,
+              "decode_s": 0.079047,
+              "tokens_per_s": 126.50701481397142,
+              "wall_s": 4.65315
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 4.538647,
+              "first_text_s": 4.546924,
+              "decode_s": 0.081323,
+              "tokens_per_s": 122.96644245785325,
+              "wall_s": 4.620057
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 4.579327,
+              "first_text_s": 4.587402,
+              "decode_s": 0.080338,
+              "tokens_per_s": 124.47409694042669,
+              "wall_s": 4.65972
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "オレンジ色の宇宙服を着ています。",
+              "passed": true,
+              "prompt_tokens": 131,
+              "generated_tokens": 9,
+              "prefill_s": 0.398824,
+              "first_text_s": 0.407343,
+              "decode_s": 0.073949,
+              "tokens_per_s": 121.70549973630474,
+              "wall_s": 0.47301
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "ocr-latin",
+          "image": "build/vl-validation/extended/ocr-latin.png",
+          "prompt": "Read the code after CODE. Return only the code.",
+          "expected": "AB42",
+          "image_sha256": "57db13de82743f3db47f0c308471840a5230e740ce46d6dc01465303c774c98d",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.139112,
+              "first_text_s": 5.147154,
+              "decode_s": 0.01616,
+              "tokens_per_s": 123.76237623762376,
+              "wall_s": 5.155331
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.268755,
+              "first_text_s": 5.276922,
+              "decode_s": 0.016273,
+              "tokens_per_s": 122.90296810667978,
+              "wall_s": 5.28507
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.206629,
+              "first_text_s": 5.21445,
+              "decode_s": 0.016621,
+              "tokens_per_s": 120.32970338728114,
+              "wall_s": 5.223301
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 121,
+              "generated_tokens": 2,
+              "prefill_s": 0.377293,
+              "first_text_s": 0.3863,
+              "decode_s": 0.017306,
+              "tokens_per_s": 115.56685542586388,
+              "wall_s": 0.394663
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "ocr-ja",
+          "image": "build/vl-validation/extended/ocr-ja.png",
+          "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+          "expected": "東京 123",
+          "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 5.368764,
+              "first_text_s": 5.377119,
+              "decode_s": 0.024415,
+              "tokens_per_s": 122.87528158918698,
+              "wall_s": 5.393681
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 5.174666,
+              "first_text_s": 5.182546,
+              "decode_s": 0.024024,
+              "tokens_per_s": 124.87512487512487,
+              "wall_s": 5.198744
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 5.308913,
+              "first_text_s": 5.317642,
+              "decode_s": 0.025536,
+              "tokens_per_s": 117.4812030075188,
+              "wall_s": 5.334511
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 124,
+              "generated_tokens": 3,
+              "prefill_s": 0.378199,
+              "first_text_s": 0.386422,
+              "decode_s": 0.024819,
+              "tokens_per_s": 120.87513598452797,
+              "wall_s": 0.403111
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        }
+      ],
+      "audit_sha256": "4e055000052fe8c0112df59b4f1467882970bcb4410d22312ff2378f572b0b1f",
+      "weights": "qad-q4",
+      "layout": "official-GGUF-import",
+      "runtime_bytes": 1540282921,
+      "embedding_policy": "GGUF Q6_K embedding is converted to Q8 for tied head AND input lookup by the existing dianoia GGUF importer.",
+      "backend": "gpu",
+      "load_with_integrity_s": 10.880513,
+      "fresh_passed": false,
+      "elapsed_s": 114.052787,
+      "memory_summary": {
+        "sample_count": 483,
+        "sampled_peak_footprint_bytes": 1103038264,
+        "process_peak_rss_bytes": 1085636608,
+        "after_close": {
+          "phase": "closed",
+          "elapsed_s": 114.052761,
+          "rss_bytes": 878837760,
+          "process_peak_rss_bytes": 1085636608,
+          "physical_footprint_bytes": 898975160,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "thermal_states": [
+          0
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "executable_sha256": "6722e6d205ee75340bfe9274ceb071f674bdcc2e1fcefd8127577b306eee5bdb",
+      "git_head": "f8485c7b4c9cd254642c049ad3871fd1bc11e961",
+      "source_sha256": {
+        "tool/validate_vl_quantization.dart": "f816b9f62b8b8e6f9a6c0a11a12f276f9d467e15b70b639076571c4dc7106e88",
+        "lib/src/model.dart": "b29a7bde6a3882a5bdb2d730a2eff59863279663b0419eef8e902ea2f39a9709",
+        "lib/src/shard.dart": "eb0662a12f8ebed5b0608c6748c1acf90c641121a2080e00f372287511cc276c",
+        "lib/src/native.dart": "107cdaecf3e1bf2048abf694e55c43a6a7cefa4104fed1a5f3d103b1c1db0036",
+        "lib/src/vision_session.dart": "c66cb58aed46bef5cf692101d96fcdda06d5d9708cab486454be74bfc136061e",
+        "lib/src/gpu.dart": "d840b582844180f4bd8e2ac1a18df9d3733c468b7a93297a965b9d9e1729b57f"
+      },
+      "started": "2026-11-01T06:49:51.384110Z",
+      "os": "Version 27.2 (Build 26B123)",
+      "dart": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"macos_arm64\"",
+      "backend_requested": "cpu",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "fresh_runs": 3,
+      "finished": true,
+      "memory_scope": "fresh AOT process; RSS high-water and 100ms physical-footprint samples, which can miss synchronous peaks; no forced GC",
+      "cases": [
+        {
+          "name": "red",
+          "image": "build/vl-validation/red.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "4cb244d414ed57a0a81ad808c62ff855a390b00b01f2f8591fcf8d035317ec78",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.793285,
+              "first_text_s": 5.816244,
+              "decode_s": 0.023042,
+              "tokens_per_s": 43.39901050256054,
+              "wall_s": 5.816436
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.61666,
+              "first_text_s": 5.64093,
+              "decode_s": 0.024377,
+              "tokens_per_s": 41.02227509537679,
+              "wall_s": 5.641078
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.626609,
+              "first_text_s": 5.65008,
+              "decode_s": 0.023601,
+              "tokens_per_s": 42.371085970933436,
+              "wall_s": 5.650252
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Reddish",
+              "passed": false,
+              "prompt_tokens": 114,
+              "generated_tokens": 3,
+              "prefill_s": 1.80581,
+              "first_text_s": 1.827716,
+              "decode_s": 0.06738,
+              "tokens_per_s": 44.52359750667854,
+              "wall_s": 1.873258
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "blue",
+          "image": "build/vl-validation/blue.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Blue",
+          "image_sha256": "449c56497fec01b080d2c8c79a590c3daf28dc5e323227dc36c66d4e5dcca06b",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.632661,
+              "first_text_s": 5.654737,
+              "decode_s": 0.022159,
+              "tokens_per_s": 45.12839027031905,
+              "wall_s": 5.654871
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.609042,
+              "first_text_s": 5.631171,
+              "decode_s": 0.022224,
+              "tokens_per_s": 44.99640028797696,
+              "wall_s": 5.631308
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.616258,
+              "first_text_s": 5.638713,
+              "decode_s": 0.022549,
+              "tokens_per_s": 44.347864650317085,
+              "wall_s": 5.638848
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 114,
+              "generated_tokens": 1,
+              "prefill_s": 1.818686,
+              "first_text_s": 1.840876,
+              "decode_s": 0.02226,
+              "tokens_per_s": 44.923629829290206,
+              "wall_s": 1.841006
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "split",
+          "image": "build/vl-validation/split.png",
+          "prompt": "What color is on the left? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "a36acad39adb239fefab6bca8e05918b1b41fbbfb0f692555edc8aec10a198a4",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.62433,
+              "first_text_s": 5.646548,
+              "decode_s": 0.022333,
+              "tokens_per_s": 44.776787713249455,
+              "wall_s": 5.64673
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.630053,
+              "first_text_s": 5.653847,
+              "decode_s": 0.023885,
+              "tokens_per_s": 41.86728072011723,
+              "wall_s": 5.653979
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.647283,
+              "first_text_s": 5.670295,
+              "decode_s": 0.023099,
+              "tokens_per_s": 43.2919173990216,
+              "wall_s": 5.670431
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 116,
+              "generated_tokens": 1,
+              "prefill_s": 1.826069,
+              "first_text_s": 1.848303,
+              "decode_s": 0.022307,
+              "tokens_per_s": 44.82897745102434,
+              "wall_s": 1.848436
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "photo-en",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "What is the person wearing? Answer in a short phrase.",
+          "contains": "spacesuit",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.63342,
+              "first_text_s": 5.657246,
+              "decode_s": 0.046714,
+              "tokens_per_s": 42.81371751509184,
+              "wall_s": 5.680185
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.616083,
+              "first_text_s": 5.638533,
+              "decode_s": 0.044768,
+              "tokens_per_s": 44.674767691208004,
+              "wall_s": 5.660898
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.624972,
+              "first_text_s": 5.64764,
+              "decode_s": 0.046629,
+              "tokens_per_s": 42.89176263698557,
+              "wall_s": 5.671643
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 115,
+              "generated_tokens": 2,
+              "prefill_s": 1.830776,
+              "first_text_s": 1.854408,
+              "decode_s": 0.04784,
+              "tokens_per_s": 41.80602006688963,
+              "wall_s": 1.878693
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "photo-ja",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+          "contains": "宇宙服",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 5.659395,
+              "first_text_s": 5.687888,
+              "decode_s": 0.230398,
+              "tokens_per_s": 43.40315454127206,
+              "wall_s": 5.890825
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 5.64413,
+              "first_text_s": 5.666017,
+              "decode_s": 0.222037,
+              "tokens_per_s": 45.03753878858028,
+              "wall_s": 5.866221
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 5.635796,
+              "first_text_s": 5.658034,
+              "decode_s": 0.222848,
+              "tokens_per_s": 44.873635841470424,
+              "wall_s": 5.858699
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "オレンジ色の宇宙服を着ています。",
+              "passed": true,
+              "prompt_tokens": 131,
+              "generated_tokens": 9,
+              "prefill_s": 2.076188,
+              "first_text_s": 2.099296,
+              "decode_s": 0.201937,
+              "tokens_per_s": 44.56835547720328,
+              "wall_s": 2.278378
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "ocr-latin",
+          "image": "build/vl-validation/extended/ocr-latin.png",
+          "prompt": "Read the code after CODE. Return only the code.",
+          "expected": "AB42",
+          "image_sha256": "57db13de82743f3db47f0c308471840a5230e740ce46d6dc01465303c774c98d",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.331328,
+              "first_text_s": 6.353448,
+              "decode_s": 0.044316,
+              "tokens_per_s": 45.13042693383879,
+              "wall_s": 6.375713
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.34633,
+              "first_text_s": 6.368429,
+              "decode_s": 0.04441,
+              "tokens_per_s": 45.034902049088046,
+              "wall_s": 6.39078
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.339927,
+              "first_text_s": 6.364162,
+              "decode_s": 0.047978,
+              "tokens_per_s": 41.68577264579599,
+              "wall_s": 6.387947
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 121,
+              "generated_tokens": 2,
+              "prefill_s": 1.889144,
+              "first_text_s": 1.911239,
+              "decode_s": 0.044354,
+              "tokens_per_s": 45.091761735130994,
+              "wall_s": 1.933558
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        },
+        {
+          "name": "ocr-ja",
+          "image": "build/vl-validation/extended/ocr-ja.png",
+          "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+          "expected": "東京 123",
+          "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 6.363109,
+              "first_text_s": 6.38677,
+              "decode_s": 0.072002,
+              "tokens_per_s": 41.665509291408576,
+              "wall_s": 6.435396
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 6.381654,
+              "first_text_s": 6.405223,
+              "decode_s": 0.06977,
+              "tokens_per_s": 42.998423391142325,
+              "wall_s": 6.451487
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 6.397111,
+              "first_text_s": 6.420404,
+              "decode_s": 0.070794,
+              "tokens_per_s": 42.37647258242224,
+              "wall_s": 6.467957
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 124,
+              "generated_tokens": 3,
+              "prefill_s": 1.966139,
+              "first_text_s": 1.988811,
+              "decode_s": 0.066723,
+              "tokens_per_s": 44.96200710399712,
+              "wall_s": 2.032956
+            }
+          ],
+          "reference_exact_match_all_fresh": true
+        }
+      ],
+      "audit_sha256": "4e055000052fe8c0112df59b4f1467882970bcb4410d22312ff2378f572b0b1f",
+      "weights": "qad-q4",
+      "layout": "official-GGUF-import",
+      "runtime_bytes": 1540282921,
+      "embedding_policy": "GGUF Q6_K embedding is converted to Q8 for tied head AND input lookup by the existing dianoia GGUF importer.",
+      "backend": "cpu",
+      "load_with_integrity_s": 10.570472,
+      "fresh_passed": false,
+      "elapsed_s": 148.450393,
+      "memory_summary": {
+        "sample_count": 502,
+        "sampled_peak_footprint_bytes": 1092929792,
+        "process_peak_rss_bytes": 2229452800,
+        "after_close": {
+          "phase": "closed",
+          "elapsed_s": 148.450368,
+          "rss_bytes": 909475840,
+          "process_peak_rss_bytes": 2229452800,
+          "physical_footprint_bytes": 899827056,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "thermal_states": [
+          0
+        ]
+      }
+    }
+  ],
+  "comparison_scope": "Exact fresh responses compared with the official GGUF reference on 7 prompts/6 images. Archived PTQ results are historical and those model weights were deleted before this run. The importer converts the Q6_K tied embedding/head to Q8; no general equivalence to untouched GGUF inference is claimed beyond these fixtures.",
+  "baseline_artifact": "lfm3-vl-q4-2026-11-01.json",
+  "cleanup": {
+    "deleted": [
+      {
+        "path": "build/vl-validation/model",
+        "logical_bytes": 3854507901,
+        "unique_allocated_bytes": 3854540800,
+        "files": 16
+      },
+      {
+        "path": "build/vl-validation/backbone",
+        "logical_bytes": 5421061899,
+        "unique_allocated_bytes": 5420060672,
+        "files": 6
+      },
+      {
+        "path": "build/vl-validation/portable-q8",
+        "logical_bytes": 2885204285,
+        "unique_allocated_bytes": 2884214784,
+        "files": 11
+      },
+      {
+        "path": "build/vl-q4-validation/backbone",
+        "logical_bytes": 4596285195,
+        "unique_allocated_bytes": 1119723520,
+        "files": 6
+      },
+      {
+        "path": "build/vl-q4-validation/portable-q4",
+        "logical_bytes": 2060427581,
+        "unique_allocated_bytes": 2059440128,
+        "files": 11
+      }
+    ],
+    "retained": "Configuration/tokenizer/license and test images/results; no previous VL weights or caches retained."
+  },
+  "cleanup_unique_allocated_bytes": 15337979904,
+  "tool_source_sha256": {
+    "tool/prepare_vl_qad.py": "ef4c3452e251ed4d271e70c6cdba816b270901cd3874882e9eb09cd3afb8e222",
+    "tool/prepare_vl_qad.dart": "577b7b4389239d1956835d207618f461dcd5a391001532887bad8eeb87731923",
+    "tool/validate_vl_quantization.dart": "f816b9f62b8b8e6f9a6c0a11a12f276f9d467e15b70b639076571c4dc7106e88",
+    "tool/validate_vl_qad_reference.py": "84cfdc5acc64e3da1888718f565bc600a746102215ac9feb6e1ca7308acb764b"
+  },
+  "verification": {
+    "dart_format": "clean",
+    "dart_analyze": "no issues",
+    "dart_tests": {
+      "passed": 175,
+      "skipped": 24
+    },
+    "python_tests_passed": 3,
+    "python_compile": "passed",
+    "lab_parity": {
+      "passed": true,
+      "byte_identical_comparisons": 24
+    }
+  },
+  "metadata_source_revision": "ba44bd51db20a2753f28c273a1571ccaa210d954",
+  "metadata_sha256": {
+    "LICENSE": "30adf9d6478191fb87f2424f63ba0728598335aaf99cd2848ef17e8e545fe94b",
+    "config.json": "18a02e8b5963e38c98683e2c948705ea45220d75f017e9b4bdd9cf54692e6dc3",
+    "tokenizer.json": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7",
+    "processor_config.json": "d3d5c3f9dc3d3f25c3177ba8bb05938b53c51799244af1ca6406cde78924b84e"
+  },
+  "app_installation": {
+    "bundle": "build/vl-qad-app-validation/store/lfm3-vl-2b-qad-q4-b36554c/bundle",
+    "download_requests": 6,
+    "download_bytes": 1446534952,
+    "comparisons": {
+      "cpu": {
+        "text": "東京 123",
+        "source_logit_sha256": [
+          "695ae4e51d13794fed4177925b412e269f5070925912a757bed4cdccd6282154",
+          "a3cdffa056664a4fc1cd21c70565e6dc7fdac95fc314d133bdd722e103aeb29b",
+          "1c3d000f802ed672aab3bff908fca3dbe640dd725a729081b73495d68d4f305f",
+          "a185e480622c5f6991f2575c4fce0a9bb0111a69f805ef9b8670fd7234abef7d"
+        ],
+        "installed_logit_sha256": [
+          "695ae4e51d13794fed4177925b412e269f5070925912a757bed4cdccd6282154",
+          "a3cdffa056664a4fc1cd21c70565e6dc7fdac95fc314d133bdd722e103aeb29b",
+          "1c3d000f802ed672aab3bff908fca3dbe640dd725a729081b73495d68d4f305f",
+          "a185e480622c5f6991f2575c4fce0a9bb0111a69f805ef9b8670fd7234abef7d"
+        ],
+        "byte_identical": true
+      },
+      "gpu": {
+        "text": "東京 123",
+        "source_logit_sha256": [
+          "2e7d1771308f683dc44f92d96cc7e76d04ea628534e3abbd45be251bcf5cd1ac",
+          "3719d04430479bb1dbfc5536881a1c948c44d8fc8cf36fd11ee2e9f8f08ef07c",
+          "7a2d3f05c36415d23d1e97b8928b2963c35b294d4b657e33a0a5d04cf5f5cfa1",
+          "663a7b927f62c7b6f0c3c5bb3a30c2832e1a287d582445054c8d2fb021cb2fa7"
+        ],
+        "installed_logit_sha256": [
+          "2e7d1771308f683dc44f92d96cc7e76d04ea628534e3abbd45be251bcf5cd1ac",
+          "3719d04430479bb1dbfc5536881a1c948c44d8fc8cf36fd11ee2e9f8f08ef07c",
+          "7a2d3f05c36415d23d1e97b8928b2963c35b294d4b657e33a0a5d04cf5f5cfa1",
+          "663a7b927f62c7b6f0c3c5bb3a30c2832e1a287d582445054c8d2fb021cb2fa7"
+        ],
+        "byte_identical": true
+      }
+    },
+    "installed_q4_matrices_byte_identical_to_official": 153,
+    "installed_bytes": 1540284520,
+    "manifest_sha256": "9d5f36ded7757e463b7e5ade478d493a50224c3809174390077b687c7a7e98a3",
+    "vision_tensors_byte_identical_to_validated_mmproj_import": 138,
+    "q8_embedding_byte_identical_to_validated_import": true,
+    "model_id": "lfm3-vl-2b-qad-q4-b36554c",
+    "input_embedding": "q8-cache",
+    "runtime_source_sha256": {
+      "lib/src/vision_gguf.dart": "41b2131a37c05f19edac7445b4a1b71e0e1ca3aa906e4dd8c5eb63cea13e6bbc",
+      "lib/src/vision_bundle.dart": "d78b0e0ac1f7d2fa91ef9df469f1df3b8937a85bb155d8d13d037c37aafad8ff",
+      "lib/src/gguf.dart": "7a930cf105215cbe9c4ae99b65640eb6b2ddedb322ac0df1d5825faa59e6de36",
+      "lib/src/model_store.dart": "eb868a71d15c81ee206e994b50c9d5936e861f40cb9b61b8069ca266e2ffd6c1"
+    },
+    "verification": {
+      "dart_analyze": "no issues",
+      "flutter_analyze": "no issues",
+      "dart_tests_passed": 180,
+      "dart_tests_skipped": 25,
+      "flutter_tests_passed": 19,
+      "real_http_install_and_logit_parity": "passed on CPU and Metal",
+      "lab_parity_comparisons": 24
+    }
+  }
+}

@@ -1,14 +1,14 @@
-import 'package:dianoia/dianoia.dart';
 import 'package:flutter/material.dart';
 
 import 'chat_controller.dart';
 import 'chat_page.dart';
+import 'example_model.dart';
 
 /// The models supported by the example, before any worker is started.
 class ModelSelectionPage extends StatelessWidget {
   const ModelSelectionPage({super.key});
 
-  static const models = [ModelSpec.lfm3Q4];
+  static const models = ExampleModel.values;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -27,7 +27,7 @@ class ModelSelectionPage extends StatelessWidget {
               const SizedBox(height: 8),
               const Text(
                 'Models run on this device. Select one to open a chat or '
-                'download it if needed.',
+                'set it up if needed.',
               ),
               const SizedBox(height: 24),
               for (final model in models)
@@ -39,7 +39,7 @@ class ModelSelectionPage extends StatelessWidget {
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        '${(model.downloadBytes / 1e9).toStringAsFixed(2)} GB download\n'
+                        '${model.sizeLabel}\n'
                         'License: ${model.license}',
                       ),
                     ),
@@ -63,7 +63,7 @@ class ModelSelectionPage extends StatelessWidget {
 class ModelChatPage extends StatefulWidget {
   const ModelChatPage({super.key, required this.model});
 
-  final ModelSpec model;
+  final ExampleModel model;
 
   @override
   State<ModelChatPage> createState() => _ModelChatPageState();

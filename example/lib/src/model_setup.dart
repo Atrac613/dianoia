@@ -29,8 +29,24 @@ class ModelSetup extends StatelessWidget {
               Text(
                 '${_gb(spec.downloadBytes)} GB to download from Hugging Face, '
                 'once. The model then runs on this device: what you type '
-                'stays here.',
+                'stays here, along with any images you send.',
               ),
+              if (spec is VisionGgufSpec) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Allow at least 5 GB of free storage during download and setup. '
+                  'The installed model uses about 1.54 GB.',
+                ),
+              ],
+              if (spec is VisionCheckpointSpec) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Allow at least 13 GB of free storage during the first '
+                  'download and conversion. The installed '
+                  '${spec.quantization.name.toUpperCase()} model uses about '
+                  '${spec.quantization == VisionQuantization.q4 ? '2.06' : '2.89'} GB.',
+                ),
+              ],
               const SizedBox(height: 12),
               Text('License: ${spec.license}'),
               SelectableText(
@@ -80,7 +96,9 @@ class ModelSetup extends StatelessWidget {
       const SizedBox(height: 8),
       Text(
         building
-            ? 'Building the model on this device…'
+            ? (chat.spec is VisionGgufSpec
+                  ? 'Preparing the model on this device…'
+                  : 'Building the model on this device…')
             : '${_gb(chat.installBytes)} of ${_gb(total)} GB',
       ),
       if (!building)

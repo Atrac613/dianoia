@@ -4,6 +4,7 @@
 library;
 
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:dianoia/dianoia.dart';
 
@@ -35,9 +36,18 @@ sealed class ChatCommand {
   const ChatCommand();
 }
 
+/// Encoded bytes are copied to the worker; file-picker paths never leave UI.
+final class ImageAttachment {
+  const ImageAttachment(this.name, this.bytes);
+  static const maxBytes = 32 * 1024 * 1024;
+  final String name;
+  final Uint8List bytes;
+}
+
 final class SendMessage extends ChatCommand {
-  const SendMessage(this.text);
+  const SendMessage(this.text, {this.image});
   final String text;
+  final ImageAttachment? image;
 }
 
 /// Ends the reply being generated, keeping what is there.
@@ -82,10 +92,10 @@ final class WorkerProgress extends ChatEvent {
   final String status;
 }
 
-/// No model on the device: the UI should offer to download [spec].
+/// No model on the device: offer [spec] for download.
 final class ModelNeeded extends ChatEvent {
   const ModelNeeded(this.spec);
-  final ModelSpec spec;
+  final InstallableModel spec;
 }
 
 final class InstallUpdate extends ChatEvent {

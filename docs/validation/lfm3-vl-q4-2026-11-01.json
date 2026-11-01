@@ -1,0 +1,2271 @@
+{
+  "date": "2026-11-01",
+  "host": {
+    "cpu": "Apple M2 Max",
+    "ram_bytes": 68719476736
+  },
+  "scope": "dianoia BF16-to-Q4 language quantization; 153 Q4 matrices, tied output head Q8; unchanged vision weights and CPU encoder. Not QAD GGUF. No phone validation.",
+  "method": "One fresh AOT process per backend/format, sequential GPU Q8/Q4 then CPU Q8/Q4; 7 paired cases; 3 fresh turns and 1 ungraded visual-context follow-up per case; 512 context, 32 max generated tokens, 4 native threads; no system prompt. Input bytes, source hashes and executable hash match. Short replies and one process per configuration limit performance conclusions.",
+  "bundles": {
+    "q4": {
+      "bytes": 2060427581,
+      "manifest_sha256": "49eccbb9b464404c6b08ae26204989e1e12acb49afa5fcebdee57c82d6f1772a",
+      "manifest": {
+        "version": 1,
+        "kind": "lfm3-vl",
+        "weights": "q4",
+        "origin_source_key": "23abca68c67fa1d2",
+        "files": {
+          "config.json": {
+            "bytes": 2905,
+            "sha256": "18a02e8b5963e38c98683e2c948705ea45220d75f017e9b4bdd9cf54692e6dc3"
+          },
+          "processor_config.json": {
+            "bytes": 1535,
+            "sha256": "d3d5c3f9dc3d3f25c3177ba8bb05938b53c51799244af1ca6406cde78924b84e"
+          },
+          "tokenizer.json": {
+            "bytes": 17908258,
+            "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+          },
+          "LICENSE": {
+            "bytes": 10574,
+            "sha256": "30adf9d6478191fb87f2424f63ba0728598335aaf99cd2848ef17e8e545fe94b"
+          },
+          "model.safetensors": {
+            "bytes": 378777872,
+            "sha256": "50ead2d50bcdb36938d94cc6643391f250060c16caef1e47fbd4e62c0b42b81a"
+          },
+          "language/config.json": {
+            "bytes": 1225,
+            "sha256": "6aa7115f1f64959fb880651798034b8d75d19cd7cd43534ea0f5bc063b29ccc0"
+          },
+          "language/tokenizer.json": {
+            "bytes": 17908258,
+            "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+          },
+          "language/model.safetensors": {
+            "bytes": 525078056,
+            "sha256": "cbaf8c8fe428b13f280d2ea0942696449b62626b72bc90f69ea9d952cd73f304"
+          },
+          "language/lfm3-q4.cache": {
+            "bytes": 1120737280,
+            "sha256": "73098bab97b5f025c7ab3acd80eb547093c53cd86b7b616fb83223be6a68242d"
+          },
+          "language/vl_backbone.json": {
+            "bytes": 81,
+            "sha256": "cb76de238b2d6df23ec0a0f05fbc9c6302e9673cdd5eeeb4bbdb248b8b6775f6"
+          }
+        }
+      },
+      "cached_matrix_formats": {
+        "q8": 1,
+        "q4": 153
+      }
+    },
+    "q8": {
+      "bytes": 2885204285,
+      "manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+      "manifest": {
+        "version": 1,
+        "kind": "lfm3-vl",
+        "weights": "q8",
+        "origin_source_key": "23abca68c67fa1d2",
+        "files": {
+          "config.json": {
+            "bytes": 2905,
+            "sha256": "18a02e8b5963e38c98683e2c948705ea45220d75f017e9b4bdd9cf54692e6dc3"
+          },
+          "processor_config.json": {
+            "bytes": 1535,
+            "sha256": "d3d5c3f9dc3d3f25c3177ba8bb05938b53c51799244af1ca6406cde78924b84e"
+          },
+          "tokenizer.json": {
+            "bytes": 17908258,
+            "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+          },
+          "LICENSE": {
+            "bytes": 10574,
+            "sha256": "30adf9d6478191fb87f2424f63ba0728598335aaf99cd2848ef17e8e545fe94b"
+          },
+          "model.safetensors": {
+            "bytes": 378777872,
+            "sha256": "50ead2d50bcdb36938d94cc6643391f250060c16caef1e47fbd4e62c0b42b81a"
+          },
+          "language/config.json": {
+            "bytes": 1225,
+            "sha256": "6aa7115f1f64959fb880651798034b8d75d19cd7cd43534ea0f5bc063b29ccc0"
+          },
+          "language/tokenizer.json": {
+            "bytes": 17908258,
+            "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+          },
+          "language/model.safetensors": {
+            "bytes": 525078056,
+            "sha256": "cbaf8c8fe428b13f280d2ea0942696449b62626b72bc90f69ea9d952cd73f304"
+          },
+          "language/lfm3-q8.cache": {
+            "bytes": 1945513984,
+            "sha256": "02f324934d4c2255e249a9d97ec8ed86576d90735025fb60171776378b1d93f7"
+          },
+          "language/vl_backbone.json": {
+            "bytes": 81,
+            "sha256": "cb76de238b2d6df23ec0a0f05fbc9c6302e9673cdd5eeeb4bbdb248b8b6775f6"
+          }
+        }
+      },
+      "cached_matrix_formats": {
+        "q8": 154
+      }
+    }
+  },
+  "shared_payload_hashes_identical": true,
+  "metrics": [
+    {
+      "backend": "gpu",
+      "weights": "q8",
+      "median_fresh_first_text_s": 4.602887,
+      "aggregate_fresh_decode_tokens_per_s": 98.2912073600456,
+      "median_fresh_wall_s": 4.681509,
+      "sampled_peak_footprint_bytes": 1105315544,
+      "process_peak_rss_bytes": 1092386816,
+      "fresh_repeats_identical": true
+    },
+    {
+      "backend": "gpu",
+      "weights": "q4",
+      "median_fresh_first_text_s": 4.600824,
+      "aggregate_fresh_decode_tokens_per_s": 122.32415902140671,
+      "median_fresh_wall_s": 4.61338,
+      "sampled_peak_footprint_bytes": 1104168712,
+      "process_peak_rss_bytes": 1091534848,
+      "fresh_repeats_identical": true
+    },
+    {
+      "backend": "cpu",
+      "weights": "q8",
+      "median_fresh_first_text_s": 5.611831,
+      "aggregate_fresh_decode_tokens_per_s": 39.66745450638811,
+      "median_fresh_wall_s": 5.617374,
+      "sampled_peak_footprint_bytes": 1093799032,
+      "process_peak_rss_bytes": 3054567424,
+      "fresh_repeats_identical": true
+    },
+    {
+      "backend": "cpu",
+      "weights": "q4",
+      "median_fresh_first_text_s": 5.644458,
+      "aggregate_fresh_decode_tokens_per_s": 44.45493124873902,
+      "median_fresh_wall_s": 5.665306,
+      "sampled_peak_footprint_bytes": 1092356664,
+      "process_peak_rss_bytes": 2229829632,
+      "fresh_repeats_identical": true
+    }
+  ],
+  "runs": [
+    {
+      "version": 1,
+      "executable_sha256": "fb476d9639a12b017d4abf448f8545ed08c0f21aa408970381b6d3f85983a6a6",
+      "git_head": "f8485c7b4c9cd254642c049ad3871fd1bc11e961",
+      "source_sha256": {
+        "tool/validate_vl_quantization.dart": "6d4b8320be047ec126c792084db93d46bb96cae49d18635750e2713cb2d1ca62",
+        "lib/src/model.dart": "b29a7bde6a3882a5bdb2d730a2eff59863279663b0419eef8e902ea2f39a9709",
+        "lib/src/shard.dart": "eb0662a12f8ebed5b0608c6748c1acf90c641121a2080e00f372287511cc276c",
+        "lib/src/native.dart": "107cdaecf3e1bf2048abf694e55c43a6a7cefa4104fed1a5f3d103b1c1db0036",
+        "lib/src/vision_session.dart": "c66cb58aed46bef5cf692101d96fcdda06d5d9708cab486454be74bfc136061e",
+        "lib/src/gpu.dart": "d840b582844180f4bd8e2ac1a18df9d3733c468b7a93297a965b9d9e1729b57f"
+      },
+      "started": "2026-11-01T06:08:31.237737Z",
+      "os": "Version 27.2 (Build 26B123)",
+      "dart": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"macos_arm64\"",
+      "backend_requested": "gpu",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "fresh_runs": 3,
+      "finished": true,
+      "memory_scope": "fresh AOT process; RSS high-water and 100ms physical-footprint samples, which can miss synchronous peaks; no forced GC",
+      "cases": [
+        {
+          "name": "red",
+          "image": "build/vl-validation/red.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "4cb244d414ed57a0a81ad808c62ff855a390b00b01f2f8591fcf8d035317ec78",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.769332,
+              "first_text_s": 4.779537,
+              "decode_s": 0.010303,
+              "tokens_per_s": 97.05910899737941,
+              "wall_s": 4.779722
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.671433,
+              "first_text_s": 4.681405,
+              "decode_s": 0.010024,
+              "tokens_per_s": 99.76057462090982,
+              "wall_s": 4.681509
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.590177,
+              "first_text_s": 4.60019,
+              "decode_s": 0.010074,
+              "tokens_per_s": 99.26543577526306,
+              "wall_s": 4.600294
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Reddish",
+              "passed": false,
+              "prompt_tokens": 114,
+              "generated_tokens": 3,
+              "prefill_s": 0.328683,
+              "first_text_s": 0.338771,
+              "decode_s": 0.030786,
+              "tokens_per_s": 97.44689144416293,
+              "wall_s": 0.359537
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.681405,
+          "median_wall_s": 4.681509
+        },
+        {
+          "name": "blue",
+          "image": "build/vl-validation/blue.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Blue",
+          "image_sha256": "449c56497fec01b080d2c8c79a590c3daf28dc5e323227dc36c66d4e5dcca06b",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.590013,
+              "first_text_s": 4.600103,
+              "decode_s": 0.010181,
+              "tokens_per_s": 98.22217856792062,
+              "wall_s": 4.600238
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.725526,
+              "first_text_s": 4.735561,
+              "decode_s": 0.010113,
+              "tokens_per_s": 98.88262632255513,
+              "wall_s": 4.735683
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.594677,
+              "first_text_s": 4.605098,
+              "decode_s": 0.010484,
+              "tokens_per_s": 95.38344143456696,
+              "wall_s": 4.605204
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 114,
+              "generated_tokens": 1,
+              "prefill_s": 0.326773,
+              "first_text_s": 0.336795,
+              "decode_s": 0.010086,
+              "tokens_per_s": 99.14733293674401,
+              "wall_s": 0.336925
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.605098,
+          "median_wall_s": 4.605204
+        },
+        {
+          "name": "split",
+          "image": "build/vl-validation/split.png",
+          "prompt": "What color is on the left? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "a36acad39adb239fefab6bca8e05918b1b41fbbfb0f692555edc8aec10a198a4",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.588538,
+              "first_text_s": 4.598519,
+              "decode_s": 0.010038,
+              "tokens_per_s": 99.62143853357243,
+              "wall_s": 4.598624
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.538846,
+              "first_text_s": 4.548907,
+              "decode_s": 0.01014,
+              "tokens_per_s": 98.61932938856016,
+              "wall_s": 4.549028
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.572607,
+              "first_text_s": 4.58268,
+              "decode_s": 0.010137,
+              "tokens_per_s": 98.64851533984414,
+              "wall_s": 4.582787
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 116,
+              "generated_tokens": 1,
+              "prefill_s": 0.33085,
+              "first_text_s": 0.341016,
+              "decode_s": 0.010236,
+              "tokens_per_s": 97.69441187964048,
+              "wall_s": 0.341148
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.58268,
+          "median_wall_s": 4.582787
+        },
+        {
+          "name": "photo-en",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "What is the person wearing? Answer in a short phrase.",
+          "contains": "spacesuit",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.593217,
+              "first_text_s": 4.602887,
+              "decode_s": 0.020061,
+              "tokens_per_s": 99.69592742136484,
+              "wall_s": 4.613331
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.580396,
+              "first_text_s": 4.59089,
+              "decode_s": 0.020983,
+              "tokens_per_s": 95.31525520659581,
+              "wall_s": 4.601422
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.575881,
+              "first_text_s": 4.585928,
+              "decode_s": 0.02055,
+              "tokens_per_s": 97.32360097323601,
+              "wall_s": 4.596472
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 115,
+              "generated_tokens": 2,
+              "prefill_s": 0.333695,
+              "first_text_s": 0.343812,
+              "decode_s": 0.02015,
+              "tokens_per_s": 99.25558312655086,
+              "wall_s": 0.353917
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.59089,
+          "median_wall_s": 4.601422
+        },
+        {
+          "name": "photo-ja",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+          "contains": "宇宙服",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 4.581162,
+              "first_text_s": 4.592234,
+              "decode_s": 0.101105,
+              "tokens_per_s": 98.90707680134514,
+              "wall_s": 4.683285
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 4.583345,
+              "first_text_s": 4.593662,
+              "decode_s": 0.101971,
+              "tokens_per_s": 98.06709750811504,
+              "wall_s": 4.685371
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 4.578793,
+              "first_text_s": 4.588857,
+              "decode_s": 0.101192,
+              "tokens_per_s": 98.82204126808443,
+              "wall_s": 4.680049
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "オレンジ色のスーツです。",
+              "passed": false,
+              "prompt_tokens": 131,
+              "generated_tokens": 7,
+              "prefill_s": 0.375928,
+              "first_text_s": 0.386602,
+              "decode_s": 0.071955,
+              "tokens_per_s": 97.2830241122924,
+              "wall_s": 0.448092
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.592234,
+          "median_wall_s": 4.683285
+        },
+        {
+          "name": "ocr-latin",
+          "image": "build/vl-validation/extended/ocr-latin.png",
+          "prompt": "Read the code after CODE. Return only the code.",
+          "expected": "AB42",
+          "image_sha256": "57db13de82743f3db47f0c308471840a5230e740ce46d6dc01465303c774c98d",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.251713,
+              "first_text_s": 5.261807,
+              "decode_s": 0.02074,
+              "tokens_per_s": 96.43201542912246,
+              "wall_s": 5.272509
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.244648,
+              "first_text_s": 5.254694,
+              "decode_s": 0.020628,
+              "tokens_per_s": 96.95559433779329,
+              "wall_s": 5.265319
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.278758,
+              "first_text_s": 5.288766,
+              "decode_s": 0.020499,
+              "tokens_per_s": 97.56573491389824,
+              "wall_s": 5.2993
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 121,
+              "generated_tokens": 2,
+              "prefill_s": 0.344671,
+              "first_text_s": 0.354882,
+              "decode_s": 0.020906,
+              "tokens_per_s": 95.66631589017507,
+              "wall_s": 0.365644
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.261807,
+          "median_wall_s": 5.272509
+        },
+        {
+          "name": "ocr-ja",
+          "image": "build/vl-validation/extended/ocr-ja.png",
+          "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+          "expected": "東京 123",
+          "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 5.267794,
+              "first_text_s": 5.278028,
+              "decode_s": 0.030597,
+              "tokens_per_s": 98.04882831650163,
+              "wall_s": 5.298672
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 5.222821,
+              "first_text_s": 5.232967,
+              "decode_s": 0.029888,
+              "tokens_per_s": 100.37473233404711,
+              "wall_s": 5.252763
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 5.250225,
+              "first_text_s": 5.260385,
+              "decode_s": 0.030723,
+              "tokens_per_s": 97.64671418806758,
+              "wall_s": 5.281003
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 124,
+              "generated_tokens": 3,
+              "prefill_s": 0.355767,
+              "first_text_s": 0.366016,
+              "decode_s": 0.030964,
+              "tokens_per_s": 96.88670714377987,
+              "wall_s": 0.386818
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.260385,
+          "median_wall_s": 5.281003
+        }
+      ],
+      "manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+      "weights": "q8",
+      "bundle_bytes": 2885204285,
+      "backend": "gpu",
+      "load_with_integrity_s": 19.318846,
+      "fresh_passed": false,
+      "elapsed_s": 123.223106,
+      "memory_summary": {
+        "sample_count": 573,
+        "sampled_peak_physical_footprint_bytes": 1105315544,
+        "process_peak_rss_bytes": 1092386816,
+        "loaded": {
+          "phase": "loaded",
+          "elapsed_s": 19.318847,
+          "rss_bytes": 913588224,
+          "process_peak_rss_bytes": 913588224,
+          "physical_footprint_bytes": 902104504,
+          "gpu_live_buffers": 52,
+          "thermal_state": 0
+        },
+        "after_close": {
+          "phase": "closed",
+          "elapsed_s": 123.223086,
+          "rss_bytes": 898187264,
+          "process_peak_rss_bytes": 1092386816,
+          "physical_footprint_bytes": 918357504,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "thermal_states": [
+          0
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "executable_sha256": "fb476d9639a12b017d4abf448f8545ed08c0f21aa408970381b6d3f85983a6a6",
+      "git_head": "f8485c7b4c9cd254642c049ad3871fd1bc11e961",
+      "source_sha256": {
+        "tool/validate_vl_quantization.dart": "6d4b8320be047ec126c792084db93d46bb96cae49d18635750e2713cb2d1ca62",
+        "lib/src/model.dart": "b29a7bde6a3882a5bdb2d730a2eff59863279663b0419eef8e902ea2f39a9709",
+        "lib/src/shard.dart": "eb0662a12f8ebed5b0608c6748c1acf90c641121a2080e00f372287511cc276c",
+        "lib/src/native.dart": "107cdaecf3e1bf2048abf694e55c43a6a7cefa4104fed1a5f3d103b1c1db0036",
+        "lib/src/vision_session.dart": "c66cb58aed46bef5cf692101d96fcdda06d5d9708cab486454be74bfc136061e",
+        "lib/src/gpu.dart": "d840b582844180f4bd8e2ac1a18df9d3733c468b7a93297a965b9d9e1729b57f"
+      },
+      "started": "2026-11-01T06:10:34.483076Z",
+      "os": "Version 27.2 (Build 26B123)",
+      "dart": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"macos_arm64\"",
+      "backend_requested": "gpu",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "fresh_runs": 3,
+      "finished": true,
+      "memory_scope": "fresh AOT process; RSS high-water and 100ms physical-footprint samples, which can miss synchronous peaks; no forced GC",
+      "cases": [
+        {
+          "name": "red",
+          "image": "build/vl-validation/red.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "4cb244d414ed57a0a81ad808c62ff855a390b00b01f2f8591fcf8d035317ec78",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.683714,
+              "first_text_s": 4.692521,
+              "decode_s": 0.008867,
+              "tokens_per_s": 112.7777151234916,
+              "wall_s": 4.692665
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.568029,
+              "first_text_s": 4.576023,
+              "decode_s": 0.008054,
+              "tokens_per_s": 124.16190712689347,
+              "wall_s": 4.576123
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.583528,
+              "first_text_s": 4.592064,
+              "decode_s": 0.008622,
+              "tokens_per_s": 115.9823706796567,
+              "wall_s": 4.59219
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 114,
+              "generated_tokens": 1,
+              "prefill_s": 0.346855,
+              "first_text_s": 0.355092,
+              "decode_s": 0.008273,
+              "tokens_per_s": 120.87513598452797,
+              "wall_s": 0.355195
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.592064,
+          "median_wall_s": 4.59219
+        },
+        {
+          "name": "blue",
+          "image": "build/vl-validation/blue.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Blue",
+          "image_sha256": "449c56497fec01b080d2c8c79a590c3daf28dc5e323227dc36c66d4e5dcca06b",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.590878,
+              "first_text_s": 4.59932,
+              "decode_s": 0.008493,
+              "tokens_per_s": 117.74402449075708,
+              "wall_s": 4.599426
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.573624,
+              "first_text_s": 4.581597,
+              "decode_s": 0.00804,
+              "tokens_per_s": 124.37810945273631,
+              "wall_s": 4.581703
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 4.578188,
+              "first_text_s": 4.586727,
+              "decode_s": 0.008619,
+              "tokens_per_s": 116.0227404571296,
+              "wall_s": 4.586847
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Cobalt",
+              "passed": false,
+              "prompt_tokens": 114,
+              "generated_tokens": 3,
+              "prefill_s": 0.342643,
+              "first_text_s": 0.350905,
+              "decode_s": 0.024882,
+              "tokens_per_s": 120.56908608632746,
+              "wall_s": 0.367585
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.586727,
+          "median_wall_s": 4.586847
+        },
+        {
+          "name": "split",
+          "image": "build/vl-validation/split.png",
+          "prompt": "What color is on the left? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "a36acad39adb239fefab6bca8e05918b1b41fbbfb0f692555edc8aec10a198a4",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.581336,
+              "first_text_s": 4.589245,
+              "decode_s": 0.007977,
+              "tokens_per_s": 125.36041118214868,
+              "wall_s": 4.589361
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.583564,
+              "first_text_s": 4.591493,
+              "decode_s": 0.007988,
+              "tokens_per_s": 125.18778167250876,
+              "wall_s": 4.591596
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 4.554825,
+              "first_text_s": 4.56263,
+              "decode_s": 0.007869,
+              "tokens_per_s": 127.08095056551024,
+              "wall_s": 4.562737
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 116,
+              "generated_tokens": 1,
+              "prefill_s": 0.354462,
+              "first_text_s": 0.362681,
+              "decode_s": 0.008266,
+              "tokens_per_s": 120.97749818533751,
+              "wall_s": 0.362785
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.589245,
+          "median_wall_s": 4.589361
+        },
+        {
+          "name": "photo-en",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "What is the person wearing? Answer in a short phrase.",
+          "contains": "spacesuit",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Space suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.592836,
+              "first_text_s": 4.600824,
+              "decode_s": 0.01586,
+              "tokens_per_s": 126.10340479192939,
+              "wall_s": 4.608751
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Space suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.596667,
+              "first_text_s": 4.605211,
+              "decode_s": 0.016624,
+              "tokens_per_s": 120.30798845043311,
+              "wall_s": 4.61338
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Space suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 4.598447,
+              "first_text_s": 4.607057,
+              "decode_s": 0.016606,
+              "tokens_per_s": 120.43839576056847,
+              "wall_s": 4.615096
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "An orange space suit",
+              "passed": false,
+              "prompt_tokens": 115,
+              "generated_tokens": 4,
+              "prefill_s": 0.354995,
+              "first_text_s": 0.363236,
+              "decode_s": 0.033011,
+              "tokens_per_s": 121.17173063524281,
+              "wall_s": 0.388067
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.605211,
+          "median_wall_s": 4.61338
+        },
+        {
+          "name": "photo-ja",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+          "contains": "宇宙服",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "宇宙服です。",
+              "passed": true,
+              "prompt_tokens": 93,
+              "generated_tokens": 4,
+              "prefill_s": 4.623791,
+              "first_text_s": 4.632703,
+              "decode_s": 0.032458,
+              "tokens_per_s": 123.2361821430772,
+              "wall_s": 4.657199
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "宇宙服です。",
+              "passed": true,
+              "prompt_tokens": 93,
+              "generated_tokens": 4,
+              "prefill_s": 4.592645,
+              "first_text_s": 4.600667,
+              "decode_s": 0.032527,
+              "tokens_per_s": 122.97475943062686,
+              "wall_s": 4.625225
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "宇宙服です。",
+              "passed": true,
+              "prompt_tokens": 93,
+              "generated_tokens": 4,
+              "prefill_s": 4.566445,
+              "first_text_s": 4.574441,
+              "decode_s": 0.032146,
+              "tokens_per_s": 124.4322777328439,
+              "wall_s": 4.598644
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "スーツです。",
+              "passed": false,
+              "prompt_tokens": 125,
+              "generated_tokens": 4,
+              "prefill_s": 0.370227,
+              "first_text_s": 0.378434,
+              "decode_s": 0.032882,
+              "tokens_per_s": 121.64710175780061,
+              "wall_s": 0.403227
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 4.600667,
+          "median_wall_s": 4.625225
+        },
+        {
+          "name": "ocr-latin",
+          "image": "build/vl-validation/extended/ocr-latin.png",
+          "prompt": "Read the code after CODE. Return only the code.",
+          "expected": "AB42",
+          "image_sha256": "57db13de82743f3db47f0c308471840a5230e740ce46d6dc01465303c774c98d",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.247754,
+              "first_text_s": 5.256181,
+              "decode_s": 0.016348,
+              "tokens_per_s": 122.33912405187178,
+              "wall_s": 5.264156
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.236929,
+              "first_text_s": 5.244931,
+              "decode_s": 0.016182,
+              "tokens_per_s": 123.59411692003462,
+              "wall_s": 5.253152
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 5.259034,
+              "first_text_s": 5.267017,
+              "decode_s": 0.016483,
+              "tokens_per_s": 121.33713523023721,
+              "wall_s": 5.275558
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 121,
+              "generated_tokens": 2,
+              "prefill_s": 0.363394,
+              "first_text_s": 0.372236,
+              "decode_s": 0.017034,
+              "tokens_per_s": 117.41223435481977,
+              "wall_s": 0.38049
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.256181,
+          "median_wall_s": 5.264156
+        },
+        {
+          "name": "ocr-ja",
+          "image": "build/vl-validation/extended/ocr-ja.png",
+          "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+          "expected": "東京 123",
+          "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "東京123",
+              "passed": false,
+              "prompt_tokens": 97,
+              "generated_tokens": 2,
+              "prefill_s": 5.295201,
+              "first_text_s": 5.30351,
+              "decode_s": 0.016617,
+              "tokens_per_s": 120.3586688331227,
+              "wall_s": 5.312076
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "東京123",
+              "passed": false,
+              "prompt_tokens": 97,
+              "generated_tokens": 2,
+              "prefill_s": 5.281181,
+              "first_text_s": 5.28918,
+              "decode_s": 0.016392,
+              "tokens_per_s": 122.01073694485115,
+              "wall_s": 5.297625
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "東京123",
+              "passed": false,
+              "prompt_tokens": 97,
+              "generated_tokens": 2,
+              "prefill_s": 5.239834,
+              "first_text_s": 5.247901,
+              "decode_s": 0.016053,
+              "tokens_per_s": 124.58730455366597,
+              "wall_s": 5.25594
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 123,
+              "generated_tokens": 3,
+              "prefill_s": 0.375011,
+              "first_text_s": 0.383628,
+              "decode_s": 0.025238,
+              "tokens_per_s": 118.86837308820033,
+              "wall_s": 0.400333
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.28918,
+          "median_wall_s": 5.297625
+        }
+      ],
+      "manifest_sha256": "49eccbb9b464404c6b08ae26204989e1e12acb49afa5fcebdee57c82d6f1772a",
+      "weights": "q4",
+      "bundle_bytes": 2060427581,
+      "backend": "gpu",
+      "load_with_integrity_s": 14.002904,
+      "fresh_passed": false,
+      "elapsed_s": 117.455043,
+      "memory_summary": {
+        "sample_count": 513,
+        "sampled_peak_physical_footprint_bytes": 1104168712,
+        "process_peak_rss_bytes": 1091534848,
+        "loaded": {
+          "phase": "loaded",
+          "elapsed_s": 14.002905,
+          "rss_bytes": 913113088,
+          "process_peak_rss_bytes": 913113088,
+          "physical_footprint_bytes": 901612936,
+          "gpu_live_buffers": 52,
+          "thermal_state": 0
+        },
+        "after_close": {
+          "phase": "closed",
+          "elapsed_s": 117.455017,
+          "rss_bytes": 897433600,
+          "process_peak_rss_bytes": 1091534848,
+          "physical_footprint_bytes": 917603840,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "thermal_states": [
+          0
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "executable_sha256": "fb476d9639a12b017d4abf448f8545ed08c0f21aa408970381b6d3f85983a6a6",
+      "git_head": "f8485c7b4c9cd254642c049ad3871fd1bc11e961",
+      "source_sha256": {
+        "tool/validate_vl_quantization.dart": "6d4b8320be047ec126c792084db93d46bb96cae49d18635750e2713cb2d1ca62",
+        "lib/src/model.dart": "b29a7bde6a3882a5bdb2d730a2eff59863279663b0419eef8e902ea2f39a9709",
+        "lib/src/shard.dart": "eb0662a12f8ebed5b0608c6748c1acf90c641121a2080e00f372287511cc276c",
+        "lib/src/native.dart": "107cdaecf3e1bf2048abf694e55c43a6a7cefa4104fed1a5f3d103b1c1db0036",
+        "lib/src/vision_session.dart": "c66cb58aed46bef5cf692101d96fcdda06d5d9708cab486454be74bfc136061e",
+        "lib/src/gpu.dart": "d840b582844180f4bd8e2ac1a18df9d3733c468b7a93297a965b9d9e1729b57f"
+      },
+      "started": "2026-11-01T06:12:31.974085Z",
+      "os": "Version 27.2 (Build 26B123)",
+      "dart": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"macos_arm64\"",
+      "backend_requested": "cpu",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "fresh_runs": 3,
+      "finished": true,
+      "memory_scope": "fresh AOT process; RSS high-water and 100ms physical-footprint samples, which can miss synchronous peaks; no forced GC",
+      "cases": [
+        {
+          "name": "red",
+          "image": "build/vl-validation/red.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "4cb244d414ed57a0a81ad808c62ff855a390b00b01f2f8591fcf8d035317ec78",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.673682,
+              "first_text_s": 5.708555,
+              "decode_s": 0.034935,
+              "tokens_per_s": 28.62458852154,
+              "wall_s": 5.708707
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.561832,
+              "first_text_s": 5.591635,
+              "decode_s": 0.029872,
+              "tokens_per_s": 33.47616497054098,
+              "wall_s": 5.591743
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.515653,
+              "first_text_s": 5.540482,
+              "decode_s": 0.024898,
+              "tokens_per_s": 40.163868583821994,
+              "wall_s": 5.540595
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Reddish",
+              "passed": false,
+              "prompt_tokens": 114,
+              "generated_tokens": 3,
+              "prefill_s": 1.693794,
+              "first_text_s": 1.717667,
+              "decode_s": 0.076769,
+              "tokens_per_s": 39.07827378238612,
+              "wall_s": 1.770633
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.591635,
+          "median_wall_s": 5.591743
+        },
+        {
+          "name": "blue",
+          "image": "build/vl-validation/blue.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Blue",
+          "image_sha256": "449c56497fec01b080d2c8c79a590c3daf28dc5e323227dc36c66d4e5dcca06b",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.493996,
+              "first_text_s": 5.519778,
+              "decode_s": 0.025844,
+              "tokens_per_s": 38.69370066553165,
+              "wall_s": 5.519888
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.587016,
+              "first_text_s": 5.611831,
+              "decode_s": 0.024886,
+              "tokens_per_s": 40.183235554126824,
+              "wall_s": 5.611943
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.492548,
+              "first_text_s": 5.516727,
+              "decode_s": 0.024261,
+              "tokens_per_s": 41.21841638844236,
+              "wall_s": 5.516851
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 114,
+              "generated_tokens": 1,
+              "prefill_s": 1.700669,
+              "first_text_s": 1.725287,
+              "decode_s": 0.024683,
+              "tokens_per_s": 40.513713892152495,
+              "wall_s": 1.725411
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.519778,
+          "median_wall_s": 5.519888
+        },
+        {
+          "name": "split",
+          "image": "build/vl-validation/split.png",
+          "prompt": "What color is on the left? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "a36acad39adb239fefab6bca8e05918b1b41fbbfb0f692555edc8aec10a198a4",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.570039,
+              "first_text_s": 5.594874,
+              "decode_s": 0.024881,
+              "tokens_per_s": 40.191310638639926,
+              "wall_s": 5.594985
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.576769,
+              "first_text_s": 5.601043,
+              "decode_s": 0.024389,
+              "tokens_per_s": 41.00209110664644,
+              "wall_s": 5.601199
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.576483,
+              "first_text_s": 5.600855,
+              "decode_s": 0.024439,
+              "tokens_per_s": 40.91820450918614,
+              "wall_s": 5.600963
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 116,
+              "generated_tokens": 1,
+              "prefill_s": 1.745374,
+              "first_text_s": 1.769543,
+              "decode_s": 0.024262,
+              "tokens_per_s": 41.21671750061825,
+              "wall_s": 1.769694
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.600855,
+          "median_wall_s": 5.600963
+        },
+        {
+          "name": "photo-en",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "What is the person wearing? Answer in a short phrase.",
+          "contains": "spacesuit",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.567399,
+              "first_text_s": 5.592359,
+              "decode_s": 0.049901,
+              "tokens_per_s": 40.07935712711168,
+              "wall_s": 5.617374
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.541542,
+              "first_text_s": 5.569553,
+              "decode_s": 0.054432,
+              "tokens_per_s": 36.74309229864785,
+              "wall_s": 5.596021
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.559927,
+              "first_text_s": 5.585573,
+              "decode_s": 0.049898,
+              "tokens_per_s": 40.08176680428073,
+              "wall_s": 5.609867
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Suit",
+              "passed": false,
+              "prompt_tokens": 115,
+              "generated_tokens": 2,
+              "prefill_s": 1.729046,
+              "first_text_s": 1.75342,
+              "decode_s": 0.04876,
+              "tokens_per_s": 41.01722723543889,
+              "wall_s": 1.777888
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.585573,
+          "median_wall_s": 5.609867
+        },
+        {
+          "name": "photo-ja",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+          "contains": "宇宙服",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 5.693804,
+              "first_text_s": 5.718886,
+              "decode_s": 0.243052,
+              "tokens_per_s": 41.14345901288613,
+              "wall_s": 5.937828
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 5.629863,
+              "first_text_s": 5.654457,
+              "decode_s": 0.243312,
+              "tokens_per_s": 41.09949365423818,
+              "wall_s": 5.873231
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "宇宙飛行士の服を着ています。",
+              "passed": false,
+              "prompt_tokens": 93,
+              "generated_tokens": 10,
+              "prefill_s": 5.63019,
+              "first_text_s": 5.655178,
+              "decode_s": 0.245528,
+              "tokens_per_s": 40.728552344335476,
+              "wall_s": 5.875789
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "オレンジ色のスーツです。",
+              "passed": false,
+              "prompt_tokens": 131,
+              "generated_tokens": 7,
+              "prefill_s": 2.004102,
+              "first_text_s": 2.028202,
+              "decode_s": 0.170445,
+              "tokens_per_s": 41.068966528792274,
+              "wall_s": 2.174761
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.655178,
+          "median_wall_s": 5.875789
+        },
+        {
+          "name": "ocr-latin",
+          "image": "build/vl-validation/extended/ocr-latin.png",
+          "prompt": "Read the code after CODE. Return only the code.",
+          "expected": "AB42",
+          "image_sha256": "57db13de82743f3db47f0c308471840a5230e740ce46d6dc01465303c774c98d",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.284304,
+              "first_text_s": 6.308355,
+              "decode_s": 0.048168,
+              "tokens_per_s": 41.52134196977246,
+              "wall_s": 6.332522
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.30642,
+              "first_text_s": 6.330887,
+              "decode_s": 0.048533,
+              "tokens_per_s": 41.20907423814724,
+              "wall_s": 6.354994
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.316659,
+              "first_text_s": 6.340857,
+              "decode_s": 0.048407,
+              "tokens_per_s": 41.31633854607805,
+              "wall_s": 6.365107
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 121,
+              "generated_tokens": 2,
+              "prefill_s": 1.834389,
+              "first_text_s": 1.85921,
+              "decode_s": 0.049451,
+              "tokens_per_s": 40.44407595397464,
+              "wall_s": 1.8839
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 6.330887,
+          "median_wall_s": 6.354994
+        },
+        {
+          "name": "ocr-ja",
+          "image": "build/vl-validation/extended/ocr-ja.png",
+          "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+          "expected": "東京 123",
+          "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 6.346963,
+              "first_text_s": 6.372359,
+              "decode_s": 0.077942,
+              "tokens_per_s": 38.490159349259706,
+              "wall_s": 6.425164
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 6.361633,
+              "first_text_s": 6.39137,
+              "decode_s": 0.084951,
+              "tokens_per_s": 35.31447540346788,
+              "wall_s": 6.446638
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 97,
+              "generated_tokens": 3,
+              "prefill_s": 6.331066,
+              "first_text_s": 6.362329,
+              "decode_s": 0.080046,
+              "tokens_per_s": 37.47844989131249,
+              "wall_s": 6.411167
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 124,
+              "generated_tokens": 3,
+              "prefill_s": 1.883105,
+              "first_text_s": 1.907522,
+              "decode_s": 0.073898,
+              "tokens_per_s": 40.59649787544994,
+              "wall_s": 1.957117
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 6.372359,
+          "median_wall_s": 6.425164
+        }
+      ],
+      "manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+      "weights": "q8",
+      "bundle_bytes": 2885204285,
+      "backend": "cpu",
+      "load_with_integrity_s": 19.198695,
+      "fresh_passed": false,
+      "elapsed_s": 155.446841,
+      "memory_summary": {
+        "sample_count": 586,
+        "sampled_peak_physical_footprint_bytes": 1093799032,
+        "process_peak_rss_bytes": 3054567424,
+        "loaded": {
+          "phase": "loaded",
+          "elapsed_s": 19.198696,
+          "rss_bytes": 906215424,
+          "process_peak_rss_bytes": 906215424,
+          "physical_footprint_bytes": 896468312,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "after_close": {
+          "phase": "closed",
+          "elapsed_s": 155.446805,
+          "rss_bytes": 983810048,
+          "process_peak_rss_bytes": 3054567424,
+          "physical_footprint_bytes": 974013856,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "thermal_states": [
+          0
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "executable_sha256": "fb476d9639a12b017d4abf448f8545ed08c0f21aa408970381b6d3f85983a6a6",
+      "git_head": "f8485c7b4c9cd254642c049ad3871fd1bc11e961",
+      "source_sha256": {
+        "tool/validate_vl_quantization.dart": "6d4b8320be047ec126c792084db93d46bb96cae49d18635750e2713cb2d1ca62",
+        "lib/src/model.dart": "b29a7bde6a3882a5bdb2d730a2eff59863279663b0419eef8e902ea2f39a9709",
+        "lib/src/shard.dart": "eb0662a12f8ebed5b0608c6748c1acf90c641121a2080e00f372287511cc276c",
+        "lib/src/native.dart": "107cdaecf3e1bf2048abf694e55c43a6a7cefa4104fed1a5f3d103b1c1db0036",
+        "lib/src/vision_session.dart": "c66cb58aed46bef5cf692101d96fcdda06d5d9708cab486454be74bfc136061e",
+        "lib/src/gpu.dart": "d840b582844180f4bd8e2ac1a18df9d3733c468b7a93297a965b9d9e1729b57f"
+      },
+      "started": "2026-11-01T06:15:07.447704Z",
+      "os": "Version 27.2 (Build 26B123)",
+      "dart": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"macos_arm64\"",
+      "backend_requested": "cpu",
+      "context_length": 512,
+      "threads": 4,
+      "max_new_tokens": 32,
+      "fresh_runs": 3,
+      "finished": true,
+      "memory_scope": "fresh AOT process; RSS high-water and 100ms physical-footprint samples, which can miss synchronous peaks; no forced GC",
+      "cases": [
+        {
+          "name": "red",
+          "image": "build/vl-validation/red.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "4cb244d414ed57a0a81ad808c62ff855a390b00b01f2f8591fcf8d035317ec78",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.659967,
+              "first_text_s": 5.684704,
+              "decode_s": 0.024845,
+              "tokens_per_s": 40.249547192594086,
+              "wall_s": 5.684902
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.591088,
+              "first_text_s": 5.61315,
+              "decode_s": 0.02213,
+              "tokens_per_s": 45.187528242205154,
+              "wall_s": 5.613258
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.617526,
+              "first_text_s": 5.640886,
+              "decode_s": 0.023439,
+              "tokens_per_s": 42.66393617475148,
+              "wall_s": 5.641007
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 114,
+              "generated_tokens": 1,
+              "prefill_s": 1.799991,
+              "first_text_s": 1.824609,
+              "decode_s": 0.024661,
+              "tokens_per_s": 40.54985604801103,
+              "wall_s": 1.824722
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.640886,
+          "median_wall_s": 5.641007
+        },
+        {
+          "name": "blue",
+          "image": "build/vl-validation/blue.png",
+          "prompt": "What is the main color? Answer with one color word.",
+          "expected": "Blue",
+          "image_sha256": "449c56497fec01b080d2c8c79a590c3daf28dc5e323227dc36c66d4e5dcca06b",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.615073,
+              "first_text_s": 5.637393,
+              "decode_s": 0.022388,
+              "tokens_per_s": 44.6667857780954,
+              "wall_s": 5.637504
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.615973,
+              "first_text_s": 5.637952,
+              "decode_s": 0.022036,
+              "tokens_per_s": 45.380286803412595,
+              "wall_s": 5.638058
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Blue",
+              "passed": true,
+              "prompt_tokens": 89,
+              "generated_tokens": 1,
+              "prefill_s": 5.582559,
+              "first_text_s": 5.605078,
+              "decode_s": 0.02259,
+              "tokens_per_s": 44.26737494466578,
+              "wall_s": 5.60519
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Cobalt",
+              "passed": false,
+              "prompt_tokens": 114,
+              "generated_tokens": 3,
+              "prefill_s": 1.784594,
+              "first_text_s": 1.806869,
+              "decode_s": 0.067042,
+              "tokens_per_s": 44.748068375048476,
+              "wall_s": 1.851697
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.637393,
+          "median_wall_s": 5.637504
+        },
+        {
+          "name": "split",
+          "image": "build/vl-validation/split.png",
+          "prompt": "What color is on the left? Answer with one color word.",
+          "expected": "Red",
+          "image_sha256": "a36acad39adb239fefab6bca8e05918b1b41fbbfb0f692555edc8aec10a198a4",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.622388,
+              "first_text_s": 5.644458,
+              "decode_s": 0.022127,
+              "tokens_per_s": 45.19365481086455,
+              "wall_s": 5.644566
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.530646,
+              "first_text_s": 5.552725,
+              "decode_s": 0.022147,
+              "tokens_per_s": 45.15284237142728,
+              "wall_s": 5.552835
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 90,
+              "generated_tokens": 1,
+              "prefill_s": 5.546016,
+              "first_text_s": 5.56799,
+              "decode_s": 0.022071,
+              "tokens_per_s": 45.308323138960624,
+              "wall_s": 5.568129
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "Red",
+              "passed": true,
+              "prompt_tokens": 116,
+              "generated_tokens": 1,
+              "prefill_s": 1.794996,
+              "first_text_s": 1.817315,
+              "decode_s": 0.022375,
+              "tokens_per_s": 44.6927374301676,
+              "wall_s": 1.817431
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.56799,
+          "median_wall_s": 5.568129
+        },
+        {
+          "name": "photo-en",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "What is the person wearing? Answer in a short phrase.",
+          "contains": "spacesuit",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "Space suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.600523,
+              "first_text_s": 5.622795,
+              "decode_s": 0.044679,
+              "tokens_per_s": 44.763759260502695,
+              "wall_s": 5.64526
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "Space suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.59016,
+              "first_text_s": 5.612351,
+              "decode_s": 0.044417,
+              "tokens_per_s": 45.02780466938334,
+              "wall_s": 5.634627
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "Space suit",
+              "passed": false,
+              "prompt_tokens": 89,
+              "generated_tokens": 2,
+              "prefill_s": 5.620392,
+              "first_text_s": 5.642773,
+              "decode_s": 0.044873,
+              "tokens_per_s": 44.57023154235286,
+              "wall_s": 5.665306
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "An orange space suit",
+              "passed": false,
+              "prompt_tokens": 115,
+              "generated_tokens": 4,
+              "prefill_s": 1.878531,
+              "first_text_s": 1.901185,
+              "decode_s": 0.089341,
+              "tokens_per_s": 44.772277006077836,
+              "wall_s": 1.967941
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.622795,
+          "median_wall_s": 5.64526
+        },
+        {
+          "name": "photo-ja",
+          "image": "build/vl-validation/extended/astronaut.png",
+          "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+          "contains": "宇宙服",
+          "image_sha256": "4d42d3f166f837c2d883f2865c29c9035b574966f8b88c319aa2e7b0db3be5b2",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "宇宙服です。",
+              "passed": true,
+              "prompt_tokens": 93,
+              "generated_tokens": 4,
+              "prefill_s": 5.681178,
+              "first_text_s": 5.704426,
+              "decode_s": 0.09154,
+              "tokens_per_s": 43.69674459252786,
+              "wall_s": 5.773691
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "宇宙服です。",
+              "passed": true,
+              "prompt_tokens": 93,
+              "generated_tokens": 4,
+              "prefill_s": 5.671018,
+              "first_text_s": 5.693053,
+              "decode_s": 0.088407,
+              "tokens_per_s": 45.24528600676417,
+              "wall_s": 5.75948
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "宇宙服です。",
+              "passed": true,
+              "prompt_tokens": 93,
+              "generated_tokens": 4,
+              "prefill_s": 5.688671,
+              "first_text_s": 5.710728,
+              "decode_s": 0.088416,
+              "tokens_per_s": 45.24068041983352,
+              "wall_s": 5.777152
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "スーツです。",
+              "passed": false,
+              "prompt_tokens": 125,
+              "generated_tokens": 4,
+              "prefill_s": 1.944197,
+              "first_text_s": 1.966118,
+              "decode_s": 0.088014,
+              "tokens_per_s": 45.44731519985457,
+              "wall_s": 2.032338
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 5.704426,
+          "median_wall_s": 5.773691
+        },
+        {
+          "name": "ocr-latin",
+          "image": "build/vl-validation/extended/ocr-latin.png",
+          "prompt": "Read the code after CODE. Return only the code.",
+          "expected": "AB42",
+          "image_sha256": "57db13de82743f3db47f0c308471840a5230e740ce46d6dc01465303c774c98d",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.313163,
+              "first_text_s": 6.335381,
+              "decode_s": 0.044753,
+              "tokens_per_s": 44.68974146984559,
+              "wall_s": 6.357981
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.368841,
+              "first_text_s": 6.390942,
+              "decode_s": 0.044312,
+              "tokens_per_s": 45.13450081242102,
+              "wall_s": 6.413196
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 96,
+              "generated_tokens": 2,
+              "prefill_s": 6.383008,
+              "first_text_s": 6.405475,
+              "decode_s": 0.044626,
+              "tokens_per_s": 44.81692287007574,
+              "wall_s": 6.427683
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "AB42",
+              "passed": true,
+              "prompt_tokens": 121,
+              "generated_tokens": 2,
+              "prefill_s": 1.902875,
+              "first_text_s": 1.925324,
+              "decode_s": 0.044771,
+              "tokens_per_s": 44.67177413950995,
+              "wall_s": 1.947721
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 6.390942,
+          "median_wall_s": 6.413196
+        },
+        {
+          "name": "ocr-ja",
+          "image": "build/vl-validation/extended/ocr-ja.png",
+          "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+          "expected": "東京 123",
+          "image_sha256": "e2c16f83732a07a32466f0d18999f144b5ea6e10360305065e059177b411da0e",
+          "turns": [
+            {
+              "fresh": true,
+              "run": 1,
+              "text": "東京123",
+              "passed": false,
+              "prompt_tokens": 97,
+              "generated_tokens": 2,
+              "prefill_s": 6.363626,
+              "first_text_s": 6.386383,
+              "decode_s": 0.044929,
+              "tokens_per_s": 44.514678715306374,
+              "wall_s": 6.408809
+            },
+            {
+              "fresh": true,
+              "run": 2,
+              "text": "東京123",
+              "passed": false,
+              "prompt_tokens": 97,
+              "generated_tokens": 2,
+              "prefill_s": 6.347409,
+              "first_text_s": 6.36922,
+              "decode_s": 0.044638,
+              "tokens_per_s": 44.80487477037502,
+              "wall_s": 6.392099
+            },
+            {
+              "fresh": true,
+              "run": 3,
+              "text": "東京123",
+              "passed": false,
+              "prompt_tokens": 97,
+              "generated_tokens": 2,
+              "prefill_s": 6.38823,
+              "first_text_s": 6.412114,
+              "decode_s": 0.04793,
+              "tokens_per_s": 41.727519298977676,
+              "wall_s": 6.436213
+            },
+            {
+              "fresh": false,
+              "run": 4,
+              "text": "東京 123",
+              "passed": true,
+              "prompt_tokens": 123,
+              "generated_tokens": 3,
+              "prefill_s": 1.929759,
+              "first_text_s": 1.952126,
+              "decode_s": 0.06665,
+              "tokens_per_s": 45.0112528132033,
+              "wall_s": 1.996493
+            }
+          ],
+          "fresh_answers_identical": true,
+          "median_first_text_s": 6.386383,
+          "median_wall_s": 6.408809
+        }
+      ],
+      "manifest_sha256": "49eccbb9b464404c6b08ae26204989e1e12acb49afa5fcebdee57c82d6f1772a",
+      "weights": "q4",
+      "bundle_bytes": 2060427581,
+      "backend": "cpu",
+      "load_with_integrity_s": 13.686722,
+      "fresh_passed": false,
+      "elapsed_s": 150.453109,
+      "memory_summary": {
+        "sample_count": 519,
+        "sampled_peak_physical_footprint_bytes": 1092356664,
+        "process_peak_rss_bytes": 2229829632,
+        "loaded": {
+          "phase": "loaded",
+          "elapsed_s": 13.686723,
+          "rss_bytes": 907165696,
+          "process_peak_rss_bytes": 907165696,
+          "physical_footprint_bytes": 897418584,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "after_close": {
+          "phase": "closed",
+          "elapsed_s": 150.453084,
+          "rss_bytes": 909426688,
+          "process_peak_rss_bytes": 2229829632,
+          "physical_footprint_bytes": 899581344,
+          "gpu_live_buffers": 0,
+          "thermal_state": 0
+        },
+        "thermal_states": [
+          0
+        ]
+      }
+    }
+  ],
+  "existing_q8_gold_ocr_tests": {
+    "passed": 0,
+    "failed": 2,
+    "backends": [
+      "cpu",
+      "gpu"
+    ],
+    "expected": "東京 123",
+    "actual": "東京123",
+    "reason": "Exact whitespace mismatch; expected value was not relaxed."
+  },
+  "packing_parity": {
+    "cpu": {
+      "source_text": "東京123",
+      "packed_text": "東京123",
+      "generated_tokens": 2,
+      "source_logit_sha256": [
+        "5665b4d3fab795fca6ce8605b27fe2337cc49eb7f3a1b4ba0e430f058c9a33bd",
+        "6819bb1214020f9ff6c7d49147f940c985b6df576dd4da6d1505a0ae32777284",
+        "45727898d939c3158c78a2390d8ed46ef9b6e588014d0db1fcc7be0f3568bf27"
+      ],
+      "packed_logit_sha256": [
+        "5665b4d3fab795fca6ce8605b27fe2337cc49eb7f3a1b4ba0e430f058c9a33bd",
+        "6819bb1214020f9ff6c7d49147f940c985b6df576dd4da6d1505a0ae32777284",
+        "45727898d939c3158c78a2390d8ed46ef9b6e588014d0db1fcc7be0f3568bf27"
+      ],
+      "all_logits_byte_identical": true
+    },
+    "gpu": {
+      "source_text": "東京123",
+      "packed_text": "東京123",
+      "generated_tokens": 2,
+      "source_logit_sha256": [
+        "0e67cb6066e70cf78263e1044380103a8e1c760ed448dfe7d057f6aacbda5d59",
+        "a3200a370b3de78ee0d7b47e6b8b814855754c37124c5c4f8c8efa7c2a293054",
+        "63ccdb09688321797fe43fe9a6193ed5e8f7dfae69656bfa1f26583d358ae547"
+      ],
+      "packed_logit_sha256": [
+        "0e67cb6066e70cf78263e1044380103a8e1c760ed448dfe7d057f6aacbda5d59",
+        "a3200a370b3de78ee0d7b47e6b8b814855754c37124c5c4f8c8efa7c2a293054",
+        "63ccdb09688321797fe43fe9a6193ed5e8f7dfae69656bfa1f26583d358ae547"
+      ],
+      "all_logits_byte_identical": true
+    }
+  },
+  "source_weights_sha256": {
+    "build/vl-validation/model/model.safetensors": "a9bb8b1c159c9d6c3007bc1c7ad8018b599f759d97da2701714e37426283e131",
+    "build/vl-q4-validation/backbone/model.safetensors": "6290c771662ae5ed8c61bea4d7835e8e33085ab66e0e473270f4a6ae4ca9b75e"
+  },
+  "native_asset_sha256": "48987c6aa971a418f31dee3e88760c4c1b3d3851f796b0e0ad57e744219a1f14",
+  "verification": {
+    "dart_format": "clean",
+    "dart_analyze": "no issues",
+    "default_dart_tests": {
+      "passed": 174,
+      "skipped": 24
+    },
+    "real_q4_packing_tests": {
+      "passed": 2,
+      "backends": [
+        "cpu",
+        "gpu"
+      ]
+    },
+    "lab_parity": {
+      "passed": true,
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "cpu-q8",
+        "gpu-q8",
+        "gpu-q4"
+      ],
+      "byte_identical_comparisons": 24
+    }
+  },
+  "quality_interpretation": "All three color/spatial tasks and Latin OCR exactly match. Japanese OCR differs only by a missing space under Q4 on both backends. Photo keyword booleans are lexical diagnostics, not an accuracy score: Space suit and 宇宙飛行士の服 are manually reviewed in the report. No broader accuracy claim.",
+  "fresh_answers_identical_between_backends": true
+}

@@ -9,6 +9,7 @@ import 'dart:isolate';
 import 'package:dianoia/dianoia.dart';
 
 import 'chat_protocol.dart';
+import 'example_model.dart';
 
 const _system =
     'You are a helpful assistant running entirely on this device. '
@@ -19,30 +20,51 @@ const _system =
 const _mirror = String.fromEnvironment('DIANOIA_MODEL_MIRROR');
 
 /// The worker isolate's entry point, with the model selected by the UI.
-Future<void> runChatWorker((SendPort, ModelLocation, ModelSpec) args) async {
+Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   final (out, location, selected) = args;
-  final spec = _mirror.isEmpty ? selected : selected.fromMirror(_mirror);
+  final originalSpec = selected.downloadSpec;
+  final spec = _mirror.isEmpty
+      ? originalSpec
+      : switch (originalSpec) {
+          ModelSpec() => originalSpec.fromMirror(_mirror),
+          VisionCheckpointSpec() => originalSpec.fromMirror(_mirror),
+          VisionGgufSpec() => originalSpec.fromMirror(_mirror),
+          VisionModelSpec() => originalSpec.fromMirror(_mirror),
+        };
   final store = ModelStore(location.storeDir);
   final commands = ReceivePort();
   out.send(WorkerStarted(commands.sendPort));
 
   ChatSession? session;
   LocalModel? model;
-  Future<void>? loading, replying;
+  LocalVisionModel? visionModel;
+  VisionChatSession? visionSession;
+  Future<void>? loading, replying, cancelling;
   var closing = false;
   StreamSubscription<InstallProgress>? install;
   var stopRequested = false;
+  var replyStarted = false;
 
   Future<void> open(String dir) async {
     out.send(const WorkerProgress('Loading the model…'));
     try {
-      final loaded = await LocalModel.load(dir);
-      model = loaded;
-      if (closing) return;
-      final chat = loaded.chat(system: _system);
-      await chat.warmUp();
-      session = chat;
-      if (!closing) out.send(WorkerReady(loaded.backend.name.toUpperCase()));
+      InferenceBackend backend;
+      if (selected.isVision) {
+        final loaded = await LocalVisionModel.loadBundle(dir);
+        visionModel = loaded;
+        if (closing) return;
+        visionSession = loaded.chat(system: _system);
+        backend = loaded.backend;
+      } else {
+        final loaded = await LocalModel.load(dir);
+        model = loaded;
+        if (closing) return;
+        final chat = loaded.chat(system: _system);
+        await chat.warmUp();
+        session = chat;
+        backend = loaded.backend;
+      }
+      if (!closing) out.send(WorkerReady(backend.name.toUpperCase()));
     } catch (e) {
       out.send(WorkerFailed('$e'));
     }
@@ -51,28 +73,50 @@ Future<void> runChatWorker((SendPort, ModelLocation, ModelSpec) args) async {
   Future<void> close() async {
     closing = true;
     stopRequested = true;
+    if (!replyStarted) visionSession?.cancel();
     try {
+      await cancelling;
       await install?.cancel();
       await loading;
       await replying;
       await model?.close();
+      await visionModel?.close();
     } finally {
       commands.close();
       Isolate.exit();
     }
   }
 
+  Future<void> cancelInstall() async {
+    final subscription = install;
+    install = null;
+    await subscription?.cancel();
+    if (!closing) out.send(ModelNeeded(spec));
+  }
+
   commands.listen((command) {
     if (closing) return;
     switch (command as ChatCommand) {
-      case SendMessage(:final text):
+      case SendMessage(:final text, :final image):
         stopRequested = false;
-        replying = _reply(session!, text, out, () => stopRequested);
+        replyStarted = false;
+        replying = _reply(
+          session,
+          visionSession,
+          text,
+          image,
+          out,
+          () => stopRequested,
+          () => replyStarted = true,
+        );
       case StopReply():
         stopRequested = true;
+        if (!replyStarted) visionSession?.cancel();
       case NewChat():
         session?.clear();
+        visionSession?.clear();
       case InstallModel():
+        if (cancelling != null) return;
         install ??= store
             .install(spec)
             .listen(
@@ -88,52 +132,73 @@ Future<void> runChatWorker((SendPort, ModelLocation, ModelSpec) args) async {
               },
             );
       case CancelInstall():
-        unawaited(install?.cancel());
-        install = null;
-        out.send(ModelNeeded(spec));
+        cancelling ??= cancelInstall().whenComplete(() => cancelling = null);
       case CloseWorker():
         unawaited(close());
     }
   });
 
-  final sideLoaded = _sideLoaded(location, out);
-  if (sideLoaded != null) {
-    await (loading = open(sideLoaded));
-  } else if (store.isInstalled(spec)) {
-    await (loading = open(store.bundlePath(spec)));
-  } else {
-    out.send(ModelNeeded(spec));
+  try {
+    final sideLoaded = _sideLoaded(location, out, vision: selected.isVision);
+    if (sideLoaded != null) {
+      await (loading = open(sideLoaded));
+    } else if (store.isInstalled(spec)) {
+      await (loading = open(store.bundlePath(spec)));
+    } else {
+      out.send(ModelNeeded(spec));
+    }
+  } catch (e) {
+    out.send(WorkerFailed('$e'));
   }
 }
 
 /// A bundle a developer copied into [ModelLocation.dropDir], ready to map,
 /// or null.
-String? _sideLoaded(ModelLocation location, SendPort out) {
-  final cache = 'lfm3-q4.cache';
+String? _sideLoaded(
+  ModelLocation location,
+  SendPort out, {
+  required bool vision,
+}) {
+  final cache = vision ? 'vl_bundle.json' : 'lfm3-q4.cache';
   if (!File('${location.dropDir}/$cache').existsSync()) return null;
   if (location.copyDir != location.dropDir) {
     out.send(const WorkerProgress('Copying the model to app storage…'));
-    _copyBundle(location.dropDir, location.copyDir);
+    _copyBundle(location.dropDir, location.copyDir, overwrite: vision);
   }
   return location.copyDir;
 }
 
 Future<void> _reply(
-  ChatSession session,
+  ChatSession? session,
+  VisionChatSession? visionSession,
   String text,
+  ImageAttachment? image,
   SendPort out,
   bool Function() stopRequested,
+  void Function() onReplyStarted,
 ) async {
   try {
-    final turn = await session.send(
-      {'role': 'user', 'content': text},
-      onText: (partial) async {
-        out.send(ReplyText(partial));
-        // A timer, not a microtask: it lets the stop command arrive.
-        await Future<void>.delayed(Duration.zero);
-        return !stopRequested();
-      },
-    );
+    if (image != null && visionSession == null) {
+      throw ArgumentError('Images require the VL model.');
+    }
+    Future<bool> onText(String partial) async {
+      onReplyStarted();
+      out.send(ReplyText(partial));
+      // A timer, not a microtask: it lets the stop command arrive.
+      await Future<void>.delayed(Duration.zero);
+      return !stopRequested();
+    }
+
+    final turn = visionSession != null
+        ? await visionSession.send(
+            text,
+            images: [if (image != null) ChatImage.encoded(image.bytes)],
+            onText: onText,
+          )
+        : await session!.send({
+            'role': 'user',
+            'content': text,
+          }, onText: onText);
     out.send(
       ReplyDone(
         text: turn.text,
@@ -144,6 +209,8 @@ Future<void> _reply(
             : 0,
       ),
     );
+  } on VisionRequestCancelled {
+    out.send(const ReplyFailed('Reply stopped.'));
   } on ContextLengthExceeded {
     out.send(
       const ReplyFailed(
@@ -156,14 +223,21 @@ Future<void> _reply(
   }
 }
 
-/// Copies the files of [from] to [to] unless copies of the same sizes are
-/// already there. Mapping the copy in app storage, rather than the pushed
-/// files in external storage, follows the device benchmark.
-void _copyBundle(String from, String to) {
+/// Copies nested bundle files into app storage for mapping. VL copies are
+/// refreshed even when sizes match, so a damaged copy can be repaired.
+void _copyBundle(String from, String to, {required bool overwrite}) {
   Directory(to).createSync(recursive: true);
-  for (final file in Directory(from).listSync().whereType<File>()) {
-    final copy = File('$to/${file.uri.pathSegments.last}');
-    if (copy.existsSync() && copy.lengthSync() == file.lengthSync()) continue;
+  for (final file in Directory(
+    from,
+  ).listSync(recursive: true).whereType<File>()) {
+    final relative = file.path.substring(Directory(from).path.length + 1);
+    final copy = File('$to/$relative');
+    copy.parent.createSync(recursive: true);
+    if (!overwrite &&
+        copy.existsSync() &&
+        copy.lengthSync() == file.lengthSync()) {
+      continue;
+    }
     file.copySync(copy.path);
   }
 }

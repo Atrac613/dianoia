@@ -238,6 +238,23 @@ void main() {
     );
 
     test(
+      'cache embedding mode does not silently discard a BF16 input table',
+      () async {
+        await expectLater(
+          packVlBundle(
+            source,
+            backbone,
+            '${root.path}/wrong-embedding',
+            useCacheEmbedding: true,
+          ),
+          throwsFormatException,
+        );
+        expect(Directory('${root.path}/wrong-embedding').existsSync(), isFalse);
+        expect(fixtureBackboneIsMapped(root), isFalse);
+      },
+    );
+
+    test(
       'missing vision tensor is rejected with source mapping released',
       () async {
         final file = File('$source/model.safetensors');

@@ -32,3 +32,4 @@ export 'src/vision_prompt.dart';
 export 'src/vision_bundle.dart';
 export 'src/image_decode.dart';
 export 'src/vision_bench.dart';
+export 'src/vision_gguf.dart';

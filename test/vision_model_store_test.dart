@@ -112,6 +112,213 @@ void main() {
     root.deleteSync(recursive: true);
   });
 
+  VisionCheckpointSpec checkpointSpec({
+    VisionQuantization quantization = VisionQuantization.q8,
+  }) {
+    server.files
+      ..clear()
+      ..addAll({
+        for (final name in [
+          'config.json',
+          'processor_config.json',
+          'tokenizer.json',
+          'LICENSE',
+          'model.safetensors',
+        ])
+          name: File('${fixture.path}/model/$name').readAsBytesSync(),
+      });
+    return VisionCheckpointSpec(
+      id: 'tiny-checkpoint',
+      quantization: quantization,
+      name: 'Synthetic VL checkpoint',
+      license: 'Synthetic test weights',
+      licenseUrl: '${server.base}/LICENSE',
+      files: [
+        for (final e in server.files.entries)
+          RemoteFile(
+            e.key,
+            '${server.base}/${e.key}',
+            size: e.value.length,
+            sha256: sha256.convert(e.value).toString(),
+          ),
+      ],
+    );
+  }
+
+  for (final quantization in VisionQuantization.values) {
+    test(
+      'downloads a checkpoint, builds ${quantization.name} and loads image chat',
+      () async {
+        final checkpoint = checkpointSpec(quantization: quantization);
+        server.cutOnce = 'model.safetensors';
+        final progress = await store.install(checkpoint, retries: 1).toList();
+        expect(progress.last.stage, InstallStage.done);
+        expect(store.isInstalled(checkpoint), isTrue);
+        expect(
+          Directory('${root.path}/${checkpoint.id}/downloads').existsSync(),
+          isFalse,
+        );
+        expect(
+          Directory(
+            '${store.bundlePath(checkpoint)}.partial.backbone',
+          ).existsSync(),
+          isFalse,
+        );
+        final manifest =
+            jsonDecode(
+                  File(
+                    '${store.bundlePath(checkpoint)}/vl_bundle.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        expect(manifest['weights'], quantization.name);
+        expect(
+          File(
+            '${store.bundlePath(checkpoint)}/language/lfm3-${quantization.name}.cache',
+          ).existsSync(),
+          isTrue,
+        );
+        final other = quantization == VisionQuantization.q4 ? 'q8' : 'q4';
+        expect(
+          File(
+            '${store.bundlePath(checkpoint)}/language/lfm3-$other.cache',
+          ).existsSync(),
+          isFalse,
+        );
+        final model = await LocalVisionModel.loadBundle(
+          store.bundlePath(checkpoint),
+          backend: InferenceBackend.cpu,
+          contextLength: 512,
+        );
+        try {
+          final turn = await model
+              .chat(maxNewTokens: 3)
+              .send(
+                'Describe.',
+                images: [
+                  ChatImage.rgb(Uint8List(8 * 8 * 3), width: 8, height: 8),
+                ],
+              );
+          expect(turn.generatedTokens, greaterThan(0));
+        } finally {
+          await model.close();
+        }
+        final count = server.requests.length;
+        await store.install(checkpoint).drain<void>();
+        expect(server.requests.length, count);
+        final mirror = checkpoint.fromMirror('https://example.com/vl');
+        expect(mirror.quantization, quantization);
+        expect(
+          mirror.files.last.url,
+          'https://example.com/vl/model.safetensors',
+        );
+        expect(
+          mirror.files.map((f) => f.sha256),
+          checkpoint.files.map((f) => f.sha256),
+        );
+      },
+    );
+  }
+
+  test(
+    'cancel during checkpoint conversion keeps downloads unpublished',
+    () async {
+      final checkpoint = checkpointSpec();
+      final stopped = Completer<void>();
+      late StreamSubscription<InstallProgress> subscription;
+      subscription = store.install(checkpoint).listen((p) {
+        if (p.stage == InstallStage.building) {
+          subscription.cancel().then(
+            (_) => stopped.complete(),
+            onError: stopped.completeError,
+          );
+        }
+      }, onError: stopped.completeError);
+      await stopped.future;
+      expect(store.isInstalled(checkpoint), isFalse);
+      expect(
+        Directory('${root.path}/${checkpoint.id}/downloads').existsSync(),
+        isTrue,
+      );
+      expect(
+        Directory('${store.bundlePath(checkpoint)}.partial').existsSync(),
+        isFalse,
+      );
+      expect(
+        Directory(
+          '${store.bundlePath(checkpoint)}.partial.backbone',
+        ).existsSync(),
+        isFalse,
+      );
+      await store.install(checkpoint).drain<void>();
+      expect(store.isInstalled(checkpoint), isTrue);
+    },
+  );
+
+  test('checkpoint conversion failure cleans temporary output', () async {
+    final checkpoint = checkpointSpec();
+    server.files['config.json'] = utf8.encode('{}');
+    final invalid = VisionCheckpointSpec(
+      id: checkpoint.id,
+      name: checkpoint.name,
+      license: checkpoint.license,
+      licenseUrl: checkpoint.licenseUrl,
+      files: [
+        for (final e in server.files.entries)
+          RemoteFile(
+            e.key,
+            '${server.base}/${e.key}',
+            size: e.value.length,
+            sha256: sha256.convert(e.value).toString(),
+          ),
+      ],
+    );
+    await expectLater(store.install(invalid).drain<void>(), throwsA(anything));
+    expect(store.isInstalled(invalid), isFalse);
+    expect(
+      Directory('${store.bundlePath(invalid)}.partial').existsSync(),
+      isFalse,
+    );
+    expect(
+      Directory('${store.bundlePath(invalid)}.partial.backbone').existsSync(),
+      isFalse,
+    );
+    await store.install(checkpointSpec()).drain<void>();
+    expect(store.isInstalled(checkpoint), isTrue);
+  });
+
+  test('upstream checkpoint catalog and path validation', () {
+    final pinned = VisionCheckpointSpec.lfm3VlQ8;
+    final q4 = VisionCheckpointSpec.lfm3VlQ4;
+    expect(q4.quantization, VisionQuantization.q4);
+    expect(q4.id, isNot(pinned.id));
+    expect(q4.files, same(pinned.files));
+    expect(q4.downloadBytes, pinned.downloadBytes);
+    expect(pinned.downloadBytes, 3854341192);
+    expect(
+      pinned.files.every(
+        (f) => f.url.contains('ba44bd51db20a2753f28c273a1571ccaa210d954'),
+      ),
+      isTrue,
+    );
+    expect(() => pinned.fromMirror('file:///tmp/vl'), throwsArgumentError);
+    final unsafe = VisionCheckpointSpec(
+      id: 'unsafe',
+      name: 'unsafe',
+      license: '',
+      licenseUrl: '',
+      files: [
+        const RemoteFile(
+          '../outside',
+          'https://example.com/weights',
+          size: 0,
+          sha256: '',
+        ),
+      ],
+    );
+    expect(() => store.install(unsafe), throwsArgumentError);
+  });
+
   test(
     'installs nested files atomically and loads through the public API',
     () async {

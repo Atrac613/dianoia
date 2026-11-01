@@ -36,7 +36,8 @@ Future<String> _digest(File file) async =>
 
 /// Packages a VL checkpoint and an existing Q8/Q4 language cache into [outDir].
 /// No matrix is requantized. Vision tensors, small language tensors and BF16
-/// token embeddings retain their original bytes. Only the cache header/key is
+/// token embeddings retain their original bytes. [useCacheEmbedding] explicitly
+/// selects Q8 lookup for GGUF imports that have no BF16 embedding table. Only the cache header/key is
 /// rebuilt for the packed layout. The full original checkpoint and imported
 /// language matrices are unnecessary at runtime.
 ///
@@ -47,6 +48,7 @@ Future<void> packVlBundle(
   String backboneDir,
   String outDir, {
   WeightFormat weights = WeightFormat.q8,
+  bool useCacheEmbedding = false,
 }) async {
   if (!weights.isNative) throw ArgumentError('VL packing needs Q8 or Q4');
   validateVlBackbone(modelDir, backboneDir);
@@ -111,6 +113,15 @@ Future<void> packVlBundle(
               shape[1],
             )!;
           }
+          if (name == 'model.embed_tokens.weight' && useCacheEmbedding) {
+            if (language.tensors.containsKey(name) ||
+                matrices[name]!.format != 'q8') {
+              throw const FormatException(
+                'cache embedding requires an absent BF16 table and Q8 head',
+              );
+            }
+            continue;
+          }
           if (shape.length != 2 || name == 'model.embed_tokens.weight') {
             _checkTensor(
               language,
@@ -171,6 +182,7 @@ Future<void> packVlBundle(
             'version': 1,
             'kind': 'lfm3-vl',
             'weights': weights.name,
+            if (useCacheEmbedding) 'input_embedding': 'q8-cache',
             'origin_source_key': Q8Cache.keyFor(modelDir),
             'files': files,
           }),
@@ -191,9 +203,10 @@ Future<void> packVlBundle(
 
 /// Validated version-one layout, shared by installers and runtime loaders.
 final class VlBundleManifest {
-  VlBundleManifest._(this.weights, this.files);
+  VlBundleManifest._(this.weights, this.files, this.inputEmbedding);
 
   final String weights;
+  final String inputEmbedding;
   final Map<String, ({int bytes, String sha256})> files;
 
   factory VlBundleManifest.parse(String json) {
@@ -204,6 +217,10 @@ final class VlBundleManifest {
         !['q8', 'q4'].contains(value['weights']) ||
         value['files'] is! Map) {
       throw const FormatException('unsupported VL bundle manifest');
+    }
+    final embedding = value['input_embedding'] ?? 'bf16';
+    if (!['bf16', 'q8-cache'].contains(embedding)) {
+      throw const FormatException('unsupported VL input embedding policy');
     }
     final weights = value['weights'] as String;
     final files = value['files'] as Map;
@@ -229,7 +246,11 @@ final class VlBundleManifest {
         sha256: entry['sha256'] as String,
       );
     }
-    return VlBundleManifest._(weights, Map.unmodifiable(checked));
+    return VlBundleManifest._(
+      weights,
+      Map.unmodifiable(checked),
+      embedding as String,
+    );
   }
 }
 
@@ -257,6 +278,58 @@ Future<void> validateVlBundle(String directory) async {
     }
   }
   validateVlBackbone(directory, '$directory/language');
+  if (manifest.inputEmbedding == 'bf16') {
+    final c = Lfm3Config.load('$directory/language');
+    final st = SafetensorsFile.open('$directory/language/model.safetensors');
+    try {
+      _checkTensor(
+        st,
+        'model.embed_tokens.weight',
+        [c.vocabSize, c.hiddenSize],
+        File('$directory/language/model.safetensors').lengthSync(),
+        requireBf16: true,
+      );
+    } finally {
+      st.close();
+    }
+  }
+  if (manifest.inputEmbedding == 'q8-cache') {
+    final language = '$directory/language';
+    final st = SafetensorsFile.open('$language/model.safetensors');
+    try {
+      if (st.tensors.containsKey('model.embed_tokens.weight')) {
+        throw const FormatException(
+          'cache embedding bundle also contains a BF16 table',
+        );
+      }
+    } finally {
+      st.close();
+    }
+    final c = Lfm3Config.load(language);
+    final cache = Q8Cache.open(
+      '$language/lfm3-${manifest.weights}.cache',
+      Q8Cache.keyFor(language, weights: manifest.weights),
+    );
+    if (cache == null) {
+      throw const FormatException('invalid cache embedding cache');
+    }
+    try {
+      _checkCachedMatrix(
+        cache,
+        'model.embed_tokens.weight',
+        c.vocabSize,
+        c.hiddenSize,
+      );
+      if (cache
+              .offsets('model.embed_tokens.weight', c.vocabSize, c.hiddenSize)!
+              .format !=
+          'q8') {
+        throw const FormatException('input embedding cache must be Q8');
+      }
+    } finally {
+      cache.close();
+    }
+  }
 }
 
 void _checkTensor(

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dianoia_example/main.dart';
+import 'package:dianoia_example/src/example_model.dart';
 import 'package:dianoia_example/src/chat_controller.dart';
 import 'package:dianoia_example/src/chat_page.dart';
 import 'package:dianoia_example/src/model_selection_page.dart';
@@ -22,44 +23,72 @@ void main() {
     await tester.pumpWidget(const DianoiaExampleApp());
     expect(find.text('Choose a model'), findsOneWidget);
     expect(find.text(ModelSpec.lfm3Q4.name), findsOneWidget);
+    expect(find.text(ExampleModel.lfm3Vl.name), findsOneWidget);
+    expect(find.textContaining('1.45 GB download'), findsOneWidget);
+    expect(find.textContaining('1.54 GB installed'), findsOneWidget);
+    final vl = ExampleModel.lfm3Vl.downloadSpec as VisionGgufSpec;
+    expect(vl.language.name, 'LFM3-VL-2B-QAD-Q4_0.gguf');
+    expect(vl.vision.name, 'mmproj-LFM3-VL-2B-BF16.gguf');
+    expect(vl.id, isNot(VisionCheckpointSpec.lfm3VlQ8.id));
+    expect(ExampleModel.lfm3Vl.directoryName, 'LFM3-VL-2B-QAD-Q4');
     expect(find.textContaining('1.07 GB download'), findsOneWidget);
-    expect(find.textContaining(ModelSpec.lfm3Q4.license), findsOneWidget);
+    expect(find.textContaining(ModelSpec.lfm3Q4.license), findsNWidgets(2));
     expect(find.byType(ChatPage), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  testWidgets('select a model and return while startup is pending', (
+  for (final model in ExampleModel.values) {
+    testWidgets('select ${model.name} and return while startup is pending', (
+      tester,
+    ) async {
+      final directory = Completer<String>();
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (_) => directory.future);
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+
+      await tester.pumpWidget(const DianoiaExampleApp());
+      await tester.tap(find.text(model.name));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(
+        tester.widget<ModelChatPage>(find.byType(ModelChatPage)).model,
+        model,
+      );
+      expect(find.byType(ChatPage), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Choose a model'), findsOneWidget);
+      expect(find.byType(ChatPage), findsNothing);
+
+      // Resolving the platform call after leaving must not start a worker
+      // or notify a controller that has already been disposed.
+      directory.complete('/unused-model-selection-test');
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a missing VL model offers a download with conversion storage', (
     tester,
   ) async {
-    final directory = Completer<String>();
-    const channel = MethodChannel('plugins.flutter.io/path_provider');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (_) => directory.future);
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, null);
-    });
-
-    await tester.pumpWidget(const DianoiaExampleApp());
-    await tester.tap(find.text(ModelSpec.lfm3Q4.name));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-    expect(
-      tester.widget<ModelChatPage>(find.byType(ModelChatPage)).model,
-      ModelSpec.lfm3Q4,
+    final chat = ChatController(model: ExampleModel.lfm3Vl)
+      ..setup = Setup.needsModel
+      ..spec = ExampleModel.lfm3Vl.downloadSpec;
+    addTearDown(chat.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ModelSetup(chat: chat)),
+      ),
     );
-    expect(find.byType(ChatPage), findsOneWidget);
-
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-    expect(find.text('Choose a model'), findsOneWidget);
-    expect(find.byType(ChatPage), findsNothing);
-
-    // Resolving the platform call after leaving must not start a worker
-    // or notify a controller that has already been disposed.
-    directory.complete('/unused-model-selection-test');
-    await tester.pump();
-    expect(tester.takeException(), isNull);
+    expect(find.text(ExampleModel.lfm3Vl.name), findsOneWidget);
+    expect(find.textContaining('1.45 GB to download'), findsOneWidget);
+    expect(find.textContaining('at least 5 GB'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
   });
 
   testWidgets('a reply shows its text and speed', (tester) async {

@@ -7,7 +7,8 @@ import 'synthetic_tokenizer.dart';
 import 'synthetic_vision.dart';
 
 /// Builds a tiny complete VL checkpoint and its Q8 language bundle at runtime.
-Future<void> prepareVisionFixture(Directory root) async {
+Future<void> prepareVisionFixture(Directory root, {int hiddenSize = 32}) async {
+  final h = hiddenSize, hd = hiddenSize ~/ 4, kv = hiddenSize ~/ 2;
   final source = Directory('${root.path}/model')..createSync();
   final oracle =
       jsonDecode(
@@ -23,11 +24,11 @@ Future<void> prepareVisionFixture(Directory root) async {
   });
   final text = config['text_config'] as Map<String, Object?>;
   text.addAll({
-    'hidden_size': 32,
-    'intermediate_size': 64,
+    'hidden_size': h,
+    'intermediate_size': 2 * h,
     'num_attention_heads': 4,
     'num_key_value_heads': 2,
-    'head_dim': 8,
+    'head_dim': hd,
     'vocab_size': 272,
     'eos_token_id': 258,
     'num_hidden_layers': 3,
@@ -53,11 +54,11 @@ Future<void> prepareVisionFixture(Directory root) async {
     '${source.path}/processor_config.json',
   ).writeAsStringSync(jsonEncode(processor));
   final shapes = oracle['shapes'] as Map<String, Object?>;
-  shapes['model.multi_modal_projector.linear_2.weight'] = [32, 12];
-  shapes['model.multi_modal_projector.linear_2.bias'] = [32];
+  shapes['model.multi_modal_projector.linear_2.weight'] = [h, 12];
+  shapes['model.multi_modal_projector.linear_2.bias'] = [h];
   final language = <String, List<int>>{
-    'model.embed_tokens.weight': [272, 32],
-    'model.embedding_norm.weight': [32],
+    'model.embed_tokens.weight': [272, h],
+    'model.embedding_norm.weight': [h],
   };
   for (var i = 0; i < 3; i++) {
     final p = 'model.layers.$i.';
@@ -67,24 +68,24 @@ Future<void> prepareVisionFixture(Directory root) async {
       'ffn_norm',
       'post_ffn_norm',
     ]) {
-      language['$p$norm.weight'] = [32];
+      language['$p$norm.weight'] = [h];
     }
-    language['${p}feed_forward.w1.weight'] = [64, 32];
-    language['${p}feed_forward.w3.weight'] = [64, 32];
-    language['${p}feed_forward.w2.weight'] = [32, 64];
+    language['${p}feed_forward.w1.weight'] = [2 * h, h];
+    language['${p}feed_forward.w3.weight'] = [2 * h, h];
+    language['${p}feed_forward.w2.weight'] = [h, 2 * h];
     if (i == 0) {
-      language['${p}conv.in_proj.weight'] = [96, 32];
-      language['${p}conv.out_proj.weight'] = [32, 32];
-      language['${p}conv.conv.weight'] = [32, 1, 7];
+      language['${p}conv.in_proj.weight'] = [3 * h, h];
+      language['${p}conv.out_proj.weight'] = [h, h];
+      language['${p}conv.conv.weight'] = [h, 1, 7];
     } else {
       final a = '${p}self_attn.';
-      language['${a}q_proj.weight'] = [32, 32];
-      language['${a}k_proj.weight'] = [16, 32];
-      language['${a}v_proj.weight'] = [16, 32];
-      language['${a}o_proj.weight'] = [32, 32];
-      language['${a}gate_proj.weight'] = [4, 32];
-      language['${a}q_norm.weight'] = [8];
-      language['${a}k_norm.weight'] = [8];
+      language['${a}q_proj.weight'] = [h, h];
+      language['${a}k_proj.weight'] = [kv, h];
+      language['${a}v_proj.weight'] = [kv, h];
+      language['${a}o_proj.weight'] = [h, h];
+      language['${a}gate_proj.weight'] = [4, h];
+      language['${a}q_norm.weight'] = [hd];
+      language['${a}k_norm.weight'] = [hd];
     }
   }
   for (final e in language.entries) {

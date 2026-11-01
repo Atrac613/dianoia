@@ -12,11 +12,14 @@ import 'package:path_provider/path_provider.dart';
 
 import 'chat_protocol.dart';
 import 'chat_worker.dart';
+import 'example_model.dart';
 
 enum ChatRole { user, assistant }
 
 final class ChatMessage {
-  ChatMessage(this.role, this.text);
+  ChatMessage(this.role, this.text, {this.image});
+
+  final ImageAttachment? image;
 
   final ChatRole role;
   String text;
@@ -31,9 +34,10 @@ final class ChatMessage {
 enum Setup { starting, needsModel, installing, loading, ready, failed }
 
 class ChatController extends ChangeNotifier {
-  ChatController({this.model = ModelSpec.lfm3Q4});
+  ChatController({this.model = ExampleModel.lfm3});
 
-  final ModelSpec model;
+  final ExampleModel model;
+  ModelLocation? location;
   bool _disposed = false;
   final messages = <ChatMessage>[];
 
@@ -43,7 +47,7 @@ class ChatController extends ChangeNotifier {
   String status = 'Starting…';
 
   /// The model to offer while [setup] is [Setup.needsModel].
-  ModelSpec? spec;
+  InstallableModel? spec;
 
   /// The install's progress, and why the last attempt failed.
   InstallStage installStage = InstallStage.downloading;
@@ -63,7 +67,7 @@ class ChatController extends ChangeNotifier {
     final events = _events = ReceivePort();
     events.listen((event) => _handle(event as ChatEvent));
     try {
-      final location = await _modelLocation();
+      final location = this.location = await _modelLocation();
       if (_disposed) {
         events.close();
         return;
@@ -89,17 +93,24 @@ class ChatController extends ChangeNotifier {
 
   void cancelInstall() => _commands?.send(const CancelInstall());
 
-  void send(String text) {
+  bool send(String text, {ImageAttachment? image}) {
     final commands = _commands;
-    if (!ready || commands == null || replying || text.trim().isEmpty) {
-      return;
+    if (!ready ||
+        commands == null ||
+        replying ||
+        (text.trim().isEmpty && image == null) ||
+        (image != null &&
+            (!model.isVision ||
+                image.bytes.length > ImageAttachment.maxBytes))) {
+      return false;
     }
     messages
-      ..add(ChatMessage(ChatRole.user, text.trim()))
+      ..add(ChatMessage(ChatRole.user, text.trim(), image: image))
       ..add(ChatMessage(ChatRole.assistant, ''));
     replying = true;
-    commands.send(SendMessage(text.trim()));
+    commands.send(SendMessage(text.trim(), image: image));
     notifyListeners();
+    return true;
   }
 
   void stop() => _commands?.send(const StopReply());
@@ -165,13 +176,10 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<ModelLocation> _modelLocation() async {
-    // Keep the existing developer sideload path for LFM3.
-    final name = model.id == ModelSpec.lfm3Q4.id
-        ? 'LFM3-1.7B-QAD-Q4'
-        : model.id;
+    final name = model.directoryName;
     if (Platform.isWindows) {
       // The support directory is in the roaming profile, which is no place
-      // for a 1 GB model, and Documents is the user's own folder: keep both
+      // for a multi-gigabyte model, and Documents is the user's own folder: keep both
       // in the app's directory under Local AppData.
       final local = (await getApplicationCacheDirectory()).path;
       final dir = '$local/$name';
