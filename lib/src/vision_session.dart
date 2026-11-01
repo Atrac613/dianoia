@@ -13,6 +13,16 @@ import 'vision_encoder.dart';
 import 'vision_image.dart';
 import 'vision_prompt.dart';
 
+/// Work before the first visible reply text.
+enum VisionPhase { encodingImage, prefilling, generating }
+
+/// Encoder stage counts cover only new images; prior visual features are reused.
+final class VisionProgress {
+  const VisionProgress(this.phase, {this.completed = 0, this.total = 1});
+  final VisionPhase phase;
+  final int completed, total;
+}
+
 /// Owned, immutable RGB uint8 pixels supplied directly or decoded from PNG/JPEG.
 final class ChatImage {
   ChatImage.rgb(Uint8List pixels, {required this.width, required this.height})
@@ -227,6 +237,7 @@ final class VisionChatSession {
     List<ChatImage> images = const [],
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
+    void Function(VisionProgress progress)? onProgress,
   }) => sendMessage(
     {
       'role': 'user',
@@ -238,6 +249,7 @@ final class VisionChatSession {
     images: images,
     onLogits: onLogits,
     onText: onText,
+    onProgress: onProgress,
   );
 
   /// Advanced HF-style user/tool message, with decoded images bound to its
@@ -256,6 +268,7 @@ final class VisionChatSession {
     List<ChatImage> images = const [],
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
+    void Function(VisionProgress progress)? onProgress,
   }) async {
     if (_busy) throw StateError('this visual session is already generating');
     final role = message['role'];
@@ -290,8 +303,18 @@ final class VisionChatSession {
           throw ContextLengthExceeded(prompt.ids.length, _runtime.model.maxSeq);
         }
         final clock = Stopwatch()..start();
+        final freshImages = allImages.where((a) => a.features == null).length;
+        var encodedImages = 0;
+        final stages = encoder.config.vision.numLayers + 2;
         for (final attachment in allImages) {
           if (attachment.features != null) continue;
+          onProgress?.call(
+            VisionProgress(
+              VisionPhase.encodingImage,
+              completed: encodedImages * stages,
+              total: freshImages * stages,
+            ),
+          );
           await Future<void>.delayed(Duration.zero);
           _runtime.checkCancelled();
           final image = attachment.image!;
@@ -303,9 +326,19 @@ final class VisionChatSession {
           attachment.features = await encoder.encodeAsync(
             input,
             checkCancelled: _runtime.checkCancelled,
+            onProgress: (completed, _) => onProgress?.call(
+              VisionProgress(
+                VisionPhase.encodingImage,
+                completed: encodedImages * stages + completed,
+                total: freshImages * stages,
+              ),
+            ),
           );
+          encodedImages++;
           attachment.image = null;
         }
+        _runtime.checkCancelled();
+        onProgress?.call(const VisionProgress(VisionPhase.prefilling));
         _runtime.checkCancelled();
         await prompt.prefill(_runtime.model, [
           for (final image in allImages) image.features!,
@@ -313,6 +346,7 @@ final class VisionChatSession {
         _runtime.checkCancelled();
         final prefillSeconds = clock.elapsedMicroseconds / 1e6;
         onLogits?.call(_runtime.model.logits);
+        onProgress?.call(const VisionProgress(VisionPhase.generating));
         final generated = <int>[];
         clock.reset();
         while (generated.length < maxNewTokens &&

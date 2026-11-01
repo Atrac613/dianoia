@@ -74,7 +74,12 @@ void main() {
     final expected = encoder.encode(input);
     var yielded = false;
     Future<void>.delayed(Duration.zero, () => yielded = true);
-    final actual = await encoder.encodeAsync(input);
+    final progress = <(int, int)>[];
+    final actual = await encoder.encodeAsync(
+      input,
+      onProgress: (completed, total) => progress.add((completed, total)),
+    );
+    expect(progress, [(1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]);
     expect(yielded, isTrue);
     expect(actual, orderedEquals(expected));
   });

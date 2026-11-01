@@ -45,7 +45,10 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
     try {
       InferenceBackend backend;
       if (selected.isVision) {
-        final loaded = await LocalVisionModel.loadBundle(dir);
+        final loaded = await LocalVisionModel.loadBundle(
+          dir,
+          maxImageTokens: ExampleModel.maxImageTokens,
+        );
         visionModel = loaded;
         if (closing) return;
         visionSession = loaded.chat(system: _system);
@@ -195,16 +198,33 @@ Future<void> _reply(
       return !stopRequested();
     }
 
+    if (image != null) out.send(const ReplyProgress('Reading image…'));
     final turn = visionSession != null
         ? await visionSession.send(
             text,
             images: [if (image != null) ChatImage.encoded(image.bytes)],
             onText: onText,
+            onProgress: (p) => out.send(
+              ReplyProgress(switch (p.phase) {
+                VisionPhase.encodingImage =>
+                  'Analyzing image… ${p.completed}/${p.total}',
+                VisionPhase.prefilling => 'Preparing reply…',
+                VisionPhase.generating => 'Generating reply…',
+              }),
+            ),
           )
         : await session!.send({
             'role': 'user',
             'content': text,
           }, onText: onText);
+    if (turn.text.trim().isEmpty) {
+      out.send(
+        const ReplyFailed(
+          'The model returned no text. Try a different question or start a new chat.',
+        ),
+      );
+      return;
+    }
     out.send(
       ReplyDone(
         text: turn.text,

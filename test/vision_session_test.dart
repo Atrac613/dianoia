@@ -81,6 +81,51 @@ void main() {
     );
 
     test(
+      'visual progress covers new images and skips retained features',
+      () async {
+        final session = model.chat(maxNewTokens: 1);
+        final seen = <VisionProgress>[];
+        await session.send(
+          'Describe.',
+          images: [_image(), _image(80)],
+          onProgress: seen.add,
+        );
+        final encoding = seen
+            .where((p) => p.phase == VisionPhase.encodingImage)
+            .toList();
+        expect(encoding.first.completed, 0);
+        expect(encoding.last.completed, 10);
+        expect(encoding.map((p) => p.total), everyElement(10));
+        expect(seen[seen.length - 2].phase, VisionPhase.prefilling);
+        expect(seen.last.phase, VisionPhase.generating);
+        seen.clear();
+        await session.send('Explain.', onProgress: seen.add);
+        expect(seen.map((p) => p.phase), [
+          VisionPhase.prefilling,
+          VisionPhase.generating,
+        ]);
+      },
+    );
+
+    test('cancellation from progress leaves history intact', () async {
+      final session = model.chat(maxNewTokens: 1);
+      await expectLater(
+        session.send(
+          'Describe.',
+          images: [_image()],
+          onProgress: (p) {
+            if (p.phase == VisionPhase.encodingImage && p.completed == 1) {
+              session.cancel();
+            }
+          },
+        ),
+        throwsA(isA<VisionRequestCancelled>()),
+      );
+      expect(session.messages, isEmpty);
+      expect((await session.send('Hello.')).generatedTokens, 1);
+    });
+
+    test(
       'RGB, attachment lists and message maps are owned before yielding',
       () async {
         final pixels = Uint8List(8 * 8 * 3)..fillRange(0, 8 * 8 * 3, 200);

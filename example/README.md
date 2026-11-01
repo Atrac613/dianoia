@@ -22,6 +22,20 @@ where it stopped. On Windows the app keeps the model under
 `%LOCALAPPDATA%\dev.atrac613\dianoia_example`, not in the roaming
 profile.
 
+For download, setup and inference checks on a physical iPhone, use an AOT
+Profile build:
+
+```bash
+cd example
+flutter run --profile -d <device-id>
+```
+
+If a Debug build crashes with `EXC_BAD_ACCESS` / `SIGBUS` in an anonymous
+executable JIT mapping, reproduce in Profile mode before attributing it to the
+installer. Updating the same app in place preserves partial downloads; select
+the model and tap **Download** again to resume. Do not uninstall the app when
+switching build modes if you want to keep that progress.
+
 For development there are two shortcuts around the 1 GB download:
 
 ```bash
@@ -82,6 +96,13 @@ Allow at least **5 GB free** during first setup. Cancelled downloads resume;
 leaving during preparation waits for it to finish before shutting down and
 retains source downloads for the next attempt. QAD uses a separate model ID
 and directory from PTQ Q4 and Q8 installations.
+
+Camera photos are downscaled by the model processor to an example-specific
+budget of 256 image tokens. The library default remains 1024; this smaller
+budget reduces the work of the current CPU reference vision encoder, with
+less fine detail available for small text. Before the first reply token, the
+chat shows image reading, encoder-stage progress, and reply preparation. An
+empty model response is reported as an error instead of leaving a spinner.
 
 The VL chat's **Attach image** button opens the native file picker for one
 PNG/JPEG (up to 32 MiB). The draft shows a preview and a remove button. Send it

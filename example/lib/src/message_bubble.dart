@@ -50,8 +50,10 @@ class MessageBubble extends StatelessWidget {
                             : scheme.onSurface,
                       ),
                     )
-                  else if (!mine)
-                    const _Typing(),
+                  else if (!mine && message.pending)
+                    _Typing(status: message.progress),
+                  if (message.text.isEmpty && !mine && !message.pending)
+                    const Text('No reply text.'),
                 ],
               ),
             ),
@@ -76,17 +78,19 @@ class MessageBubble extends StatelessWidget {
 
 /// Shown until the first token of a reply arrives.
 class _Typing extends StatelessWidget {
-  const _Typing();
+  const _Typing({required this.status});
+  final String status;
 
   @override
-  Widget build(BuildContext context) => const SizedBox(
-    width: 24,
-    height: 16,
-    child: Center(
-      child: SizedBox.square(
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      const SizedBox.square(
         dimension: 14,
         child: CircularProgressIndicator(strokeWidth: 2),
       ),
-    ),
+      const SizedBox(width: 8),
+      Flexible(child: Text(status)),
+    ],
   );
 }

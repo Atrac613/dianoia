@@ -6,6 +6,9 @@ enum ExampleModel {
   lfm3,
   lfm3Vl;
 
+  /// A mobile CPU encoder budget; the library's default remains 1024.
+  static const maxImageTokens = 256;
+
   bool get isVision => this == lfm3Vl;
   String get id => downloadSpec.id;
   String get name => downloadSpec.name;

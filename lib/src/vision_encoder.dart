@@ -58,13 +58,16 @@ final class Lfm3VisionEncoder {
     VisionImageInput image, {
     void Function(String stage, Float32List rows)? capture,
     void Function()? checkCancelled,
+    void Function(int completed, int total)? onProgress,
   }) async {
     await Future<void>.delayed(Duration.zero);
     checkCancelled?.call();
     Float32List? result;
+    var completed = 0;
     for (final (stage, rows) in _stages(image)) {
       capture?.call(stage, Float32List.fromList(rows));
       result = rows;
+      onProgress?.call(++completed, config.vision.numLayers + 2);
       await Future<void>.delayed(Duration.zero);
       checkCancelled?.call();
     }

@@ -75,9 +75,11 @@ void main() {
           ),
         );
         ReplyDone? visualReply;
+        final progress = <String>[];
         while (await iterator.moveNext()) {
           final event = iterator.current;
           expect(event, isNot(isA<ReplyFailed>()));
+          if (event is ReplyProgress) progress.add(event.status);
           if (event is ReplyDone) {
             visualReply = event;
             break;
@@ -85,6 +87,10 @@ void main() {
         }
         expect(visualReply, isNotNull);
         expect(visualReply!.text, '東京 123');
+        expect(progress.first, 'Reading image…');
+        expect(progress.any((s) => s.startsWith('Analyzing image…')), isTrue);
+        expect(progress, contains('Preparing reply…'));
+        expect(progress, contains('Generating reply…'));
         commands.send(const NewChat());
         commands.send(
           SendMessage(

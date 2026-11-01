@@ -111,9 +111,27 @@ void main() {
   });
 
   testWidgets('a reply without text yet shows progress', (tester) async {
-    await tester.pumpWidget(host(ChatMessage(ChatRole.assistant, '')));
+    await tester.pumpWidget(
+      host(ChatMessage(ChatRole.assistant, '')..pending = true),
+    );
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
+
+  testWidgets(
+    'image analysis shows stage progress and completion clears the spinner',
+    (tester) async {
+      final message = ChatMessage(ChatRole.assistant, '')
+        ..pending = true
+        ..progress = 'Analyzing image… 7/16';
+      await tester.pumpWidget(host(message));
+      expect(find.text('Analyzing image… 7/16'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      message.pending = false;
+      await tester.pumpWidget(host(message));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('No reply text.'), findsOneWidget);
+    },
+  );
 
   testWidgets('without a model it offers the download and its license', (
     tester,

@@ -31,6 +31,9 @@ final class ChatMessage {
   /// For a finished reply: tokens, speed and time to the first token.
   String? stats;
 
+  bool pending = false;
+  String progress = 'Preparing reply…';
+
   /// Set when the reply failed.
   bool failed = false;
 }
@@ -134,7 +137,7 @@ class ChatController extends ChangeNotifier {
     }
     messages
       ..add(ChatMessage(ChatRole.user, text.trim(), image: image))
-      ..add(ChatMessage(ChatRole.assistant, ''));
+      ..add(ChatMessage(ChatRole.assistant, '')..pending = true);
     replying = true;
     commands.send(SendMessage(text.trim(), image: image));
     notifyListeners();
@@ -182,10 +185,13 @@ class ChatController extends ChangeNotifier {
       case WorkerFailed(:final message):
         setup = Setup.failed;
         status = message;
+      case ReplyProgress(:final status):
+        messages.last.progress = status;
       case ReplyText(:final text):
         messages.last.text = text;
       case ReplyDone(:final text, :final tokens, :final firstTokenMs):
         messages.last
+          ..pending = false
           ..text = text
           ..stats =
               '$tokens tokens · '
@@ -196,6 +202,7 @@ class ChatController extends ChangeNotifier {
         // Drop the empty reply; the user's message stays, marked failed.
         if (messages.last.text.isEmpty) messages.removeLast();
         messages.last
+          ..pending = false
           ..failed = true
           ..stats = message;
         replying = false;

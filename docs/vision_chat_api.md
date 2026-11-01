@@ -204,6 +204,13 @@ and does not publish or fetch external weights. The 2026-11-01 M2 Max run
 successfully installed 2,885,204,285 bytes and read `東京 123` on CPU and Metal;
 see the [installation record](validation/lfm3-vl-store-2026-11-01.json).
 
+`VisionChatSession.send` and `sendMessage` accept an optional `onProgress`
+callback. `VisionPhase.encodingImage` reports completed/total encoder stages
+across newly attached images without copying activation tensors. Retained
+features skip encoding. `prefilling` and `generating` distinguish language
+prompt preparation from generation; these callbacks do not promise a duration.
+Observers run in the inference isolate and should return promptly.
+
 ## Send an image and follow up
 
 ```dart

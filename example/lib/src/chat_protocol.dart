@@ -131,6 +131,12 @@ final class WorkerFailed extends ChatEvent {
   final String message;
 }
 
+/// Work before the first text; this never changes model setup state.
+final class ReplyProgress extends ChatEvent {
+  const ReplyProgress(this.status);
+  final String status;
+}
+
 /// The reply so far.
 final class ReplyText extends ChatEvent {
   const ReplyText(this.text);

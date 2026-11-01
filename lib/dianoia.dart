@@ -30,4 +30,9 @@ export 'src/local_model.dart';
 export 'src/model_store.dart';
 export 'src/tool_calls.dart';
 export 'src/vision_session.dart'
-    show ChatImage, VisionChatSession, VisionRequestCancelled;
+    show
+        ChatImage,
+        VisionChatSession,
+        VisionRequestCancelled,
+        VisionProgress,
+        VisionPhase;
