@@ -42,3 +42,9 @@ It covers six/twelve alternation, early text-end, EOS inside a speech burst,
 mode reopening and turn termination. Its prompt is independently rendered from
 the official processor template. No learned weights are included. Regenerate
 with `python tool/audio_conversation_oracle.py` in the validation environment.
+
+`live_oracle.json` runs the pinned upstream `transcribe_live` method with
+scripted logits and synthetic encoder rows. It covers nonfinal suppression,
+final markers/stops, token-cap closure and calls with no new audio rows. Source
+URL/hash and Torch version are recorded. Regenerate with
+`python tool/audio_live_oracle.py`; no checkpoint weights are used.

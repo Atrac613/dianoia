@@ -1,0 +1,312 @@
+{
+  "source": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/modeling_lfm3_audio.py",
+  "source_sha256": "8d7225d892b8b09edbe2285a8add883ce46e28c4027edc2b8c59b501eeadb9e0",
+  "torch": "2.15.0",
+  "markers": {
+    "<|audio|>": 15,
+    "<|audio_out|>": 16,
+    "<|audio_start|>": 12,
+    "<|mixed_start|>": 13,
+    "<|text_end|>": 14,
+    "<|mixed_end|>": 17,
+    "<|im_end|>": 11,
+    "<|endoftext|>": 18,
+    "<|im_start|>": 19
+  },
+  "vocab_size": 32,
+  "cases": [
+    {
+      "name": "blocks_and_final_tail",
+      "chunks": [
+        {
+          "rows": 0,
+          "final": false,
+          "limit": 48,
+          "prompt": [
+            1,
+            2
+          ],
+          "logits": [],
+          "ids": [],
+          "audio_tokens": 0,
+          "closed": false,
+          "pending": [
+            1.0,
+            2.0
+          ],
+          "finished": false,
+          "forward_inputs": [],
+          "context_tokens": 0
+        },
+        {
+          "rows": 12,
+          "final": false,
+          "limit": 48,
+          "logits": [
+            [
+              15,
+              16,
+              12,
+              13,
+              11,
+              17,
+              18,
+              7
+            ],
+            [
+              14
+            ]
+          ],
+          "ids": [
+            7
+          ],
+          "audio_tokens": 12,
+          "closed": true,
+          "pending": [
+            14.0
+          ],
+          "finished": false,
+          "forward_inputs": [
+            [
+              1.0,
+              2.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0
+            ],
+            [
+              7.0
+            ]
+          ],
+          "context_tokens": 15
+        },
+        {
+          "rows": 12,
+          "final": false,
+          "limit": 2,
+          "logits": [
+            [
+              8
+            ],
+            [
+              9
+            ],
+            [
+              10
+            ]
+          ],
+          "ids": [
+            8,
+            9
+          ],
+          "audio_tokens": 12,
+          "closed": false,
+          "pending": [
+            14.0
+          ],
+          "finished": false,
+          "forward_inputs": [
+            [
+              14.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0
+            ],
+            [
+              8.0
+            ],
+            [
+              9.0
+            ]
+          ],
+          "context_tokens": 30
+        },
+        {
+          "rows": 0,
+          "final": false,
+          "limit": 48,
+          "logits": [],
+          "ids": [],
+          "audio_tokens": 0,
+          "closed": false,
+          "pending": [
+            14.0
+          ],
+          "finished": false,
+          "forward_inputs": [],
+          "context_tokens": 30
+        },
+        {
+          "rows": 1,
+          "final": true,
+          "limit": 96,
+          "logits": [
+            [
+              15,
+              16,
+              17
+            ],
+            [
+              10
+            ],
+            [
+              11
+            ]
+          ],
+          "ids": [
+            17,
+            10
+          ],
+          "audio_tokens": 1,
+          "closed": true,
+          "pending": null,
+          "finished": true,
+          "forward_inputs": [
+            [
+              14.0,
+              -1.0
+            ],
+            [
+              17.0
+            ],
+            [
+              10.0
+            ]
+          ],
+          "context_tokens": 34
+        }
+      ]
+    },
+    {
+      "name": "final_without_new_audio",
+      "chunks": [
+        {
+          "rows": 12,
+          "final": false,
+          "limit": 48,
+          "logits": [
+            [
+              15,
+              16,
+              12,
+              13,
+              11,
+              17,
+              18,
+              7
+            ],
+            [
+              14
+            ]
+          ],
+          "prompt": [
+            1,
+            2
+          ],
+          "ids": [
+            7
+          ],
+          "audio_tokens": 12,
+          "closed": true,
+          "pending": [
+            14.0
+          ],
+          "finished": false,
+          "forward_inputs": [
+            [
+              1.0,
+              2.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0
+            ],
+            [
+              7.0
+            ]
+          ],
+          "context_tokens": 15
+        },
+        {
+          "rows": 0,
+          "final": true,
+          "limit": 96,
+          "logits": [
+            [
+              18
+            ]
+          ],
+          "ids": [],
+          "audio_tokens": 0,
+          "closed": true,
+          "pending": null,
+          "finished": true,
+          "forward_inputs": [
+            [
+              14.0
+            ]
+          ],
+          "context_tokens": 16
+        }
+      ]
+    },
+    {
+      "name": "final_turn_start_stop",
+      "chunks": [
+        {
+          "rows": 1,
+          "final": true,
+          "limit": 96,
+          "prompt": [
+            1,
+            2
+          ],
+          "logits": [
+            [
+              19
+            ]
+          ],
+          "ids": [],
+          "audio_tokens": 1,
+          "closed": true,
+          "pending": null,
+          "finished": true,
+          "forward_inputs": [
+            [
+              1.0,
+              2.0,
+              -1.0
+            ]
+          ],
+          "context_tokens": 3
+        }
+      ]
+    }
+  ]
+}
