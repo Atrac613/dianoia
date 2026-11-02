@@ -2,6 +2,7 @@ import 'package:dianoia_example/src/audio_controller.dart';
 import 'package:dianoia_example/src/audio_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dianoia/dianoia.dart';
 
 import 'dart:async';
 
@@ -31,6 +32,43 @@ void main() {
         ),
       ),
     ),
+  );
+
+  testWidgets(
+    'download offer exposes progress and cancels without loading a late result',
+    (tester) async {
+      final backend = TestAudioBackend()..installation = Completer<String>();
+      final controller = AudioController(
+        backend: backend,
+        microphone: TestMicrophone(),
+        player: TestSpeechPlayer(),
+      );
+      addTearDown(controller.dispose);
+      await controller.discover('/store');
+      await tester.pumpWidget(
+        MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+      );
+      expect(find.textContaining('1.23 GB to download'), findsOneWidget);
+      expect(find.text('License: LFM Open License v1.0'), findsOneWidget);
+      expect(backend.installs, 0);
+      await tester.tap(find.text('Download'));
+      await tester.pump();
+      backend.progress!(
+        const InstallProgress(
+          InstallStage.downloading,
+          bytes: 10000000,
+          totalBytes: 20000000,
+        ),
+      );
+      await tester.pump();
+      expect(find.text('0.01 of 0.02 GB'), findsOneWidget);
+      await tester.tap(find.text('Cancel download'));
+      await tester.pumpAndSettle();
+      backend.installation!.complete('/late');
+      await tester.pump();
+      expect(backend.loads, 0);
+      expect(controller.phase, AudioPhase.needsModel);
+    },
   );
 
   testWidgets('speech composer generates only on tap and stops playback', (

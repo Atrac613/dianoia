@@ -12,13 +12,19 @@ import 'model_worker_gate.dart';
 
 /// Request/reply transport. One worker owns the audio and language models.
 final class AudioIsolateBackend implements AudioBackend {
-  AudioIsolateBackend({this.useGpu = true});
+  AudioIsolateBackend({
+    this.useGpu = true,
+    this.mirror = const String.fromEnvironment('DIANOIA_MODEL_MIRROR'),
+  });
   final bool useGpu;
+  final String mirror;
+  void Function(InstallProgress)? _progress;
   final _pending = <int, Completer<Object?>>{};
   Future<void>? _starting, _closing;
   final _exited = Completer<void>();
   SendPort? _commands;
   var _next = 0, _closed = false;
+  var _controlVersion = 0;
 
   Future<void> _start() => _starting ??= _spawn();
   Future<void> _spawn() async {
@@ -41,6 +47,16 @@ final class AudioIsolateBackend implements AudioBackend {
         return;
       }
       final reply = event as Map;
+      if (reply['progress'] == true) {
+        _progress?.call(
+          InstallProgress(
+            InstallStage.values[reply['stage'] as int],
+            bytes: reply['bytes'] as int,
+            totalBytes: reply['total'] as int,
+          ),
+        );
+        return;
+      }
       final c = _pending.remove(reply['id']);
       if (c == null) return;
       if (reply['error'] case final String message) {
@@ -64,7 +80,7 @@ final class AudioIsolateBackend implements AudioBackend {
       if (_closed) throw StateError('Audio worker was closed');
       await Isolate.spawn(
         _runAudioWorker,
-        (events.sendPort, useGpu),
+        (events.sendPort, useGpu, mirror),
         onError: errors.sendPort,
         onExit: exit.sendPort,
         errorsAreFatal: true,
@@ -95,8 +111,37 @@ final class AudioIsolateBackend implements AudioBackend {
   }
 
   @override
-  Future<String> load(String directory) async {
+  Future<String?> installed(String storeDirectory) async {
     await _start();
+    return await _request('installed', storeDirectory) as String?;
+  }
+
+  @override
+  Future<String> install(
+    String storeDirectory,
+    void Function(InstallProgress) onProgress,
+  ) async {
+    final version = _controlVersion;
+    await _start();
+    if (version != _controlVersion) {
+      throw StateError('Installation was cancelled');
+    }
+    if (_progress != null) throw StateError('Installation is already running');
+    _progress = onProgress;
+    try {
+      return await _request('install', storeDirectory) as String;
+    } finally {
+      _progress = null;
+    }
+  }
+
+  @override
+  Future<String> load(String directory) async {
+    final version = _controlVersion;
+    await _start();
+    if (version != _controlVersion) {
+      throw StateError('Model loading was cancelled');
+    }
     return (await _request('load', directory)) as String;
   }
 
@@ -126,6 +171,7 @@ final class AudioIsolateBackend implements AudioBackend {
           as Uint8List;
   @override
   Future<void> cancel() async {
+    _controlVersion++;
     if (!_closed && _commands != null) await _request('cancel');
   }
 
@@ -148,8 +194,11 @@ final class AudioIsolateBackend implements AudioBackend {
   }
 }
 
-Future<void> _runAudioWorker((SendPort, bool) args) async {
-  final (out, useGpu) = args;
+Future<void> _runAudioWorker((SendPort, bool, String) args) async {
+  final (out, useGpu, mirror) = args;
+  final spec = mirror.isEmpty
+      ? AudioGgufSpec.lfm3AudioQ4
+      : AudioGgufSpec.lfm3AudioQ4.fromMirror(mirror);
   final commands = ReceivePort();
   out.send(commands.sendPort);
   Lfm3Model? model;
@@ -158,6 +207,22 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
   Lfm3AudioGenerator? generator;
   AudioSynthesizer? synthesizer;
   String? directory;
+  StreamSubscription<InstallProgress>? installation;
+  Completer<void>? installDone;
+  Future<void>? stoppingInstall;
+  Future<void> cancelInstallation() async {
+    final subscription = installation;
+    installation = null;
+    try {
+      await subscription?.cancel();
+    } finally {
+      final done = installDone;
+      if (done != null && !done.isCompleted) {
+        done.completeError(StateError('Installation was cancelled'));
+      }
+    }
+  }
+
   AudioTranscriptionPrefill? input;
   Lfm3AudioEncoderStream? stream;
   Lfm3AudioFeatureStream? features;
@@ -184,6 +249,10 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
     if (op == 'cancel' || op == 'close') {
       generation++;
       synthesizer?.cancel();
+      stoppingInstall ??= cancelInstallation().whenComplete(
+        () => stoppingInstall = null,
+      );
+      stoppingInstall!.ignore();
     }
     if (op == 'close') closing = true;
     final version = generation;
@@ -191,8 +260,10 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
       try {
         Object? result;
         if (op == 'cancel') {
+          await stoppingInstall;
           clear();
         } else if (op == 'close') {
+          await stoppingInstall;
           clear();
           generator?.close();
           encoder?.close();
@@ -200,6 +271,42 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
         } else {
           check(version);
           switch (op) {
+            case 'installed':
+              final store = ModelStore(request['value'] as String);
+              result = store.isInstalled(spec) ? store.bundlePath(spec) : null;
+            case 'install':
+              if (model != null) throw StateError('Model is already loaded');
+              final store = ModelStore(request['value'] as String);
+              final done = installDone = Completer<void>();
+              done.future.ignore();
+              try {
+                installation = store
+                    .install(spec)
+                    .listen(
+                      (p) {
+                        out.send({
+                          'progress': true,
+                          'stage': p.stage.index,
+                          'bytes': p.bytes,
+                          'total': p.totalBytes,
+                        });
+                      },
+                      onError: (Object e, StackTrace stack) {
+                        if (!done.isCompleted) done.completeError(e, stack);
+                      },
+                      onDone: () {
+                        if (!done.isCompleted) done.complete();
+                      },
+                      cancelOnError: true,
+                    );
+                await done.future;
+                check(version);
+                result = store.bundlePath(spec);
+              } finally {
+                await installation?.cancel();
+                installation = null;
+                installDone = null;
+              }
             case 'load':
               if (model != null) throw StateError('Model is already loaded');
               final dir = request['value'] as String;
@@ -339,6 +446,14 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
 
 /// Prepared research bundle provenance, checked before mapping any model.
 Future<void> _verifyBundle(String dir, void Function() check) async {
+  if (File('$dir/audio_bundle.json').existsSync()) {
+    await validateAudioBundle(
+      dir,
+      AudioGgufSpec.lfm3AudioQ4.files,
+      Lfm3AudioQ4Source.audio.name,
+      check: check,
+    );
+  }
   final receipt =
       jsonDecode(await File('$dir/language/audio_source.json').readAsString())
           as Map;

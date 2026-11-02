@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:dianoia/dianoia.dart';
 
 import 'audio_controller.dart';
 
@@ -35,11 +36,21 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
           : Platform.isWindows
           ? await getApplicationCacheDirectory()
           : await getApplicationDocumentsDirectory();
-      if (!mounted || parent == null) return;
-      final path = '${parent.path}/LFM3-Audio-2B-Q4';
+      if (!mounted) return;
+      final storeParent = Platform.isWindows
+          ? await getApplicationCacheDirectory()
+          : await getApplicationSupportDirectory();
+      if (!mounted) return;
+      final store = '${storeParent.path}/models';
+      _audio.storeDirectory = store;
+      final path = parent == null ? null : '${parent.path}/LFM3-Audio-2B-Q4';
       setState(() => _defaultDirectory = path);
-      if (await File('$path/language/audio_source.json').exists() && mounted) {
+      if (path != null &&
+          await File('$path/language/audio_source.json').exists() &&
+          mounted) {
         await _audio.load(path);
+      } else if (mounted) {
+        await _audio.discover(store);
       }
     } catch (e) {
       if (mounted) setState(() => _pathError = '$e');
@@ -118,8 +129,12 @@ class AudioTranscriptionView extends StatelessWidget {
           a.phase == AudioPhase.needsModel || a.phase == AudioPhase.failed;
       final status = switch (a.phase) {
         AudioPhase.needsModel =>
-          'Choose a prepared LFM3-Audio-2B Q4_0 model to begin.',
+          'Download LFM3-Audio-2B Q4_0 or choose a prepared model.',
         AudioPhase.loading => 'Checking and loading the audio model…',
+        AudioPhase.installing =>
+          a.installProgress?.stage == InstallStage.building
+              ? 'Preparing the model on this device…'
+              : 'Downloading the audio model…',
         AudioPhase.ready => 'Ready · ${a.backendName ?? ''}',
         AudioPhase.requestingPermission => 'Requesting microphone access…',
         AudioPhase.recording =>
@@ -157,10 +172,44 @@ class AudioTranscriptionView extends StatelessWidget {
                   const SizedBox(height: 12),
                   const LinearProgressIndicator(),
                 ],
+                if (needsModel && a.storeDirectory != null) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    '1.23 GB to download from Hugging Face. Allow at least 4 GB of free storage during setup; about 1.30 GB remains installed.',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('License: LFM Open License v1.0'),
+                  SelectableText(AudioGgufSpec.lfm3AudioQ4.licenseUrl),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: a.downloadModel,
+                    icon: const Icon(Icons.download),
+                    label: Text(
+                      a.error == null ? 'Download' : 'Resume download',
+                    ),
+                  ),
+                ],
+                if (a.phase == AudioPhase.installing) ...[
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(
+                    value: a.installProgress?.stage == InstallStage.downloading
+                        ? a.installProgress!.fraction
+                        : null,
+                  ),
+                  const SizedBox(height: 8),
+                  if (a.installProgress?.stage == InstallStage.downloading)
+                    Text(
+                      '${(a.installProgress!.bytes / 1e9).toStringAsFixed(2)} of ${(a.installProgress!.totalBytes / 1e9).toStringAsFixed(2)} GB',
+                    ),
+                  TextButton(
+                    onPressed: a.cancel,
+                    child: const Text('Cancel download'),
+                  ),
+                ],
                 if (needsModel) ...[
                   const SizedBox(height: 16),
                   const Text(
-                    'This preview uses a locally prepared model. See the example guide for setup.',
+                    'You can also use a model prepared on another computer.',
                   ),
                   if (directory != null) ...[
                     const SizedBox(height: 8),
@@ -235,6 +284,7 @@ class AudioTranscriptionView extends StatelessWidget {
                       ),
                     if (a.active &&
                         a.phase != AudioPhase.cancelling &&
+                        a.phase != AudioPhase.installing &&
                         a.phase != AudioPhase.synthesizing &&
                         a.phase != AudioPhase.playing)
                       TextButton(

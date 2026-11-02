@@ -8,9 +8,10 @@ frontend, LFM2 encoder, projector, ASR prompt expansion and greedy text decoding
 CPU and Metal language inference have been exercised; the audio encoder always
 runs on the CPU. Chunked PCM input can prefill the language model before the
 recording finishes; transcription output starts after finalization. This is
-not yet an app API, an audio chat session or a
-`ModelStore` preset. The Flutter example now has an experimental microphone
-preview for prepared local bundles, including text-to-speech playback. Physical
+not yet a public audio inference API or an audio chat session.
+`AudioGgufSpec.lfm3AudioQ4` now installs the paired model through `ModelStore`. The Flutter example now has an experimental audio
+preview with in-app downloads, optional prepared local bundles and
+text-to-speech playback. Physical
 microphone/device behavior is not yet validated. Text-to-speech is also
 available through `lab.dart` and the research CLI, producing mono 24 kHz PCM
 or WAV.
@@ -333,6 +334,33 @@ Dart and Torch RNGs differ; matching seeds do not promise identical code
 sequences. CPU and Metal may produce different samples under stochastic
 sampling. No weights or generated speech are included in test fixtures.
 
+## App model installation
+
+The Flutter example offers a download on the Audio screen when no model is
+installed. `ModelStore.install(AudioGgufSpec.lfm3AudioQ4)` downloads the pinned
+pair and metadata (1,228,932,715 bytes), then imports the language backbone and
+retains the original audio mmproj. Q4 blocks are preserved and the tied Q6_K
+embedding/head uses the existing Q8 adapter. Installed storage is approximately
+1.30 GB; allow at least 4 GB free during setup. Hashing and conversion stay off
+the UI isolate. Audio inference APIs remain experimental under `lab.dart`.
+
+`InstallProgress` reports downloading/building/done. The existing resumable
+HTTP downloader preserves `.part` files and verified source files on cancel
+or failure. Cancellation during conversion waits for conversion to finish,
+then removes unpublished staging and retains source downloads. The installer
+removes stale fixed staging from an interrupted process before downloading,
+renames the complete bundle atomically, and removes downloads after success.
+Only one installation of a model runs at a time.
+
+The installed `audio_bundle.json` records source pins and every runtime
+payload's size/hash, including the generated language cache and small tensor
+file. Presence checks verify source identity and payload sizes; loading also
+verifies every hash. An installed bundle with a mismatching manifest is rejected
+and is not overwritten. The preview still accepts existing prepared research
+folders without that manifest, using its original source/config/cache checks.
+`DIANOIA_MODEL_MIRROR` rehosts downloads without changing pins. See the
+[download validation record](validation/lfm3-audio-download-2026-11-02.md).
+
 ## Flutter speech preview
 
 The example's audio screen accepts short Japanese or English text and a
@@ -360,9 +388,8 @@ and the [example TTS validation record](validation/lfm3-audio-example-tts-2026-1
 2. Broaden real speech/noise/language validation beyond the clean synthetic
    English/Japanese clips, and evaluate pronunciation and voice quality by
    listening. No manual listening or device playback was performed here.
-3. Integrate pinned app installation bundles and public audio sessions. Broaden
-   CPU/Metal/Vulkan device validation. The example preview currently uses local
-   prepared bundles and its own worker/capture controller.
+3. Add public audio sessions and broaden CPU/Metal/Vulkan device validation.
+   The example preview currently uses its own worker/capture controller.
 
 The official [model card](https://huggingface.co/LiquidAI/LFM3-Audio-2B)
 describes text/audio input, text/speech output and multilingual transcription

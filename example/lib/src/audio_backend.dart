@@ -1,7 +1,13 @@
 import 'dart:typed_data';
+import 'package:dianoia/dianoia.dart';
 
 /// The UI never owns inference state or performs model arithmetic.
 abstract interface class AudioBackend {
+  Future<String?> installed(String storeDirectory);
+  Future<String> install(
+    String storeDirectory,
+    void Function(InstallProgress) onProgress,
+  );
   Future<String> load(String directory);
   Future<void> begin(String? language);
   Future<void> addPcm(Float32List samples);

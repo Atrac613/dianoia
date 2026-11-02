@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
+import 'package:dianoia/dianoia.dart';
 
 import 'audio_backend.dart';
 import 'audio_worker.dart';
@@ -12,6 +13,7 @@ import 'speech_player.dart';
 enum AudioPhase {
   needsModel,
   loading,
+  installing,
   ready,
   requestingPermission,
   recording,
@@ -50,12 +52,15 @@ final class AudioController extends ChangeNotifier {
 
   AudioPhase phase = AudioPhase.needsModel;
   String? directory, backendName, error;
+  String? storeDirectory;
+  InstallProgress? installProgress;
   String transcript = '';
   String? language = 'Japanese';
   double get recordedSeconds => _bytes / 2 / 16000;
   int get queuedSamples => _queuedSamples;
   bool get active => switch (phase) {
     AudioPhase.requestingPermission ||
+    AudioPhase.installing ||
     AudioPhase.recording ||
     AudioPhase.finishing ||
     AudioPhase.synthesizing ||
@@ -67,6 +72,59 @@ final class AudioController extends ChangeNotifier {
   bool _valid(int epoch) => !_disposed && _closing == null && epoch == _epoch;
   void _notify() {
     if (!_disposed) notifyListeners();
+  }
+
+  Future<void> discover(String store) async {
+    if (phase != AudioPhase.needsModel && phase != AudioPhase.failed) return;
+    storeDirectory = store;
+    final epoch = ++_epoch;
+    phase = AudioPhase.loading;
+    error = null;
+    _notify();
+    try {
+      final path = await _backend.installed(store);
+      if (!_valid(epoch)) return;
+      phase = AudioPhase.needsModel;
+      if (path != null) {
+        await load(path);
+        return;
+      }
+    } catch (e) {
+      if (!_valid(epoch)) return;
+      error = '$e';
+      phase = AudioPhase.failed;
+    }
+    _notify();
+  }
+
+  Future<void> downloadModel() async {
+    final store = storeDirectory;
+    if (store == null ||
+        _closing != null ||
+        (phase != AudioPhase.needsModel && phase != AudioPhase.failed)) {
+      return;
+    }
+    final epoch = ++_epoch;
+    phase = AudioPhase.installing;
+    installProgress = null;
+    error = null;
+    _notify();
+    if (!_valid(epoch)) return;
+    try {
+      final path = await _backend.install(store, (progress) {
+        if (!_valid(epoch)) return;
+        installProgress = progress;
+        _notify();
+      });
+      if (!_valid(epoch)) return;
+      phase = AudioPhase.needsModel;
+      await load(path);
+    } catch (e) {
+      if (!_valid(epoch)) return;
+      error = '$e';
+      phase = AudioPhase.failed;
+      _notify();
+    }
   }
 
   Future<void> load(String path) async {

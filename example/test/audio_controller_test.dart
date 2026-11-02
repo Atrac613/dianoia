@@ -7,6 +7,7 @@ import 'package:dianoia_example/src/microphone.dart';
 import 'package:dianoia_example/src/pcm16_stream.dart';
 import 'package:dianoia_example/src/speech_player.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dianoia/dianoia.dart';
 
 class TestMicrophone implements Microphone {
   bool allowed = true;
@@ -38,6 +39,24 @@ class TestMicrophone implements Microphone {
 }
 
 class TestAudioBackend implements AudioBackend {
+  String? installedPath;
+  Completer<String>? installation;
+  void Function(InstallProgress)? progress;
+  int installs = 0, loads = 0;
+  @override
+  Future<String?> installed(String storeDirectory) async => installedPath;
+  @override
+  Future<String> install(
+    String storeDirectory,
+    void Function(InstallProgress) onProgress,
+  ) async {
+    installs++;
+    progress = onProgress;
+    return installation == null
+        ? '/installed/audio'
+        : await installation!.future;
+  }
+
   final samples = <double>[];
   Completer<void>? ack;
   Completer<String>? finishing;
@@ -45,7 +64,11 @@ class TestAudioBackend implements AudioBackend {
   final utterances = <(String, String, String)>[];
   int begins = 0, finishes = 0, cancels = 0, closes = 0;
   @override
-  Future<String> load(String directory) async => 'CPU';
+  Future<String> load(String directory) async {
+    loads++;
+    return 'CPU';
+  }
+
   @override
   Future<void> begin(String? language) async {
     begins++;
@@ -134,6 +157,71 @@ void main() {
   tearDown(() async {
     await audio.close();
     audio.dispose();
+  });
+
+  test(
+    'model discovery never downloads; install progress leads to automatic load',
+    () async {
+      audio.phase = AudioPhase.needsModel;
+      audio.backendName = null;
+      backend.loads = 0;
+      await audio.discover('/store');
+      expect(audio.phase, AudioPhase.needsModel);
+      expect(backend.installs, 0);
+      backend.installation = Completer<String>();
+      final installing = audio.downloadModel();
+      await events();
+      expect(audio.phase, AudioPhase.installing);
+      backend.progress!(
+        const InstallProgress(
+          InstallStage.downloading,
+          bytes: 10,
+          totalBytes: 20,
+        ),
+      );
+      expect(audio.installProgress!.fraction, .5);
+      await audio.record();
+      await audio.speak('Ignored');
+      expect(mic.starts, 0);
+      expect(backend.utterances, isEmpty);
+      backend.installation!.complete('/store/bundle');
+      await installing;
+      expect(audio.phase, AudioPhase.ready);
+      expect(audio.directory, '/store/bundle');
+      expect(backend.loads, 1);
+    },
+  );
+
+  test(
+    'cancelled installation ignores late completion and resumes on request',
+    () async {
+      audio.phase = AudioPhase.needsModel;
+      audio.backendName = null;
+      backend.loads = 0;
+      await audio.discover('/store');
+      backend.installation = Completer<String>();
+      final installing = audio.downloadModel();
+      await events();
+      await audio.cancel();
+      backend.progress!(const InstallProgress(InstallStage.done));
+      backend.installation!.complete('/late');
+      await installing;
+      expect(backend.loads, 0);
+      expect(audio.phase, AudioPhase.needsModel);
+      backend.installation = null;
+      await audio.downloadModel();
+      expect(backend.installs, 2);
+      expect(audio.phase, AudioPhase.ready);
+    },
+  );
+
+  test('previous installation is loaded without another download', () async {
+    audio.phase = AudioPhase.needsModel;
+    backend.installedPath = '/store/existing';
+    await audio.discover('/store');
+    expect(audio.directory, '/store/existing');
+    expect(audio.phase, AudioPhase.ready);
+    expect(backend.installs, 0);
   });
 
   test(

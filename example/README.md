@@ -15,10 +15,33 @@ loads it if already installed. Back returns to model selection and releases
 the chat worker; opening a model again starts a fresh conversation.
 
 The separate **LFM3-Audio-2B Q4_0** entry opens an experimental microphone
-transcription and text-to-speech preview. It uses a prepared local model rather than the chat
-download presets; see the setup below.
+transcription and text-to-speech preview. It offers an in-app model download
+and also accepts a prepared local model; see the setup below.
 
 ## Audio preview
+
+Select **LFM3-Audio-2B Q4_0** on the root screen and tap **Download**. The
+preview shows the pinned model's license and download/storage estimates before
+starting. It downloads 1.23 GB from Hugging Face, verifies every source by
+SHA-256 and prepares the Q4 language cache on device. Allow at least 4 GB free
+during setup; about 1.30 GB remains installed. No Python or external conversion
+tool is required in the app.
+
+Download progress includes a cancel button. Leaving the route or backgrounding
+the app also cancels installation. Downloaded/partial source files are kept for
+the next attempt, which resumes them; conversion cancellation waits for the
+current conversion to finish and does not publish a partial bundle. Successful
+setup loads the model automatically and removes source downloads. Later visits
+load the installed bundle without downloading again. Inference and installation
+run in the existing audio worker.
+
+`AudioGgufSpec.lfm3AudioQ4` uses `ModelStore` under the app's support `models`
+directory (Local AppData cache on Windows). The installed bundle includes an
+`audio_bundle.json` with pinned source identity and hashes/sizes of every
+runtime payload. These hashes are verified before loading. Older prepared
+research folders remain accepted through their original source receipts.
+
+### Optional prepared model
 
 Prepare the official Q4_0 pair from the repository root:
 
@@ -32,7 +55,8 @@ Select **LFM3-Audio-2B Q4_0**, choose **Choose model folder**, and select the
 prepared `build/audio-reference` directory. This needs the matching source
 receipt, metadata, Q4 audio mmproj and imported `language` subdirectory.
 The preview checks the pinned audio/config/tokenizer hashes and language-cache
-identity in the worker before loading it. It does not download models.
+identity in the worker before loading it. Choosing a folder does not start a
+download or modify that folder.
 
 For mobile sideloading, place the following prepared files under the
 `LFM3-Audio-2B-Q4` folder shown by the preview, then tap **Check again**:
@@ -97,9 +121,23 @@ macOS compilation, simulated microphone/lifecycle tests and real Q4 worker
 inference are validated. Physical microphone capture, mobile builds and device
 audio-session behavior remain unvalidated. Speech playback is implemented but
 has not been manually listened to or tested on a physical device. The preview
-has no partial transcript while recording, app audio `ModelStore` preset or
-public audio session API. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
+has no partial transcript while recording or public audio session API. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
 records automated checks; device playback and recording remain manual checks.
+The [Audio download validation record](../docs/validation/lfm3-audio-download-2026-11-02.md)
+covers installation, cancellation, Range resume and real-model worker loading.
+
+For a local download mirror, `DIANOIA_MODEL_MIRROR` also applies to Audio.
+Serve the two pinned GGUFs plus `audio_config.json`, `tokenizer.json` and
+`LICENSE` under those names, for example from `build/audio-reference`:
+
+```sh
+cd example
+dart run tool/serve_model.dart ../build/audio-reference
+# In another terminal:
+flutter run -d macos --dart-define=DIANOIA_MODEL_MIRROR=http://127.0.0.1:8642
+```
+
+Mirrors change only URLs; all published sizes and hashes still apply.
 
 ## Text and image model setup
 
