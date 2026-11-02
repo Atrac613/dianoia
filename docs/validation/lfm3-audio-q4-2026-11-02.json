@@ -1,0 +1,241 @@
+{
+  "date": "2026-11-02",
+  "scope": "research single-clip ASR; not app audio chat or speech output",
+  "sources": {
+    "repository": "LiquidAI/LFM3-Audio-2B-GGUF",
+    "revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+    "metadata_revision": "0295e4130594c06800fd25451d97139ac2da1aff",
+    "files": [
+      {
+        "type": "file",
+        "oid": "cddf0db66f89f788df19023930c2c20bb0191852",
+        "size": 1049613856,
+        "lfs": {
+          "oid": "112e4acb79be79dcd8df5749495614817e51c064cd9ca576aead02b64b2b7584",
+          "size": 1049613856,
+          "pointerSize": 135
+        },
+        "xetHash": "249547674f034044fe4ec58cf61acc7305ee18b819b685bbc136a5f736b5e186",
+        "path": "LFM3-Audio-2B-Q4_0.gguf"
+      },
+      {
+        "type": "file",
+        "oid": "28219ad6fbd0dc82b7e212d561c92e652ee2b48d",
+        "size": 161393408,
+        "lfs": {
+          "oid": "467a1ee5512a3faba79bf04e789a838959cc48c72a802bf6d9cb951a77736cfc",
+          "size": 161393408,
+          "pointerSize": 134
+        },
+        "xetHash": "4907f64a1c893f33f6377636da81909a7a88de5801061242c2dfdf67056f2723",
+        "path": "mmproj-LFM3-Audio-2B-Q4_0.gguf"
+      }
+    ],
+    "language_tensor_types": {
+      "Q4_0": 153,
+      "F32": 133,
+      "Q6_K": 1
+    },
+    "audio_tensor_types": [
+      "F32",
+      "Q4_0"
+    ],
+    "audio_tensor_count": 319
+  },
+  "encoder_oracle": {
+    "result": "passed",
+    "input_frames": [
+      1,
+      8,
+      9,
+      33,
+      265
+    ],
+    "audio_token_counts": [
+      1,
+      1,
+      2,
+      5,
+      34
+    ],
+    "graph": "pinned official audio downsampler + Transformers LFM2 + official projector",
+    "reference_weights": "gguf-py dequantization of the SHA-256 verified official mmproj",
+    "stages": "downsample, all 17 layers, embedding norm, projected",
+    "tolerance": "abs(error) <= 2e-4 * (1 + abs(reference))",
+    "command": "DIANOIA_AUDIO_Q4_MMPROJ=build/audio-reference/mmproj-LFM3-Audio-2B-Q4_0.gguf DIANOIA_AUDIO_ENCODER_ORACLE=build/audio-reference/encoder_oracle.json dart test test/audio_encoder_test.dart"
+  },
+  "llama_cpp": {
+    "commit": "060b2fea4ed528810ddc91d48fb22b3e4d63eb85",
+    "command": "llama-mtmd-cli -m LFM3-Audio-2B-Q4_0.gguf --mmproj mmproj-LFM3-Audio-2B-Q4_0.gguf --audio <clip.wav> --no-mmproj-offload -ngl 0 --temp 0 -n 128 --no-warmup --override-kv tokenizer.ggml.eos_token_id=int:125014 -sys \"Perform ASR in <language>.\" -p \"<__media__>\"",
+    "stopping": "The experimental mtmd CLI needs text_end (125014) as EOG; without the override it continues after the transcript. Dianoia honors both text_end and im_end directly."
+  },
+  "cases": [
+    {
+      "name": "english",
+      "synthetic_voice": "Samantha",
+      "words_per_minute": 160,
+      "pcm_sha256": "6eb9e6c4e28dbdba2b7597c93ee9fa818f619fecaa6f79548908df2baa8c41b6",
+      "cpu": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "cpu",
+        "audio_seconds": 2.67075,
+        "audio_tokens": 34,
+        "prompt_tokens": 54,
+        "generated_ids": [
+          597,
+          4104,
+          10299,
+          35886,
+          56085,
+          890,
+          278,
+          45698,
+          4448,
+          22
+        ],
+        "text": "The quick brown fox jumps over the lazy dog.",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.287718,
+        "encoder_seconds": 0.34602,
+        "language_prefill_seconds": 0.930853,
+        "language_prefill_decode_seconds": 1.200723
+      },
+      "metal": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "gpu",
+        "audio_seconds": 2.67075,
+        "audio_tokens": 34,
+        "prompt_tokens": 54,
+        "generated_ids": [
+          597,
+          4104,
+          10299,
+          35886,
+          56085,
+          890,
+          278,
+          45698,
+          4448,
+          22
+        ],
+        "text": "The quick brown fox jumps over the lazy dog.",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.288972,
+        "encoder_seconds": 0.354288,
+        "language_prefill_seconds": 0.338953,
+        "language_prefill_decode_seconds": 0.448493
+      },
+      "llama_cpp_text": "The quick brown fox jumps over the lazy dog.",
+      "cpu_metal_token_ids_equal": true,
+      "transcript_matches_synthesis_text": true
+    },
+    {
+      "name": "japanese",
+      "synthetic_voice": "Kyoko",
+      "words_per_minute": 180,
+      "pcm_sha256": "df10020aab0838578c42316a15054072cc41b6d16bfd0dff50a90b918d9fd85c",
+      "cpu": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "cpu",
+        "audio_seconds": 4.2206875,
+        "audio_tokens": 53,
+        "prompt_tokens": 73,
+        "generated_ids": [
+          71638,
+          17070,
+          6364,
+          5038,
+          2050,
+          646,
+          5692,
+          24010,
+          35372,
+          913,
+          52158,
+          10502,
+          646
+        ],
+        "text": "今日は良い天気です。明日の予定を教えてください。",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.43656,
+        "encoder_seconds": 0.537573,
+        "language_prefill_seconds": 4.305498,
+        "language_prefill_decode_seconds": 4.678627
+      },
+      "metal": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "gpu",
+        "audio_seconds": 4.2206875,
+        "audio_tokens": 53,
+        "prompt_tokens": 73,
+        "generated_ids": [
+          71638,
+          17070,
+          6364,
+          5038,
+          2050,
+          646,
+          5692,
+          24010,
+          35372,
+          913,
+          52158,
+          10502,
+          646
+        ],
+        "text": "今日は良い天気です。明日の予定を教えてください。",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.44594,
+        "encoder_seconds": 0.540569,
+        "language_prefill_seconds": 0.418067,
+        "language_prefill_decode_seconds": 0.563302
+      },
+      "llama_cpp_text": "今日は良い天気です。明日の予定を教えてください。",
+      "cpu_metal_token_ids_equal": true,
+      "transcript_matches_synthesis_text": true
+    }
+  ],
+  "checks": {
+    "format": "passed",
+    "analyze": "passed",
+    "default_tests": {
+      "passed": 260,
+      "skipped": 26
+    },
+    "audio_encoder_real_tests": {
+      "passed": 6,
+      "skipped": 0
+    },
+    "lab_parity": {
+      "passed": true,
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "CPU Q8",
+        "Metal Q8",
+        "Metal Q4"
+      ],
+      "dumps": [
+        "hidden.f32",
+        "logits.f32",
+        "gen.i32",
+        "gen_logits.f32"
+      ],
+      "comparison": "byte-identical"
+    }
+  },
+  "limitations": [
+    "Only two clean synthesized clips; not a speech recognition quality benchmark.",
+    "CPU/Metal text tokens matched on these clips, not a claim of identical floating-point logits.",
+    "Audio encoder and frontend run on CPU; Metal accelerates only the language backbone.",
+    "Timings exclude model loading and are individual runs, not a latency benchmark.",
+    "The existing Q6_K-to-Q8 embedding/head adapter is used; Q4 matrices are preserved.",
+    "No streaming encoder, microphone, speech generation, ModelStore install API, Android, Windows or physical-device validation."
+  ]
+}

@@ -13,7 +13,11 @@ const _specials = [
   '<|video|>',
 ];
 
-void writeSyntheticTokenizer(String dir) {
+void writeSyntheticTokenizer(
+  String dir, {
+  List<String> additionalSpecials = const [],
+}) {
+  final specials = [..._specials, ...additionalSpecials];
   final visible = [
     for (var i = 33; i <= 126; i++) i,
     for (var i = 161; i <= 172; i++) i,
@@ -33,8 +37,8 @@ void writeSyntheticTokenizer(String dir) {
         'merges': [],
       },
       'added_tokens': [
-        for (var i = 0; i < _specials.length; i++)
-          {'content': _specials[i], 'id': 256 + i},
+        for (var i = 0; i < specials.length; i++)
+          {'content': specials[i], 'id': 256 + i},
       ],
     }),
   );

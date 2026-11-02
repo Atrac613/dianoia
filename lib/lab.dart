@@ -7,6 +7,10 @@
 library;
 
 export 'dianoia.dart';
+export 'src/audio_features.dart';
+export 'src/audio_gguf.dart';
+export 'src/audio_encoder.dart';
+export 'src/audio_prompt.dart';
 export 'src/chat_bench.dart';
 export 'src/chat_template.dart';
 export 'src/config.dart';
