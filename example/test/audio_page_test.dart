@@ -36,6 +36,51 @@ void main() {
     ),
   );
 
+  testWidgets('live mode displays text while recording and finalizes on stop', (
+    tester,
+  ) async {
+    final backend = TestAudioBackend(), mic = TestMicrophone();
+    final controller = AudioController(
+      backend: backend,
+      microphone: mic,
+      player: TestSpeechPlayer(),
+    );
+    addTearDown(controller.dispose);
+    await controller.load('/prepared');
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+    );
+    await tester.tap(find.text('Transcription and TTS'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Live transcription (English)').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Japanese is available after recording'),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(find.text('Start live transcription'));
+    await tester.tap(find.text('Start live transcription'));
+    await tester.pump();
+    backend.liveText!('The quick');
+    await tester.pump();
+    expect(controller.phase, AudioPhase.recording);
+    await tester.scrollUntilVisible(
+      find.text('The quick'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('The quick'), findsOneWidget);
+    mic.source!.add(Uint8List(32));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Stop live transcription'));
+    await tester.tap(find.text('Stop live transcription'));
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+    expect(controller.phase, AudioPhase.ready);
+    expect(controller.transcript, 'Recognized speech.');
+  });
+
   testWidgets(
     'background discards a generating voice reply without automatic resume',
     (tester) async {

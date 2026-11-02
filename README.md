@@ -17,7 +17,7 @@ Experimental [LFM3-Audio Q4_0 transcription and speech synthesis](docs/lfm3_audi
 available through research tools and `lab.dart`, with a CPU audio encoder and
 CPU/Metal language inference. The Flutter example includes an experimental
 audio preview with an in-app model download, English voice conversation,
-microphone transcription and text-to-speech playback. `AudioGgufSpec.lfm3AudioQ4` installs the official pair
+microphone transcription, English LiveASR and text-to-speech playback. `AudioGgufSpec.lfm3AudioQ4` installs the official pair
 through `ModelStore`. Speech synthesis also produces 24 kHz WAV files
 through the research CLI. Audio inference is not yet part of the app API. General-purpose
 GGUF support is planned.

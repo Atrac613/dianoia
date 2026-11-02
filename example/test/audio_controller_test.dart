@@ -70,10 +70,22 @@ class TestAudioBackend implements AudioBackend {
   }
 
   @override
-  Future<void> begin(String? language, {bool conversation = false}) async {
+  Future<void> begin(
+    String? language, {
+    bool conversation = false,
+    bool live = false,
+    void Function(String)? onLiveText,
+  }) async {
     begins++;
     conversationInput = conversation;
+    liveInput = live;
+    liveText = onLiveText;
+    inputLanguage = language;
   }
+
+  bool liveInput = false;
+  String? inputLanguage;
+  void Function(String)? liveText;
 
   bool conversationInput = false;
   Completer<AudioVoiceReply>? answering;
@@ -186,6 +198,48 @@ void main() {
     await audio.close();
     audio.dispose();
   });
+
+  test(
+    'live English text appears during recording and stop finalizes without speech playback',
+    () async {
+      audio.language = 'Japanese';
+      audio.setTask(AudioTask.liveTranscription);
+      await audio.record();
+      expect(backend.liveInput, isTrue);
+      expect(backend.inputLanguage, 'English');
+      backend.liveText!('The quick');
+      expect(audio.phase, AudioPhase.recording);
+      expect(audio.transcript, 'The quick');
+      backend.liveText!('The quick brown fox');
+      expect(audio.transcript, 'The quick brown fox');
+      mic.source!.add(Uint8List(32));
+      await events();
+      await audio.stop();
+      expect(audio.phase, AudioPhase.ready);
+      expect(audio.transcript, 'Recognized speech.');
+      expect(player.played, isEmpty);
+      expect(backend.replies, 0);
+    },
+  );
+
+  test(
+    'cancel live transcription discards partial text and ignores late updates',
+    () async {
+      audio.setTask(AudioTask.liveTranscription);
+      await audio.record();
+      backend.liveText!('Partial');
+      final previous = backend.liveText!;
+      await audio.cancel();
+      previous('Late text');
+      expect(audio.transcript, isEmpty);
+      await audio.record();
+      previous('Old text');
+      expect(audio.transcript, isEmpty);
+      backend.liveText!('New recording');
+      expect(audio.transcript, 'New recording');
+      await audio.cancel();
+    },
+  );
 
   test(
     'voice conversation accepts successive turns, plays answers and resets explicitly',

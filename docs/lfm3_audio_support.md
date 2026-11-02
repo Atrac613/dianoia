@@ -7,7 +7,8 @@ The research path now transcribes a complete audio clip with the official
 frontend, LFM2 encoder, projector, ASR prompt expansion and greedy text decoding.
 CPU and Metal language inference have been exercised; the audio encoder always
 runs on the CPU. Chunked PCM input can prefill the language model before the
-recording finishes; transcription output starts after finalization. This is
+recording finishes; ordinary ASR output starts after finalization. English
+LiveASR is a separate mode that emits text during recording. This is
 not yet a stable public audio inference API. A native English voice
 conversation session is available through `lab.dart` and the Flutter example.
 `AudioGgufSpec.lfm3AudioQ4` now installs the paired model through `ModelStore`. The Flutter example now has an experimental audio
@@ -173,7 +174,8 @@ the context check reserves room for the assistant suffix and requested output
 tokens. Concurrent input calls are rejected. A failed forward pass or explicit
 close terminates the operation without closing the caller-owned model. A close
 cannot interrupt an in-flight kernel: await the pending operation before reusing
-the model. No partial transcript is emitted while audio is still arriving.
+the model. This ordinary ASR prefill emits no partial transcript while audio
+is arriving; the separate English LiveASR path below does.
 
 ## Reference and validation
 
@@ -447,6 +449,69 @@ records protocol tests, native session/worker cancellation and acknowledgement,
 CPU/Metal two-turn answers and CPU speech ASR round trips. No microphone use or
 listening was performed.
 
+## English LiveASR
+
+`AudioLiveSession` and `Lfm3LiveTranscriber` implement the pinned official
+`transcribe_live` protocol. The model card specifies English-only LiveASR.
+The prompt is the system instruction `Perform live ASR.` followed directly by
+an assistant header; audio and recognized text share that assistant turn. This
+is distinct from the ordinary user-audio ASR prompt.
+
+The PCM wrapper keeps the existing frontend/encoder streaming state and decodes
+language after each **96 mel frames** (about 0.96 seconds), normally completing
+12 encoder tokens. The initial prompt is deferred until audio rows complete.
+Every nonfinal text block queues `<|text_end|>` to be fed together with the next
+block's audio, including when its 48-token budget is exhausted. Finalization
+flushes frontend/downsampler lookahead and decodes the final block with a
+96-token budget, including an empty audio tail. A sampled text-end/stop marker
+is not fed back. A final block that exhausts its budget is reported as an error
+rather than a completed transcript.
+
+Audio placeholders are always suppressed. Before the final block, audio/mixed
+start, turn-end, mixed-end and end-of-text are also suppressed. The final block
+allows its closing mixed-end marker to be generated, filters special tokens
+from visible text and stops on text-end, turn-end, end-of-text or turn-start.
+`tool/audio_live_oracle.py` executes the pinned official method with scripted
+logits and encoder rows to validate suppression, closure and token-budget
+behavior, without learned weights. Real encoder/feature arithmetic reuses the
+previous streaming parity checks.
+
+```dart
+final live = await Lfm3LiveTranscriber.start(
+  backbone, tokenizer, encoder,
+  onText: (text) { /* Replace visible transcript with the cumulative text. */ },
+);
+await live.addPcm(mono16kChunk);
+final text = await live.finish();
+// live.close() requests cancellation; await any active operation before reuse.
+// The caller owns backbone and encoder.
+```
+
+`close()` is synchronous and marks pending language decoding cancelled; wait
+for an outstanding `addPcm`/`finish` future before reusing the backbone.
+Malformed PCM is rejected before advancing state. Computation/callback failures
+close the live state. PCM/feature history is not replayed: after each successful
+input call, fewer than 96 pending feature frames remain, plus the bounded
+frontend/encoder state and language context. The preview caps recordings at
+30 seconds and language context at 2048 slots. It does not automatically chain
+longer recordings by restarting the text context.
+
+Select **Live transcription (English)** in the example, then **Start live
+transcription**. Text appears while the microphone remains active. **Stop live
+transcription** finishes it; cancellation/backgrounding discards the text, and
+resume does not restart capture. The ordinary ASR/TTS language options remain
+separate. A CLI simulates 80 ms arriving chunks without opening devices:
+
+```sh
+dart run tool/audio_q4_live_transcribe.dart build/audio-reference english-16k.f32
+# Add --gpu for a supported language-backbone GPU.
+```
+
+The CLI emits JSON-line block/text/final events. Its input-time markers describe
+an unpaced file simulation, not measured microphone latency. See the
+[LiveASR validation](validation/lfm3-audio-live-2026-11-03.md) for real CPU/Metal
+updates, final text, cancellation and tests. No microphone use was performed.
+
 ## Remaining implementation
 
 1. Validate the example's microphone stream and OS audio-session behavior on
@@ -463,7 +528,7 @@ The official [model card](https://huggingface.co/LiquidAI/LFM3-Audio-2B)
 describes text/audio input, text/speech output and multilingual transcription
 and synthesis. Full upstream feature coverage remains a target; the current
 dianoia subset covers single-clip transcription, text-to-speech and English
-voice conversation. Live ASR and audio tool-call integration are not exposed by
-the preview.
+voice conversation plus English LiveASR. Audio tool-call integration is not
+exposed by the preview.
 No weights are downloaded by the frontend or default Dart tests;
-only the explicitly invoked preparation tool downloads the pinned models.
+the preparation tool and user-initiated app installation download the pinned models.

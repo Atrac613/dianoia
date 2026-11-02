@@ -16,7 +16,12 @@ abstract interface class AudioBackend {
     void Function(InstallProgress) onProgress,
   );
   Future<String> load(String directory);
-  Future<void> begin(String? language, {bool conversation = false});
+  Future<void> begin(
+    String? language, {
+    bool conversation = false,
+    bool live = false,
+    void Function(String)? onLiveText,
+  });
   Future<void> addPcm(Float32List samples);
   Future<String> finish();
   Future<AudioVoiceReply> finishConversation(void Function(String) onText);

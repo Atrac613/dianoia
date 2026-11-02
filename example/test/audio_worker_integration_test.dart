@@ -104,4 +104,53 @@ void main() {
         ? 'set DIANOIA_AUDIO_EXAMPLE_DIR and DIANOIA_AUDIO_EXAMPLE_PCM'
         : false,
   );
+  test(
+    'English LiveASR publishes text before finish, cancels and reuses the worker',
+    () async {
+      final backend = AudioIsolateBackend(useGpu: false);
+      try {
+        await backend.load(directory!);
+        await expectLater(
+          backend.begin('Japanese', live: true),
+          throwsStateError,
+        );
+        final bytes = ByteData.sublistView(File(pcmPath!).readAsBytesSync());
+        final pcm = Float32List(bytes.lengthInBytes ~/ 4);
+        for (var i = 0; i < pcm.length; i++) {
+          pcm[i] = bytes.getFloat32(i * 4, Endian.little);
+        }
+        final updates = <String>[];
+        await backend.begin('English', live: true, onLiveText: updates.add);
+        for (var at = 0; at < pcm.length; at += 1280) {
+          await backend.addPcm(
+            pcm.sublist(at, (at + 1280).clamp(0, pcm.length)),
+          );
+        }
+        expect(updates, isNotEmpty);
+        expect(updates.first, 'The quick');
+        expect(
+          await backend.finish(),
+          'The quick brown fox jumps over the lazy dog.',
+        );
+        expect(updates.last, 'The quick brown fox jumps over the lazy dog.');
+        await backend.begin('English', live: true, onLiveText: updates.add);
+        await backend.addPcm(pcm.sublist(0, 16640));
+        await backend.cancel();
+        final count = updates.length;
+        await Future<void>.delayed(Duration.zero);
+        expect(updates, hasLength(count));
+        await backend.begin('English');
+        await backend.addPcm(pcm);
+        expect(
+          await backend.finish(),
+          'The quick brown fox jumps over the lazy dog.',
+        );
+      } finally {
+        await backend.close();
+      }
+    },
+    skip: directory == null || pcmPath == null
+        ? 'set DIANOIA_AUDIO_EXAMPLE_DIR/PCM'
+        : false,
+  );
 }

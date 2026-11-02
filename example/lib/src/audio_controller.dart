@@ -27,7 +27,7 @@ enum AudioPhase {
   closed,
 }
 
-enum AudioTask { transcription, conversation }
+enum AudioTask { transcription, conversation, liveTranscription }
 
 final class AudioVoiceTurn {
   const AudioVoiceTurn(this.seconds, this.reply);
@@ -74,6 +74,7 @@ final class AudioController extends ChangeNotifier {
   String partialReply = '';
   void setTask(AudioTask value) {
     if (phase != AudioPhase.ready || _closing != null) return;
+    if (_task != value) transcript = '';
     _task = value;
     partialReply = '';
     error = null;
@@ -248,8 +249,15 @@ final class AudioController extends ChangeNotifier {
         return;
       }
       await _backend.begin(
-        language,
+        _recordingTask == AudioTask.liveTranscription ? 'English' : language,
         conversation: _recordingTask == AudioTask.conversation,
+        live: _recordingTask == AudioTask.liveTranscription,
+        onLiveText: (text) {
+          if (_valid(epoch) && _recordingTask == AudioTask.liveTranscription) {
+            transcript = text;
+            _notify();
+          }
+        },
       );
       if (!_valid(epoch)) return;
       final stream = await _microphone.start();

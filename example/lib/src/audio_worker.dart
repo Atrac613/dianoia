@@ -20,6 +20,7 @@ final class AudioIsolateBackend implements AudioBackend {
   final String mirror;
   void Function(InstallProgress)? _progress;
   void Function(String)? _replyText;
+  void Function(String)? _liveText;
   final _pending = <int, Completer<Object?>>{};
   Future<void>? _starting, _closing;
   final _exited = Completer<void>();
@@ -48,6 +49,10 @@ final class AudioIsolateBackend implements AudioBackend {
         return;
       }
       final reply = event as Map;
+      if (reply['liveUpdate'] == true) {
+        _liveText?.call(reply['text'] as String);
+        return;
+      }
       if (reply['textUpdate'] == true) {
         _replyText?.call(reply['text'] as String);
         return;
@@ -151,11 +156,26 @@ final class AudioIsolateBackend implements AudioBackend {
   }
 
   @override
-  Future<void> begin(String? language, {bool conversation = false}) async {
-    await _request('begin', {
-      'language': language,
-      'conversation': conversation,
-    });
+  Future<void> begin(
+    String? language, {
+    bool conversation = false,
+    bool live = false,
+    void Function(String)? onLiveText,
+  }) async {
+    if (conversation && live) {
+      throw ArgumentError('Choose one audio input mode');
+    }
+    _liveText = live ? onLiveText : null;
+    try {
+      await _request('begin', {
+        'language': language,
+        'conversation': conversation,
+        'live': live,
+      });
+    } catch (_) {
+      _liveText = null;
+      rethrow;
+    }
   }
 
   @override
@@ -189,7 +209,14 @@ final class AudioIsolateBackend implements AudioBackend {
   }
 
   @override
-  Future<String> finish() async => (await _request('finish')) as String;
+  Future<String> finish() async {
+    try {
+      return await _request('finish') as String;
+    } finally {
+      _liveText = null;
+    }
+  }
+
   @override
   Future<Uint8List> synthesize(
     String text,
@@ -205,6 +232,7 @@ final class AudioIsolateBackend implements AudioBackend {
   @override
   Future<void> cancel() async {
     _controlVersion++;
+    _liveText = null;
     if (!_closed && _commands != null) await _request('cancel');
   }
 
@@ -240,6 +268,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
   Lfm3AudioGenerator? generator;
   AudioSynthesizer? synthesizer;
   AudioConversationSession? conversation;
+  Lfm3LiveTranscriber? live;
   var recordingConversation = false;
   String? directory;
   StreamSubscription<InstallProgress>? installation;
@@ -264,6 +293,8 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
   var generation = 0, samples = 0, closing = false;
   Future<void> chain = Future<void>.value();
   void clear() {
+    live?.close();
+    live = null;
     input?.close();
     stream?.close();
     input = null;
@@ -305,6 +336,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
       generation++;
       synthesizer?.cancel();
       conversation?.cancel();
+      live?.close();
       stoppingInstall ??= cancelInstallation().whenComplete(
         () => stoppingInstall = null,
       );
@@ -436,7 +468,24 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
               conversation?.cancel();
               final options = request['value'] as Map;
               recordingConversation = options['conversation'] as bool;
-              if (recordingConversation) {
+              final liveInput = options['live'] == true;
+              if (liveInput && recordingConversation) {
+                throw ArgumentError('Choose one audio input mode');
+              }
+              if (liveInput) {
+                if (options['language'] != null &&
+                    options['language'] != 'English') {
+                  throw ArgumentError('LiveASR supports English only');
+                }
+                live = await Lfm3LiveTranscriber.start(
+                  model!,
+                  tokenizer!,
+                  encoder!,
+                  onText: (text) {
+                    out.send({'liveUpdate': true, 'text': text});
+                  },
+                );
+              } else if (recordingConversation) {
                 generator ??= Lfm3AudioGenerator.load(
                   '$directory/${Lfm3AudioQ4Source.audio.name}',
                 );
@@ -455,20 +504,29 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                 );
               }
               check(version);
-              stream = encoder!.startStream();
-              features = Lfm3AudioFrontend().startStream();
+              if (!liveInput) {
+                stream = encoder!.startStream();
+                features = Lfm3AudioFrontend().startStream();
+              }
             case 'pcm':
-              if ((!recordingConversation && input == null) ||
-                  features == null ||
-                  stream == null) {
+              if (live == null &&
+                  ((!recordingConversation && input == null) ||
+                      features == null ||
+                      stream == null)) {
                 throw StateError('Recording is not active');
               }
               final pcm = request['value'] as Float32List;
               if (samples + pcm.length > 30 * 16000) {
                 throw ArgumentError('Recording exceeds 30 seconds');
               }
-              final rows = stream!.add(features!.add(pcm, samplingRate: 16000));
-              await addProjected(rows);
+              if (live != null) {
+                await live!.addPcm(pcm);
+              } else {
+                final rows = stream!.add(
+                  features!.add(pcm, samplingRate: 16000),
+                );
+                await addProjected(rows);
+              }
               check(version);
               samples += pcm.length;
             case 'finishConversation':
@@ -496,6 +554,12 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
               );
               clear();
             case 'finish':
+              if (live != null) {
+                result = await live!.finish();
+                check(version);
+                clear();
+                break;
+              }
               final current = input;
               if (current == null ||
                   stream == null ||

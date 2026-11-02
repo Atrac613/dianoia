@@ -107,6 +107,16 @@ This is a record/send/reply workflow, without simultaneous listening and talking
 or streaming device playback. Existing prepared/downloaded Q4 models already
 contain all required weights.
 
+For recording-time text, select **Live transcription (English)**. Tap **Start
+live transcription** and speak English. The transcript updates roughly once
+per second of audio, plus processing time. **Stop live transcription** flushes
+the final audio and completes the text. Updates are provisional until stop;
+**Cancel recording**, backgrounding or route exit discards the current text.
+A new recording starts a fresh live context. LiveASR is English only and uses
+the official live-ASR protocol, not repeated full-clip transcription. Capture
+still stops at 30 seconds, with the same queue/backpressure limit. No microphone
+recording is saved or uploaded.
+
 In **Transcription and TTS** mode, choose Japanese, English or automatic language detection. **Record** requests
 microphone permission only when pressed; **Stop and transcribe** flushes the
 final PCM and displays text. **Cancel recording**, route exit or backgrounding
@@ -146,13 +156,14 @@ macOS compilation, simulated microphone/lifecycle tests and real Q4 worker
 inference are validated. Physical microphone capture, mobile builds and device
 audio-session behavior remain unvalidated. Speech playback is implemented but
 has not been manually listened to or tested on a physical device. The preview
-has no live partial transcription, full-duplex voice mode or stable public
-audio session API. `AudioConversationSession` is available through `lab.dart`. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
+has no full-duplex voice mode or stable public audio session API. `AudioConversationSession` is available through `lab.dart`. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
 records automated checks; device playback and recording remain manual checks.
 The [Audio download validation record](../docs/validation/lfm3-audio-download-2026-11-02.md)
 covers installation, cancellation, Range resume and real-model worker loading.
 The [voice conversation validation](../docs/validation/lfm3-audio-conversation-2026-11-03.md)
 covers the native generation protocol and two-turn CPU/Metal examples.
+The [LiveASR validation](../docs/validation/lfm3-audio-live-2026-11-03.md) records
+recording-time updates, final flush and cancellation checks.
 
 For a local download mirror, `DIANOIA_MODEL_MIRROR` also applies to Audio.
 Serve the two pinned GGUFs plus `audio_config.json`, `tokenizer.json` and

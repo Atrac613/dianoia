@@ -262,6 +262,10 @@ class AudioTranscriptionView extends StatelessWidget {
                       value: AudioTask.conversation,
                       child: Text('Voice conversation (English)'),
                     ),
+                    DropdownMenuItem(
+                      value: AudioTask.liveTranscription,
+                      child: Text('Live transcription (English)'),
+                    ),
                   ],
                   onChanged: ready ? (value) => a.setTask(value!) : null,
                 ),
@@ -280,6 +284,11 @@ class AudioTranscriptionView extends StatelessWidget {
                       icon: const Icon(Icons.add_comment_outlined),
                       label: const Text('New conversation'),
                     ),
+                  ),
+                ] else if (a.task == AudioTask.liveTranscription) ...[
+                  const Text(
+                    'English LiveASR · Words appear about once per second of audio, plus processing time. '
+                    'Stop to finish the transcript. Cancel discards it. Japanese is available after recording in Transcription and TTS mode.',
                   ),
                 ] else
                   DropdownButtonFormField<String>(
@@ -319,6 +328,8 @@ class AudioTranscriptionView extends StatelessWidget {
                         label: Text(
                           a.task == AudioTask.conversation
                               ? 'Stop and reply'
+                              : a.task == AudioTask.liveTranscription
+                              ? 'Stop live transcription'
                               : 'Stop and transcribe',
                         ),
                       )
@@ -329,6 +340,8 @@ class AudioTranscriptionView extends StatelessWidget {
                         label: Text(
                           a.task == AudioTask.conversation
                               ? 'Record question'
+                              : a.task == AudioTask.liveTranscription
+                              ? 'Start live transcription'
                               : 'Record',
                         ),
                       ),
@@ -356,8 +369,7 @@ class AudioTranscriptionView extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 24),
-                if (a.task == AudioTask.transcription &&
-                    a.transcript.isNotEmpty)
+                if (a.task != AudioTask.conversation && a.transcript.isNotEmpty)
                   SelectableText(
                     a.transcript,
                     style: Theme.of(context).textTheme.bodyLarge,
@@ -373,7 +385,7 @@ class AudioTranscriptionView extends StatelessWidget {
                     const SizedBox(height: 24),
                   ],
                   if (a.partialReply.isNotEmpty) SelectableText(a.partialReply),
-                ] else ...[
+                ] else if (a.task == AudioTask.transcription) ...[
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 16),
