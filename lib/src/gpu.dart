@@ -676,6 +676,9 @@ final class GpuForward {
   /// [logitsOf].
   Float32List get logits => _logits.view;
 
+  /// Final-normalized state of the last token computed with logits.
+  Float32List get lastHiddenState => _normed.view;
+
   /// After a [forward] of n tokens with capture: the residual entering
   /// layer 0 (slot 0) and leaving each layer (slot i + 1), n rows each.
   Float32List captured(int slot, int n) {

@@ -22,3 +22,16 @@ and row counts per irregular chunk, including empty chunks and finalization.
 `prompt_oracle.json` comes from the pinned official processor's ChatML template
 for automatic, English and Japanese ASR. Regenerate with
 `python tool/audio_prompt_oracle.py`.
+
+`generation_oracle.json` contains deterministic synthetic generation tensors
+and pinned official Depthformer/LiquidCodec outputs. It covers masked/partial
+codebooks, every depth layer, logits, feedback, and batch/streamed waveforms
+across the codec attention window. Regenerate with
+`python tool/audio_generation_oracle.py` in the validation Python environment.
+
+`tts_prompt_oracle.json` renders the pinned language GGUF's embedded ChatML
+template for English/Japanese female and British English male instructions,
+then appends the official TTS audio-start marker. Regenerate using
+`python tool/audio_tts_prompt_oracle.py --gguf <language.gguf>
+--gguf-python /path/to/llama.cpp/gguf-py`. The tool verifies the pinned file
+hash and records the template hash; it does not store checkpoint weights.

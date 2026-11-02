@@ -11,7 +11,9 @@ recording finishes; transcription output starts after finalization. This is
 not yet an app API, an audio chat session or a
 `ModelStore` preset. The Flutter example now has an experimental microphone
 preview for prepared local bundles; physical microphone/device behavior is not
-yet validated. Speech generation remains unimplemented.
+yet validated. Text-to-speech is available through `lab.dart` and the research
+CLI, producing mono 24 kHz PCM or WAV. The example does not yet expose speech
+synthesis or playback.
 
 ## Q4_0 target and research commands
 
@@ -251,23 +253,103 @@ been prefilled. Peak encoder cache storage was 735,232 bytes, within the
 language KV context. These two synthesized clips do not establish general ASR
 accuracy or microphone latency.
 
+## Text-to-speech
+
+`Lfm3AudioGenerator` loads the generation tensors from the same official Q4_0
+mmproj. It implements the noncausal three-layer Depthformer, three MaskGIT
+passes over 12 codebooks, per-codebook repetition penalties and the published
+feedback embeddings. `LiquidCodecStream` decodes frame-major codes using the
+FSQ table, sixfold upsampling, causal LFM3 blocks with a 30-position window and
+1280-point inverse FFT/overlap-add. Generation and codec arithmetic run on CPU;
+`--gpu` accelerates only the language backbone. Q4 blocks remain unchanged.
+
+```sh
+dart run tool/audio_q4_tts.dart build/audio-reference \
+  "Hello world." build/audio-reference/hello.wav --language=en
+dart run tool/audio_q4_tts.dart build/audio-reference \
+  "こんにちは。今日は良い天気ですね。" build/audio-reference/hello-ja.wav \
+  --language=ja --voice=female --gpu
+```
+
+The command writes a mono 24 kHz PCM16 WAV and JSON with frames, duration,
+stop reason, peak and clipping count. It never opens an audio device. Use
+`--voice=male` for the other voice instruction, `--seed=0` for a Dart random
+seed, `--temperature=0` for greedy code selection or `--max-frames=375` to bound
+output to 30 seconds. The hard maximum is 750 frames (60 seconds), subject to
+language context capacity. The CLI returns exit code 2 for a length-limited
+partial WAV; this must not be mistaken for a complete utterance. Ctrl-C cancels
+generation between operations. Preparation is shared with ASR.
+
+For worker-isolate integration, `AudioSynthesizer` owns one operation at a time
+but does not own the supplied model or generator:
+
+```dart
+final generator = Lfm3AudioGenerator.load(mmprojPath);
+final synth = AudioSynthesizer(backbone, tokenizer, generator);
+final result = await synth.synthesize(
+  'Hello world.',
+  language: 'en',
+  voice: 'female',
+  onAudio: (pcm) { /* Owned mono 24 kHz chunks, including the final tail. */ },
+);
+final wav = encodeSpeechWav(result.samples, sampleRate: result.sampleRate);
+// result.stopReason is 'eos' or 'length'.
+// synth.cancel() interrupts the operation at its next cancellation point.
+// Close generator and backbone after all operations have completed.
+```
+
+Use the backbone exclusively during synthesis. The model's borrowed
+`lastHiddenState` is the final-normalized state used to condition Depthformer;
+it is invalidated by reset or a forward pass without logits. PCM chunks are
+copied for callbacks so the caller cannot mutate the collected result.
+Cancellation throws `AudioSynthesisCancelled` and closes codec state; already
+emitted callback chunks remain the caller's responsibility. Each codec stream
+retains bounded convolution/KV history and a 960-sample overlap tail. The
+synthesizer retains output PCM and code history up to `maxFrames`.
+
+`tool/audio_generation_oracle.py` imports the pinned official Depthformer and
+LiquidCodec graphs. Its default fixture contains only synthetic Q4/F32 weights.
+Tests compare depth input, all three layers, normalized embedding, logits,
+feedback and complete/streamed waveforms at `3e-5 * (1 + abs(reference))`.
+Codec cases include six frames (36 internal positions), crossing the causal
+attention window. For optional real-weight comparison:
+
+```sh
+python tool/audio_generation_oracle.py \
+  --gguf build/audio-reference/mmproj-LFM3-Audio-2B-Q4_0.gguf \
+  --gguf-python /path/to/llama.cpp/gguf-py \
+  --out build/audio-reference/generation_oracle.json
+DIANOIA_AUDIO_Q4_MMPROJ=build/audio-reference/mmproj-LFM3-Audio-2B-Q4_0.gguf \
+DIANOIA_AUDIO_GENERATION_ORACLE=build/audio-reference/generation_oracle.json \
+  dart test test/audio_generation_test.dart
+```
+
+The real-weight comparison passes at `3e-4 * (1 + abs(reference))`.
+The [TTS validation record](validation/lfm3-audio-tts-2026-11-02.json) records
+English and Japanese WAV generation ending at EOS, exact ASR round trips,
+a Metal language-backbone smoke run and the numerical checks. ASR round trips
+are a limited intelligibility check, not listening or voice-quality evaluation.
+Dart and Torch RNGs differ; matching seeds do not promise identical code
+sequences. CPU and Metal may produce different samples under stochastic
+sampling. No weights or generated speech are included in test fixtures.
+
 ## Remaining implementation
 
 1. Validate the example's microphone stream and OS audio-session behavior on
    real devices, including interruptions, permission denial and backgrounding.
    The preview implementation and simulated lifecycle tests do not establish
    actual hardware capture quality or latency.
-2. Broaden real speech/noise/language validation beyond the two clean synthetic
-   English/Japanese clips, and evaluate any activation quantization changes.
-3. Implement the noncausal three-layer Depthformer, 12-codebook parallel
-   prediction and LiquidCodec streaming decoder for 24 kHz speech output.
-4. Add pinned app installation bundles and public audio sessions, then broaden
+2. Broaden real speech/noise/language validation beyond the clean synthetic
+   English/Japanese clips, and evaluate pronunciation and voice quality by
+   listening. No manual listening or device playback was performed here.
+3. Add speech synthesis/playback to the Flutter example and integrate pinned
+   app installation bundles and public audio sessions. Broaden
    CPU/Metal/Vulkan device validation. The example preview currently uses local
    prepared bundles and its own worker/capture controller.
 
 The official [model card](https://huggingface.co/LiquidAI/LFM3-Audio-2B)
 describes text/audio input, text/speech output and multilingual transcription
 and synthesis. Full upstream feature coverage remains a target; the current
-dianoia subset is complete-clip transcription.
+dianoia subset covers single-clip transcription and text-to-speech.
 No weights are downloaded by the frontend or default Dart tests;
 only the explicitly invoked preparation tool downloads the pinned models.

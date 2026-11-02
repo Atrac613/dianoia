@@ -1,0 +1,26 @@
+{
+  "source": "LiquidAI/LFM3-Audio-2B-GGUF",
+  "revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+  "file_sha256": "112e4acb79be79dcd8df5749495614817e51c064cd9ca576aead02b64b2b7584",
+  "template_sha256": "8769fc2ac03684665a009b1908fee359e418329019dd83dbc57152167e448099",
+  "cases": [
+    {
+      "text": "Hello world.",
+      "language": "en",
+      "voice": "female",
+      "prompt": "<|startoftext|><|im_start|>system\nPerform TTS in American English using a female voice.<|im_end|>\n<|im_start|>user\nHello world.<|im_end|>\n<|im_start|>assistant\n<|audio_start|>"
+    },
+    {
+      "text": "Hello world.",
+      "language": "ja",
+      "voice": "female",
+      "prompt": "<|startoftext|><|im_start|>system\nPerform TTS in Japanese using a female voice.<|im_end|>\n<|im_start|>user\nHello world.<|im_end|>\n<|im_start|>assistant\n<|audio_start|>"
+    },
+    {
+      "text": "Hello world.",
+      "language": "en-gb",
+      "voice": "male",
+      "prompt": "<|startoftext|><|im_start|>system\nPerform TTS in British English using a male voice.<|im_end|>\n<|im_start|>user\nHello world.<|im_end|>\n<|im_start|>assistant\n<|audio_start|>"
+    }
+  ]
+}
