@@ -15,6 +15,10 @@ deterministically generated, not copied from the checkpoint. It covers causal
 convolution, GQA/RoPE, attention-window boundaries and the projector.
 Regenerate with `python tool/audio_encoder_oracle.py`.
 
+`encoder_stream_oracle.json` is generated in the same run using the official
+encoder streaming method and the same synthetic weights. It stores outputs
+and row counts per irregular chunk, including empty chunks and finalization.
+
 `prompt_oracle.json` comes from the pinned official processor's ChatML template
 for automatic, English and Japanese ASR. Regenerate with
 `python tool/audio_prompt_oracle.py`.

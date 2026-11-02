@@ -95,6 +95,37 @@ The current direct DFT is a correctness reference. It has not been benchmarked
 for realtime microphone input. FFT/native acceleration can replace it after
 parity is established, while keeping the feature pipeline in Dart.
 
+## Streaming encoder
+
+`Lfm3AudioEncoder.startStream()` shares the loaded Q4 weights and owns separate
+downsampler context, two gated-input history rows per short-convolution layer,
+and up to 31 key/value rows per attention layer. RoPE positions advance across
+calls. The downsampler retains at most 15 feature frames, including the seven
+frames of lookahead needed before a row can be emitted. Work and temporary
+storage scale with the current chunk; the entire recording is not replayed.
+
+```dart
+final frontend = Lfm3AudioFrontend().startStream();
+final encoder = Lfm3AudioEncoder.load(mmprojPath);
+final stream = encoder.startStream();
+for (final pcm in pcmChunks) {
+  final rows = stream.add(frontend.add(pcm, samplingRate: 16000));
+  // Newly completed projected rows: [row count, encoder.config.projectionSize].
+  // A small chunk may emit no rows. Feed nonempty rows to the language model.
+}
+final lastComplete = stream.add(frontend.finish());
+final paddedTail = stream.finish();
+encoder.close();
+```
+
+The stream releases its caches after finish, close or computation failure.
+Invalid input is rejected before advancing state, so it can be retried.
+Exceptions from a capture callback terminate the stream, since earlier layers
+may already have changed state. Reentrant stream operations are rejected.
+Closing the encoder closes all its active streams. Feature and encoder calls
+remain synchronous CPU work; microphone capture and language prefill are not
+implemented by this class.
+
 ## Reference and validation
 
 The contract is pinned to official
@@ -147,14 +178,28 @@ and projector, with tolerance `2e-4 * (1 + abs(reference))`.
 template. Dart unit tests also check malformed layouts, Q4 scale/nibble order,
 buffer ownership, invalid inputs, lifecycle and generation-mode suppression.
 
+The encoder oracle tool also writes `encoder_stream_oracle.json` beside its
+batch output, using the pinned upstream encoder's actual streaming method.
+It tests zero-length chunks, short inputs, exact/downsampler boundaries, an
+irregular chunk schedule and the final flush. Dart additionally compares every
+streamed stage with batch execution across seven chunk sizes. Set
+`DIANOIA_AUDIO_ENCODER_STREAM_ORACLE` alongside `DIANOIA_AUDIO_Q4_MMPROJ` to run
+the optional real-GGUF streaming comparison. Its 265-frame case crosses the
+32-token attention window. The tolerance is the same as for real batch parity;
+different GEMM batch sizes need not produce bit-identical floating-point rows.
+
+Streaming encoder validation on macOS arm64 (2026-11-02): 272 default tests
+passed, 27 optional/environment tests skipped; all 13 streaming tests passed
+with the real Q4 oracle enabled. Format and analysis passed. Existing text
+`chat`/`long` CPU Q8 and Metal Q8/Q4 dumps remained byte-identical to the lab.
+
 See [the Q4 validation record](validation/lfm3-audio-q4-2026-11-02.json) for
 the exact sources, commands, transcripts and limitations.
 
 ## Remaining implementation
 
-1. Add streaming downsampler lookahead and LFM2 encoder caches, then connect
-   incremental audio prefill. Streaming frontend parity alone does not establish
-   streaming encoder correctness.
+1. Connect the streaming frontend/encoder to incremental language prefill and
+   validate resulting transcripts before adding microphone input.
 2. Broaden real speech/noise/language validation beyond the two clean synthetic
    English/Japanese clips, and evaluate any activation quantization changes.
 3. Implement the noncausal three-layer Depthformer, 12-codebook parallel

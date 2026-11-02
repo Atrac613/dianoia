@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import ast
 import base64
+import copy
 import hashlib
 import json
 import math
@@ -24,6 +25,7 @@ from torch import nn
 import transformers
 from transformers import AutoModel, Lfm2Config
 from transformers.masking_utils import create_sliding_window_causal_mask
+from transformers.cache_utils import DynamicCache
 
 REVISION = '0295e4130594c06800fd25451d97139ac2da1aff'
 SOURCE = f'https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/{REVISION}/modeling_lfm3_audio.py'
@@ -68,12 +70,14 @@ def main() -> None:
     parser.add_argument('--out', type=Path, default=Path('test/fixtures/audio/encoder_oracle.json'))
     parser.add_argument('--gguf', type=Path)
     parser.add_argument('--gguf-python', type=Path)
+    parser.add_argument('--stream-out', type=Path)
     args = parser.parse_args()
     torch.set_num_threads(2)
     source = urllib.request.urlopen(SOURCE).read()
     nodes = [n for n in ast.parse(source).body if isinstance(n, ast.ClassDef) and n.name in
-             ('Lfm3AudioDownsampler', 'Lfm3AudioEncoder', 'Lfm3AudioProjector')]
-    scope = dict(torch=torch, nn=nn, AutoModel=AutoModel,
+             ('Lfm3AudioDownsampler', 'Lfm3AudioEncoder', 'Lfm3AudioProjector',
+              'Lfm3AudioEncoderStreamingCache')]
+    scope = dict(torch=torch, nn=nn, AutoModel=AutoModel, copy=copy, DynamicCache=DynamicCache,
                  create_sliding_window_causal_mask=create_sliding_window_causal_mask)
     future = ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0)
     exec(compile(ast.fix_missing_locations(ast.Module(body=[future] + nodes, type_ignores=[])), SOURCE, 'exec'), scope)
@@ -167,6 +171,40 @@ def main() -> None:
         result['gguf_sha256'] = hashlib.file_digest(args.gguf.open('rb'), 'sha256').hexdigest()
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2) + '\n')
+    stream_cases = []
+    with torch.no_grad():
+        for frames in [0, 1, 7, 8, 9, 16, 33, 65] + ([265] if reader else []):
+            features = torch.tensor([((i * 17 + i // 5 * 3) % 127 - 63) / 64
+                for i in range(128 * frames)], dtype=torch.float32).reshape(1, 128, frames)
+            cache = None
+            chunks = []
+            at = 0
+            sizes = [0]
+            pattern = [1, 7, 8, 3, 17]
+            while at < frames:
+                count = min(pattern[(len(sizes) - 1) % len(pattern)], frames - at)
+                sizes.append(count)
+                at += count
+            at = 0
+            joined = []
+            for count, final in [(size, False) for size in sizes] + [(0, True)]:
+                encoded, cache = encoder.stream(features[..., at:at + count], cache, is_final=final)
+                projected = projector(encoded)
+                chunks.append(dict(input_frames=count, is_final=final,
+                    output_tokens=projected.shape[1], projected=projected.flatten().tolist()))
+                joined.append(projected)
+                at += count
+            if frames:
+                batch, _ = encoder(features, torch.tensor([frames]))
+                batch = projector(batch)
+                torch.testing.assert_close(torch.cat(joined, dim=1), batch, atol=2e-4, rtol=2e-4)
+            stream_cases.append(dict(frames=frames, chunks=chunks))
+    stream_result = {k: result[k] for k in ('source', 'source_sha256', 'torch', 'transformers', 'metadata')}
+    stream_result['cases'] = stream_cases
+    if reader: stream_result['gguf_sha256'] = result['gguf_sha256']
+    stream_out = args.stream_out or args.out.with_name('encoder_stream_oracle.json')
+    stream_out.parent.mkdir(parents=True, exist_ok=True)
+    stream_out.write_text(json.dumps(stream_result, indent=2) + '\n')
 
 
 if __name__ == '__main__':

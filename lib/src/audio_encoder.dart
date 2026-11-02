@@ -12,12 +12,12 @@ import 'matmul.dart';
 import 'native.dart';
 import 'ops.dart';
 
-/// Synchronous CPU lab implementation for one complete clip.
+/// Synchronous CPU lab implementation for complete clips or streaming input.
 ///
 /// Q4 weights retain their published blocks. Convolutions and norms stay F32.
 /// Matmul uses float inputs by default to isolate weight quantization from
 /// activation quantization. Run in a worker isolate for interactive apps.
-/// This does not yet implement streaming encoder caches or audio generation.
+/// [startStream] keeps bounded per-stream context. Audio generation is separate.
 final class Lfm3AudioEncoder {
   Lfm3AudioEncoder._(
     this.config,
@@ -60,6 +60,7 @@ final class Lfm3AudioEncoder {
   final bool int8Inputs;
   final Map<String, Float32List> _floats;
   final Map<String, NativeQ4Matrix> _matrices;
+  final _streams = <Lfm3AudioEncoderStream>{};
   bool _closed = false;
 
   /// Owned [features.encoderTokens, config.projectionSize] projected rows.
@@ -75,17 +76,41 @@ final class Lfm3AudioEncoder {
         features.values.any((x) => !x.isFinite)) {
       throw ArgumentError('expected nonempty finite LFM3-Audio features');
     }
+    return _encodeRows(
+      _downsample(features),
+      features.encoderTokens,
+      capture: capture,
+    );
+  }
+
+  /// Independent causal state sharing this encoder's weights. The downsampler
+  /// needs seven future feature frames; only [Lfm3AudioEncoderStream.finish]
+  /// pads the tail. Closing this encoder also closes every active stream.
+  Lfm3AudioEncoderStream startStream() {
+    if (_closed) throw StateError('Audio encoder is closed');
+    final stream = Lfm3AudioEncoderStream._(this);
+    _streams.add(stream);
+    return stream;
+  }
+
+  Float32List _encodeRows(
+    Float32List x,
+    int n, {
+    List<_AudioLayerState>? states,
+    int position = 0,
+    void Function(String stage, Float32List rows)? capture,
+  }) {
     void emit(String name, Float32List x) =>
         capture?.call(name, Float32List.fromList(x));
     final c = config;
     final h = c.hiddenSize;
-    var x = _downsample(features);
-    final n = features.encoderTokens;
     emit('downsample', x);
     for (var layer = 0; layer < c.numLayers; layer++) {
       final p = 'a.blk.$layer.';
       final a = _norm(x, '${p}ln1.weight', h);
-      final mixer = c.convLayers[layer] ? _conv(a, p, n) : _attention(a, p, n);
+      final mixer = c.convLayers[layer]
+          ? _conv(a, p, n, states?[layer])
+          : _attention(a, p, n, states?[layer], position);
       _add(x, mixer);
       final b = _norm(x, '${p}ln2.weight', h);
       final gate = _linear('${p}ffn_gate', b, n);
@@ -111,7 +136,13 @@ final class Lfm3AudioEncoder {
 
   void close() {
     if (_closed) return;
+    if (_streams.any((s) => s._busy)) {
+      throw StateError('Audio encoder has a busy stream');
+    }
     _closed = true;
+    for (final stream in _streams.toList()) {
+      stream.close();
+    }
     for (final m in _matrices.values) {
       m.free();
     }
@@ -140,7 +171,7 @@ final class Lfm3AudioEncoder {
     return out;
   }
 
-  Float32List _conv(Float32List a, String p, int n) {
+  Float32List _conv(Float32List a, String p, int n, _AudioLayerState? state) {
     final h = config.hiddenSize;
     final bcx = _linear('${p}conv_pw1', a, n);
     final z = Float32List(n * h);
@@ -158,16 +189,31 @@ final class Lfm3AudioEncoder {
           final s = t + k - 2;
           if (s >= 0) {
             sum += z[s * h + ch] * kernel[ch * 3 + k];
+          } else if (state != null) {
+            sum += state.conv[(s + 2) * h + ch] * kernel[ch * 3 + k];
           }
         }
         mixed[t * h + ch] = sum;
         mixed[t * h + ch] *= bcx[t * 3 * h + h + ch];
       }
     }
-    return _linear('${p}conv_pw2', mixed, n);
+    final result = _linear('${p}conv_pw2', mixed, n);
+    if (state != null) {
+      final combined = Float32List(2 * h + z.length)
+        ..setAll(0, state.conv)
+        ..setAll(2 * h, z);
+      state.conv = combined.sublist(combined.length - 2 * h);
+    }
+    return result;
   }
 
-  Float32List _attention(Float32List a, String p, int n) {
+  Float32List _attention(
+    Float32List a,
+    String p,
+    int n,
+    _AudioLayerState? state,
+    int position,
+  ) {
     final c = config, h = c.hiddenSize, d = c.headDim;
     final kv = c.numKvHeads * d;
     final q = _norm(_linear('${p}attn_q', a, n), '${p}attn_q_norm.weight', d);
@@ -175,7 +221,7 @@ final class Lfm3AudioEncoder {
     final v = _linear('${p}attn_v', a, n);
     final rope = Rope(const RopeSpec(Lfm3AudioEncoderConfig.ropeTheta, 1), d);
     for (var t = 0; t < n; t++) {
-      rope.setPosition(t);
+      rope.setPosition(position + t);
       for (var head = 0; head < c.numHeads; head++) {
         rope.apply(q, t * h + head * d);
       }
@@ -183,39 +229,57 @@ final class Lfm3AudioEncoder {
         rope.apply(k, t * kv + head * d);
       }
     }
-    final output = Float32List(n * h), scores = Float32List(n);
+    final prefix = (state?.keys.length ?? 0) ~/ kv;
+    final keys = state == null
+        ? k
+        : (Float32List(state.keys.length + k.length)
+            ..setAll(0, state.keys)
+            ..setAll(state.keys.length, k));
+    final values = state == null
+        ? v
+        : (Float32List(state.values.length + v.length)
+            ..setAll(0, state.values)
+            ..setAll(state.values.length, v));
+    final output = Float32List(n * h), scores = Float32List(prefix + n);
     final scale = 1 / math.sqrt(d);
     for (var t = 0; t < n; t++) {
-      final start = math.max(0, t - c.window + 1);
+      final end = prefix + t;
+      final start = math.max(0, end - c.window + 1);
       for (var head = 0; head < c.numHeads; head++) {
         final kvHead = head ~/ (c.numHeads ~/ c.numKvHeads);
         var maximum = double.negativeInfinity;
-        for (var s = start; s <= t; s++) {
+        for (var s = start; s <= end; s++) {
           var dot = 0.0;
           for (var j = 0; j < d; j++) {
-            dot += q[t * h + head * d + j] * k[s * kv + kvHead * d + j];
+            dot += q[t * h + head * d + j] * keys[s * kv + kvHead * d + j];
           }
           scores[s] = dot * scale;
           maximum = math.max(maximum, scores[s]);
         }
         var total = 0.0;
-        for (var s = start; s <= t; s++) {
+        for (var s = start; s <= end; s++) {
           scores[s] = math.exp(scores[s] - maximum);
           total += scores[s];
         }
-        for (var s = start; s <= t; s++) {
+        for (var s = start; s <= end; s++) {
           scores[s] /= total;
         }
         for (var j = 0; j < d; j++) {
           var sum = 0.0;
-          for (var s = start; s <= t; s++) {
-            sum += scores[s] * v[s * kv + kvHead * d + j];
+          for (var s = start; s <= end; s++) {
+            sum += scores[s] * values[s * kv + kvHead * d + j];
           }
           output[t * h + head * d + j] = sum;
         }
       }
     }
-    return _linear('${p}attn_out', output, n);
+    final result = _linear('${p}attn_out', output, n);
+    if (state != null) {
+      final keep = math.min(c.window - 1, prefix + n) * kv;
+      state.keys = keys.sublist(keys.length - keep);
+      state.values = values.sublist(values.length - keep);
+    }
+    return result;
   }
 
   Float32List _downsample(AudioFeatures features) {
@@ -309,6 +373,151 @@ final class Lfm3AudioEncoder {
   static void _add(Float32List x, Float32List y) {
     for (var i = 0; i < x.length; i++) {
       x[i] += y[i];
+    }
+  }
+}
+
+final class _AudioLayerState {
+  _AudioLayerState(int hidden, bool convolution)
+    : conv = Float32List(convolution ? 2 * hidden : 0);
+  Float32List conv;
+  Float32List keys = Float32List(0), values = Float32List(0);
+}
+
+/// A single feature stream with bounded LFM2 convolution/KV state.
+///
+/// [add] returns newly completed projected rows in time order, possibly empty.
+/// Across calls, retains at most 15 spectrogram frames, two gated-input rows
+/// per convolution layer and window-1 KV rows per attention layer. Temporary
+/// work scales with the current chunk, not elapsed recording duration.
+/// Invalid input leaves state intact. A computation/capture failure terminates
+/// the stream because some layer caches may already have advanced.
+final class Lfm3AudioEncoderStream {
+  Lfm3AudioEncoderStream._(this._encoder)
+    : _states = [
+        for (final conv in _encoder.config.convLayers)
+          _AudioLayerState(_encoder.config.hiddenSize, conv),
+      ];
+  final Lfm3AudioEncoder _encoder;
+  final List<_AudioLayerState> _states;
+  Float32List _pending = Float32List(0);
+  int _pendingFrames = 0, _offset = 0, _frames = 0, _tokens = 0;
+  bool _finished = false, _busy = false;
+
+  int get frames => _frames;
+  int get tokens => _tokens;
+  int get retainedFeatureFrames => _pendingFrames;
+  bool get isFinished => _finished;
+
+  /// Persistent signal/cache storage only; excludes shared weights and scratch.
+  int get cachedStateBytes =>
+      _pending.lengthInBytes +
+      _states.fold(
+        0,
+        (n, s) =>
+            n +
+            s.conv.lengthInBytes +
+            s.keys.lengthInBytes +
+            s.values.lengthInBytes,
+      );
+
+  Float32List add(
+    AudioFeatures features, {
+    void Function(String stage, Float32List rows)? capture,
+  }) => _add(features, false, capture);
+
+  Float32List finish({
+    void Function(String stage, Float32List rows)? capture,
+  }) =>
+      _add(AudioFeatures.fromLogMel(Float32List(0), frames: 0), true, capture);
+
+  void close() {
+    if (_busy) throw StateError('Audio encoder stream is busy');
+    _release();
+  }
+
+  void _release() {
+    _finished = true;
+    _pending = Float32List(0);
+    _pendingFrames = 0;
+    _states.clear();
+    _encoder._streams.remove(this);
+  }
+
+  Float32List _add(
+    AudioFeatures features,
+    bool finalChunk,
+    void Function(String stage, Float32List rows)? capture,
+  ) {
+    if (_finished || _encoder._closed) {
+      throw StateError('Audio encoder stream is closed');
+    }
+    if (_busy) throw StateError('Audio encoder stream is busy');
+    if (features.frames < 0 ||
+        features.values.length != 128 * features.frames ||
+        features.values.any((x) => !x.isFinite)) {
+      throw ArgumentError('expected finite [128, frames] audio features');
+    }
+    _busy = true;
+    try {
+      final totalFrames = _frames + features.frames;
+      final totalTokens = (totalFrames + (finalChunk ? 7 : 0)) ~/ 8;
+      final count = totalTokens - _tokens;
+      final bufferFrames = _pendingFrames + features.frames;
+      final buffer = Float32List(128 * bufferFrames);
+      for (var m = 0; m < 128; m++) {
+        buffer.setRange(
+          m * bufferFrames,
+          m * bufferFrames + _pendingFrames,
+          _pending,
+          m * _pendingFrames,
+        );
+        buffer.setRange(
+          m * bufferFrames + _pendingFrames,
+          (m + 1) * bufferFrames,
+          features.values,
+          m * features.frames,
+        );
+      }
+      var projected = Float32List(0);
+      if (count > 0) {
+        final all = _encoder._downsample(
+          AudioFeatures.fromLogMel(buffer, frames: bufferFrames),
+        );
+        final first = _tokens - _offset ~/ 8;
+        final h = _encoder.config.hiddenSize;
+        final rows = all.sublist(first * h, (first + count) * h);
+        projected = _encoder._encodeRows(
+          rows,
+          count,
+          states: _states,
+          position: _tokens,
+          capture: capture,
+        );
+      }
+      final offset = math.max(0, (totalTokens - 1) * 8);
+      final keep = finalChunk ? 0 : totalFrames - offset;
+      final pending = Float32List(128 * keep);
+      for (var m = 0; m < 128; m++) {
+        pending.setRange(
+          m * keep,
+          (m + 1) * keep,
+          buffer,
+          m * bufferFrames + offset - _offset,
+        );
+      }
+      _pending = pending;
+      _pendingFrames = keep;
+      _offset = offset;
+      _frames = totalFrames;
+      _tokens = totalTokens;
+      if (finalChunk) _release();
+      return projected;
+    } catch (_) {
+      _release();
+      rethrow;
+    } finally {
+      _busy = false;
     }
   }
 }
