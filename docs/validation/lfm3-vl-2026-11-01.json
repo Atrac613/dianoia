@@ -1,0 +1,284 @@
+{
+  "date": "2026-11-01",
+  "checkpoint": {
+    "revision": "ba44bd51db20a2753f28c273a1571ccaa210d954",
+    "bytes": 3836417920,
+    "sha256": "a9bb8b1c159c9d6c3007bc1c7ad8018b599f759d97da2701714e37426283e131",
+    "expected_sha256": "a9bb8b1c159c9d6c3007bc1c7ad8018b599f759d97da2701714e37426283e131",
+    "verified": true
+  },
+  "environment": {
+    "chip": "Apple M2 Max",
+    "memory": "64 GB",
+    "architecture": "macos_arm64",
+    "dart": "3.13.5 (AOT)",
+    "python": "3.14.6",
+    "torch": "2.15.0",
+    "transformers": "5.21.0",
+    "torchvision": "0.29.2"
+  },
+  "scope": "Three synthetic 256x256 RGB color/spatial cases; greedy decoding, thinking disabled, max_new_tokens=8. Vision executes on CPU float32 in both dianoia backends.",
+  "bounds": {
+    "encoder_atol": 0.002,
+    "encoder_rtol": 0.0002,
+    "cpu_f32_logits_atol": 0.002,
+    "cpu_f32_logits_rtol": 0.0002,
+    "q8_metal_logits_atol": 0.5,
+    "q8_metal_logits_rtol": 0.0
+  },
+  "cases": [
+    {
+      "name": "red",
+      "image": {
+        "height": 256,
+        "width": 256,
+        "rgb_sha256": "60be93b304d0479a8ec90dcac8e237948a7933c694bcc9eb2b6036a31e3e64c8",
+        "pattern": "solid RGB (255,0,0)"
+      },
+      "prompt": "What is the main color? Answer with one color word.",
+      "reference_generated_ids": [
+        15684
+      ],
+      "reference_text": "Red",
+      "grid_thw": [
+        1,
+        16,
+        16
+      ],
+      "prompt_tokens": 89,
+      "runs": [
+        {
+          "backend": "f32",
+          "passed": true,
+          "generated_ids": [
+            15684
+          ],
+          "text": "Red",
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 3.5241246223449707e-06,
+          "largest_vision_stage_max_abs": 0.0004773139953613281,
+          "prefill_logits": {
+            "max_abs": 7.748603820800781e-05,
+            "mean_abs": 1.5175489302919232e-05,
+            "rmse": 1.7693783457062922e-05,
+            "reference_argmax": 15684,
+            "actual_argmax": 15684
+          },
+          "decode_logits": {
+            "max_abs": 7.748603820800781e-05,
+            "mean_abs": 1.1609191133970854e-05,
+            "rmse": 1.432202567367074e-05
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.195582,
+            "load_seconds": 3.045013,
+            "prefill_seconds": 9.701749,
+            "decode_seconds": 0.232996
+          }
+        },
+        {
+          "backend": "q8-metal",
+          "passed": true,
+          "generated_ids": [
+            15684
+          ],
+          "text": "Red",
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 3.5241246223449707e-06,
+          "largest_vision_stage_max_abs": 0.0004773139953613281,
+          "prefill_logits": {
+            "max_abs": 0.4386559724807739,
+            "mean_abs": 0.06712510536344939,
+            "rmse": 0.07824038982639296,
+            "reference_argmax": 15684,
+            "actual_argmax": 15684
+          },
+          "decode_logits": {
+            "max_abs": 0.4386559724807739,
+            "mean_abs": 0.06859421968946924,
+            "rmse": 0.07945656754632374
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.194734,
+            "load_seconds": 5.137256,
+            "prefill_seconds": 0.471671,
+            "decode_seconds": 0.010039
+          }
+        }
+      ]
+    },
+    {
+      "name": "blue",
+      "image": {
+        "height": 256,
+        "width": 256,
+        "rgb_sha256": "2cb4d57da40aa90eddd34f65f933973f5705990c396a57fcb02ba2148be42402",
+        "pattern": "solid RGB (0,0,255)"
+      },
+      "prompt": "What is the main color? Answer with one color word.",
+      "reference_generated_ids": [
+        30965
+      ],
+      "reference_text": "Blue",
+      "grid_thw": [
+        1,
+        16,
+        16
+      ],
+      "prompt_tokens": 89,
+      "runs": [
+        {
+          "backend": "f32",
+          "passed": true,
+          "generated_ids": [
+            30965
+          ],
+          "text": "Blue",
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 3.5017728805541992e-06,
+          "largest_vision_stage_max_abs": 0.0009164810180664062,
+          "prefill_logits": {
+            "max_abs": 7.487088441848755e-05,
+            "mean_abs": 1.4705897844123683e-05,
+            "rmse": 1.6982402732505217e-05,
+            "reference_argmax": 30965,
+            "actual_argmax": 30965
+          },
+          "decode_logits": {
+            "max_abs": 7.487088441848755e-05,
+            "mean_abs": 1.0486064018778052e-05,
+            "rmse": 1.3265147785292424e-05
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.355968,
+            "load_seconds": 2.857596,
+            "prefill_seconds": 9.646103,
+            "decode_seconds": 0.233538
+          }
+        },
+        {
+          "backend": "q8-metal",
+          "passed": true,
+          "generated_ids": [
+            30965
+          ],
+          "text": "Blue",
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 3.5017728805541992e-06,
+          "largest_vision_stage_max_abs": 0.0009164810180664062,
+          "prefill_logits": {
+            "max_abs": 0.29763567447662354,
+            "mean_abs": 0.03863574933400423,
+            "rmse": 0.04866606544650858,
+            "reference_argmax": 30965,
+            "actual_argmax": 30965
+          },
+          "decode_logits": {
+            "max_abs": 0.29763567447662354,
+            "mean_abs": 0.06232615931125497,
+            "rmse": 0.07651908263011822
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.185193,
+            "load_seconds": 0.059697,
+            "prefill_seconds": 0.456177,
+            "decode_seconds": 0.010155
+          }
+        }
+      ]
+    },
+    {
+      "name": "split",
+      "image": {
+        "height": 256,
+        "width": 256,
+        "rgb_sha256": "19e076509f24710528579a26617c7976f277c828849c9145cf8cef269f9bcc1a",
+        "pattern": "x < 128: RGB (255,0,0); x >= 128: RGB (0,0,255)"
+      },
+      "prompt": "What color is on the left? Answer with one color word.",
+      "reference_generated_ids": [
+        15684
+      ],
+      "reference_text": "Red",
+      "grid_thw": [
+        1,
+        16,
+        16
+      ],
+      "prompt_tokens": 90,
+      "runs": [
+        {
+          "backend": "f32",
+          "passed": true,
+          "generated_ids": [
+            15684
+          ],
+          "text": "Red",
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 5.09992241859436e-06,
+          "largest_vision_stage_max_abs": 0.000579833984375,
+          "prefill_logits": {
+            "max_abs": 6.4849853515625e-05,
+            "mean_abs": 1.7886154175812407e-05,
+            "rmse": 2.0203972204836038e-05,
+            "reference_argmax": 15684,
+            "actual_argmax": 15684
+          },
+          "decode_logits": {
+            "max_abs": 6.4849853515625e-05,
+            "mean_abs": 1.2385065170974485e-05,
+            "rmse": 1.578079647368675e-05
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.116221,
+            "load_seconds": 3.522135,
+            "prefill_seconds": 9.950018,
+            "decode_seconds": 0.231777
+          }
+        },
+        {
+          "backend": "q8-metal",
+          "passed": true,
+          "generated_ids": [
+            15684
+          ],
+          "text": "Red",
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 5.09992241859436e-06,
+          "largest_vision_stage_max_abs": 0.000579833984375,
+          "prefill_logits": {
+            "max_abs": 0.23831748962402344,
+            "mean_abs": 0.0428547106589026,
+            "rmse": 0.05298389995632458,
+            "reference_argmax": 15684,
+            "actual_argmax": 15684
+          },
+          "decode_logits": {
+            "max_abs": 0.4252009391784668,
+            "mean_abs": 0.08684715502948143,
+            "rmse": 0.10776012040923554
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.192971,
+            "load_seconds": 0.058145,
+            "prefill_seconds": 1.190995,
+            "decode_seconds": 0.01051
+          }
+        }
+      ]
+    }
+  ],
+  "implementation_commit": "e6ecdb695c2c98048fdf741ac6ab42486644790e"
+}

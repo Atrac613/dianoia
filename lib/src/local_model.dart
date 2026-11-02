@@ -10,6 +10,13 @@ import 'model.dart';
 import 'native.dart';
 import 'quant.dart';
 import 'tokenizer.dart';
+import 'vision_backbone.dart';
+import 'vision_bundle.dart';
+import 'vision_config.dart';
+import 'vision_encoder.dart';
+import 'vision_image.dart';
+import 'vision_prompt.dart';
+import 'vision_session.dart';
 
 /// Where the forward pass runs.
 enum InferenceBackend {
@@ -72,6 +79,7 @@ final class LocalModel {
     int threads = 4,
   }) async {
     final weights = _bundleWeights(dir);
+    final tokenizer = Lfm3Tokenizer.load(dir);
     if (!NativeKernels.isLoaded) {
       if (!NativeKernels.isAvailable) {
         throw UnsupportedError(
@@ -105,7 +113,7 @@ final class LocalModel {
       used = InferenceBackend.cpu;
       model = await open(gpu: false);
     }
-    return LocalModel._(model, Lfm3Tokenizer.load(dir), used);
+    return LocalModel._(model, tokenizer, used);
   }
 
   /// A new conversation with [system] as its system prompt and [tools]
@@ -138,4 +146,111 @@ final class LocalModel {
           'them with `dianoia import-gguf` or `dianoia pack`',
     );
   }
+}
+
+/// An experimental visual model using the CPU reference vision encoder and
+/// a quantized CPU/Metal/Vulkan language backbone. Load and run it in an
+/// inference isolate: each vision layer performs synchronous CPU work.
+/// Prepare the checkpoint and quantized backbone with the import/vision-run
+/// tools before loading, or install a prebuilt VL bundle with ModelStore.
+final class LocalVisionModel {
+  LocalVisionModel._(this._runtime, this.backend);
+  final VisionChatRuntime _runtime;
+
+  /// Where the language backbone runs. Image encoding currently uses the CPU.
+  final InferenceBackend backend;
+  static bool get isSupported => LocalModel.isSupported;
+  int get contextLength => _runtime.model.maxSeq;
+  bool get isClosed => _runtime.isClosed;
+
+  /// The default [maxImageTokens]: a 4032x3024 photo becomes 972 tokens,
+  /// which leaves room for a conversation in a 2048-token context.
+  static const defaultMaxImageTokens = 1024;
+
+  /// The most tokens one image is resized to: the load's request, or the
+  /// checkpoint's own budget if that is smaller.
+  int get maxImageTokens => _runtime.processor.maxImageTokens;
+
+  /// Loads original VL vision weights and a matching prepared language bundle.
+  /// Checks import fingerprints and special-token IDs before allocating model
+  /// resources. The bundle must contain a Q8 or Q4 cache as LocalModel expects.
+  ///
+  /// [maxImageTokens] lowers the checkpoint's pixel budget (16,384 tokens for
+  /// LFM3-VL, beyond any on-device context) so larger images are downscaled
+  /// with the upstream resize rule. Images within it are unaffected.
+  static Future<LocalVisionModel> load(
+    String modelDir, {
+    required String backboneDir,
+    InferenceBackend backend = InferenceBackend.auto,
+    int contextLength = 2048,
+    int threads = 4,
+    int maxImageTokens = defaultMaxImageTokens,
+  }) async {
+    validateVlBackbone(modelDir, backboneDir);
+    final config = Lfm3VlConfig.load(modelDir);
+    final processor = Lfm3ImageProcessor.load(
+      modelDir,
+    ).withMaxImageTokens(maxImageTokens);
+    if (processor.patchSize != config.vision.patchSize ||
+        processor.mergeSize != config.vision.spatialMergeSize ||
+        processor.temporalPatchSize != config.vision.temporalPatchSize ||
+        config.vision.inChannels != 3) {
+      throw const FormatException('processor and vision configuration differ');
+    }
+    final tokenizer = Lfm3Tokenizer.load(modelDir);
+    // Verify special tokens using the same path as real visual prompts.
+    prepareVisionPrompt(
+      [],
+      tokenizer: tokenizer,
+      config: config,
+      imageTokenCounts: const [],
+    );
+    final language = await LocalModel.load(
+      backboneDir,
+      backend: backend,
+      contextLength: contextLength,
+      threads: threads,
+    );
+    try {
+      final encoder = Lfm3VisionEncoder.load(modelDir);
+      return LocalVisionModel._(
+        VisionChatRuntime(language._model, tokenizer, processor, encoder),
+        language.backend,
+      );
+    } catch (_) {
+      await language.close();
+      rethrow;
+    }
+  }
+
+  /// Loads a portable bundle produced by `dianoia pack-vl`. Verifies every
+  /// recorded file's size and SHA-256 before opening native model resources.
+  /// The original checkpoint and full imported backbone are not needed.
+  static Future<LocalVisionModel> loadBundle(
+    String directory, {
+    InferenceBackend backend = InferenceBackend.auto,
+    int contextLength = 2048,
+    int threads = 4,
+    int maxImageTokens = defaultMaxImageTokens,
+  }) async {
+    await validateVlBundle(directory);
+    return load(
+      directory,
+      backboneDir: '$directory/language',
+      backend: backend,
+      contextLength: contextLength,
+      threads: threads,
+      maxImageTokens: maxImageTokens,
+    );
+  }
+
+  VisionChatSession chat({
+    String? system,
+    List<Map<String, Object?>>? tools,
+    int maxNewTokens = 512,
+  }) => _runtime.chat(system: system, tools: tools, maxNewTokens: maxNewTokens);
+
+  /// Cancels active work, waits for it to settle, then releases image weights
+  /// and the language model. New requests are rejected once closing starts.
+  Future<void> close() => _runtime.close();
 }

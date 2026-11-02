@@ -393,6 +393,9 @@ abstract interface class CachedMatrix {
 
 /// A quantized matrix in native memory that the C kernels multiply.
 abstract interface class NativeMatrix implements CachedMatrix {
+  /// Releases an owned allocation; mapped matrices must be closed via the cache.
+  void free();
+
   /// ys[t * rows + r] = (W xs[t])[r] for t < n, xs as [n, cols].
   /// [int8Inputs] overrides the process-wide setting (for tests).
   void apply(Float32List xs, Float32List ys, int n, {bool? int8Inputs});
@@ -431,17 +434,23 @@ final class NativeQ8Matrix implements NativeMatrix {
   }) {
     final qs = NativeKernels.allocate<Int8>(rows * cols);
     final scales = NativeKernels.allocate<Float>(rows * cols ~/ 32 * 4);
-    final buffer = Float32List(chunk * cols);
-    for (var first = 0; first < rows; first += chunk) {
-      final count = rows - first < chunk ? rows - first : chunk;
-      fill(first, count, buffer);
-      _quantizeQ8(
-        buffer.address,
-        qs + first * cols,
-        scales + first * cols ~/ 32,
-        count,
-        cols,
-      );
+    try {
+      final buffer = Float32List(chunk * cols);
+      for (var first = 0; first < rows; first += chunk) {
+        final count = rows - first < chunk ? rows - first : chunk;
+        fill(first, count, buffer);
+        _quantizeQ8(
+          buffer.address,
+          qs + first * cols,
+          scales + first * cols ~/ 32,
+          count,
+          cols,
+        );
+      }
+    } catch (_) {
+      _free(qs.cast());
+      _free(scales.cast());
+      rethrow;
     }
     return NativeQ8Matrix._(rows, cols, qs, scales);
   }
@@ -473,6 +482,7 @@ final class NativeQ8Matrix implements NativeMatrix {
 
   /// Frees the memory of a matrix made by quantizing. The matrix must not
   /// be used afterwards.
+  @override
   void free() {
     if (!_owned) throw StateError('this matrix does not own its memory');
     if (_freed) return;
@@ -516,17 +526,24 @@ final class NativeQ8Matrix implements NativeMatrix {
   /// Writes row [r], dequantized, into [out] at [offset]: token lookup in
   /// an embedding that exists only as the tied, quantized LM head.
   void dequantizeRow(int r, Float32List out, int offset) {
-    final q = (_qs + r * cols).asTypedList(cols);
-    final s = (_scales + r * cols ~/ 32).asTypedList(cols ~/ 32);
+    // Keep lookup on direct pointers: temporary external typed views crashed
+    // in the CPU-to-GPU cache reload regression under the Dart 3.13.5 JIT.
+    final start = r * cols;
     for (var c = 0; c < cols; c++) {
-      out[offset + c] = q[c] * s[c >> 5];
+      out[offset + c] = _qs[start + c] * _scales[(start + c) >> 5];
     }
   }
 }
 
 /// A row-major [rows, cols] matrix in Q4 (Q4_0) in native memory.
 final class NativeQ4Matrix implements NativeMatrix {
-  NativeQ4Matrix._(this.rows, this.cols, this._qs, this._scales);
+  NativeQ4Matrix._(
+    this.rows,
+    this.cols,
+    this._qs,
+    this._scales, {
+    bool owned = true,
+  }) : _owned = owned;
 
   /// Quantizes float weights with llama.cpp's Q4_0 rule.
   factory NativeQ4Matrix.quantize(Float32List w, int rows, int cols) {
@@ -546,7 +563,7 @@ final class NativeQ4Matrix implements NativeMatrix {
     int cols,
     Pointer<Uint8> qs,
     Pointer<Uint16> scales,
-  ) => NativeQ4Matrix._(rows, cols, qs, scales);
+  ) => NativeQ4Matrix._(rows, cols, qs, scales, owned: false);
 
   @override
   String get format => 'q4';
@@ -556,6 +573,17 @@ final class NativeQ4Matrix implements NativeMatrix {
   final int cols;
   final Pointer<Uint8> _qs;
   final Pointer<Uint16> _scales;
+  final bool _owned;
+  bool _freed = false;
+
+  @override
+  void free() {
+    if (!_owned) throw StateError('this matrix does not own its memory');
+    if (_freed) return;
+    _freed = true;
+    _free(_qs.cast());
+    _free(_scales.cast());
+  }
 
   @override
   Uint8List get qsBytes => _qs.asTypedList(rows * cols ~/ 2);

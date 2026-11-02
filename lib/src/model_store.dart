@@ -1,26 +1,394 @@
 /// Getting a model onto the device: its files from where the model's authors
 /// publish them, pinned by revision and checked by SHA-256, and the bundle
-/// dianoia runs built from them on the device. Nothing is redistributed.
+/// dianoia runs built from them on the device, or a prebuilt VL bundle.
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+
+import 'package:crypto/crypto.dart';
 
 import 'download.dart';
 import 'gguf.dart';
 import 'native.dart';
+import 'quant.dart';
+import 'vision_backbone.dart';
+import 'vision_bundle.dart';
+import 'vision_gguf.dart';
 
 export 'download.dart' show ModelDownloadException, RemoteFile;
 
+RemoteFile Function(RemoteFile) _mirrorFiles(String baseUrl) {
+  final base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
+  if (!['http', 'https'].contains(base.scheme) ||
+      !base.hasAuthority ||
+      base.query.isNotEmpty ||
+      base.fragment.isNotEmpty) {
+    throw ArgumentError.value(baseUrl, 'baseUrl', 'expected HTTP(S) directory');
+  }
+  return (f) => RemoteFile(
+    f.name,
+    base.resolve(f.name).toString(),
+    size: f.size,
+    sha256: f.sha256,
+  );
+}
+
+// Download URLs are deliberately excluded: mirrors preserve source identity.
+Map<String, Object> _qadSourceIdentity(VisionGgufSpec model) => {
+  'version': 1,
+  for (final entry in {
+    'language': model.language,
+    'vision': model.vision,
+    'config': model.config,
+    'processor': model.processor,
+    'tokenizer': model.tokenizer,
+    'license': model.licenseFile,
+  }.entries)
+    entry.key: {
+      'name': entry.value.name,
+      'bytes': entry.value.size,
+      'sha256': entry.value.sha256,
+    },
+};
+
+String _qadReceipt(VisionGgufSpec model, String bundle) => jsonEncode({
+  'source': _qadSourceIdentity(model),
+  'manifest_sha256': sha256
+      .convert(File('$bundle/vl_bundle.json').readAsBytesSync())
+      .toString(),
+});
+
+/// A pinned checkpoint or prebuilt vision bundle installed by [ModelStore].
+sealed class InstallableModel {
+  const InstallableModel();
+
+  String get id;
+  String get name;
+  String get license;
+  String get licenseUrl;
+  List<RemoteFile> get files;
+
+  /// Rehosts downloads while preserving every source pin and storage estimate.
+  InstallableModel fromMirror(String baseUrl);
+
+  /// Approximate installed bytes, when known for this pinned conversion.
+  int? get installedBytes => null;
+
+  /// Recommended free bytes during installation, including temporary files.
+  int? get setupBytes => null;
+
+  /// Total bytes downloaded, including metadata and license files.
+  int get downloadBytes => files.fold(0, (sum, file) => sum + file.size);
+}
+
+/// Language matrix quantization; the tied output head stays Q8.
+enum VisionQuantization { q8, q4 }
+
+/// An upstream BF16 VL checkpoint converted into a standalone Q8/Q4 bundle.
+/// Installation imports its language backbone, quantizes it, then packs it.
+final class VisionCheckpointSpec extends InstallableModel {
+  const VisionCheckpointSpec({
+    required this.id,
+    required this.name,
+    required this.license,
+    required this.licenseUrl,
+    this.installedBytes,
+    this.setupBytes,
+    required this.files,
+    this.quantization = VisionQuantization.q8,
+  });
+
+  @override
+  final String id;
+  @override
+  final String name;
+  @override
+  final String license;
+  @override
+  final String licenseUrl;
+  @override
+  final int? installedBytes;
+  @override
+  final int? setupBytes;
+  @override
+  final List<RemoteFile> files;
+
+  final VisionQuantization quantization;
+
+  @override
+  VisionCheckpointSpec fromMirror(String baseUrl) {
+    final at = _mirrorFiles(baseUrl);
+    return VisionCheckpointSpec(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
+      quantization: quantization,
+      files: List.unmodifiable(files.map(at)),
+    );
+  }
+
+  static const _repo =
+      'https://huggingface.co/LiquidAI/LFM3-VL-2B/resolve/'
+      'ba44bd51db20a2753f28c273a1571ccaa210d954';
+
+  /// 3.85 GB downloaded, about 2.89 GB installed. Allow at least 13 GB free
+  /// during conversion, including the temporary full language backbone.
+  static const lfm3VlQ8 = VisionCheckpointSpec(
+    id: 'lfm3-vl-2b-q8-ba44bd5',
+    installedBytes: 2885204285,
+    setupBytes: 13000000000,
+    name: 'LFM3-VL-2B (Q8)',
+    license: 'LFM Open License v1.0',
+    licenseUrl:
+        'https://huggingface.co/LiquidAI/LFM3-VL-2B/blob/ba44bd51db20a2753f28c273a1571ccaa210d954/LICENSE',
+    files: _lfm3VlFiles,
+  );
+
+  /// The same pinned checkpoint built as Q4: about 2.06 GB installed.
+  /// Source download bytes are unchanged; the tied output head stays Q8.
+  static const lfm3VlQ4 = VisionCheckpointSpec(
+    id: 'lfm3-vl-2b-q4-ba44bd5',
+    installedBytes: 2060427581,
+    setupBytes: 13000000000,
+    name: 'LFM3-VL-2B (Q4)',
+    license: 'LFM Open License v1.0',
+    licenseUrl:
+        'https://huggingface.co/LiquidAI/LFM3-VL-2B/blob/ba44bd51db20a2753f28c273a1571ccaa210d954/LICENSE',
+    quantization: VisionQuantization.q4,
+    files: _lfm3VlFiles,
+  );
+
+  static const _lfm3VlFiles = [
+    RemoteFile(
+      'config.json',
+      '$_repo/config.json',
+      size: 2905,
+      sha256:
+          '18a02e8b5963e38c98683e2c948705ea45220d75f017e9b4bdd9cf54692e6dc3',
+    ),
+    RemoteFile(
+      'processor_config.json',
+      '$_repo/processor_config.json',
+      size: 1535,
+      sha256:
+          'd3d5c3f9dc3d3f25c3177ba8bb05938b53c51799244af1ca6406cde78924b84e',
+    ),
+    RemoteFile(
+      'tokenizer.json',
+      '$_repo/tokenizer.json',
+      size: 17908258,
+      sha256:
+          'a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7',
+    ),
+    RemoteFile(
+      'LICENSE',
+      '$_repo/LICENSE',
+      size: 10574,
+      sha256:
+          '30adf9d6478191fb87f2424f63ba0728598335aaf99cd2848ef17e8e545fe94b',
+    ),
+    RemoteFile(
+      'model.safetensors',
+      '$_repo/model.safetensors',
+      size: 3836417920,
+      sha256:
+          'a9bb8b1c159c9d6c3007bc1c7ad8018b599f759d97da2701714e37426283e131',
+    ),
+  ];
+}
+
+/// Paired official language QAD Q4_0 and BF16 vision GGUFs, imported on device.
+final class VisionGgufSpec extends InstallableModel {
+  const VisionGgufSpec({
+    required this.id,
+    required this.name,
+    required this.license,
+    required this.licenseUrl,
+    this.installedBytes,
+    this.setupBytes,
+    required this.language,
+    required this.vision,
+    required this.config,
+    required this.processor,
+    required this.tokenizer,
+    required this.licenseFile,
+  });
+
+  @override
+  final String id;
+  @override
+  final String name;
+  @override
+  final String license;
+  @override
+  final String licenseUrl;
+  @override
+  final int? installedBytes;
+  @override
+  final int? setupBytes;
+  final RemoteFile language, vision, config, processor, tokenizer, licenseFile;
+  @override
+  List<RemoteFile> get files => [
+    config,
+    processor,
+    tokenizer,
+    licenseFile,
+    language,
+    vision,
+  ];
+
+  @override
+  VisionGgufSpec fromMirror(String baseUrl) {
+    final at = _mirrorFiles(baseUrl);
+    return VisionGgufSpec(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
+      language: at(language),
+      vision: at(vision),
+      config: at(config),
+      processor: at(processor),
+      tokenizer: at(tokenizer),
+      licenseFile: at(licenseFile),
+    );
+  }
+
+  static const _repo =
+      'https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/'
+      'b36554cfd35854b06429900131730cd80f092cdb';
+
+  /// 1.45 GB downloaded, about 1.54 GB installed; allow 5 GB during setup.
+  static final lfm3VlQadQ4 = VisionGgufSpec(
+    id: 'lfm3-vl-2b-qad-q4-b36554c',
+    installedBytes: 1540284520,
+    setupBytes: 5000000000,
+    name: 'LFM3-VL-2B (QAD Q4_0)',
+    license: VisionCheckpointSpec.lfm3VlQ8.license,
+    licenseUrl: VisionCheckpointSpec.lfm3VlQ8.licenseUrl,
+    language: const RemoteFile(
+      'LFM3-VL-2B-QAD-Q4_0.gguf',
+      '$_repo/LFM3-VL-2B-QAD-Q4_0.gguf',
+      size: 1049615648,
+      sha256:
+          '621c455376cb96a20891697deb9975c6fb47dd5ea98ed3ad1f3b7e8f24f0b1e6',
+    ),
+    vision: const RemoteFile(
+      'mmproj-LFM3-VL-2B-BF16.gguf',
+      '$_repo/mmproj-LFM3-VL-2B-BF16.gguf',
+      size: 378996032,
+      sha256:
+          '8e75a88afc0e6a3bcd637becbe720447ea0794934b7b417a1f42d5cfe0d9c288',
+    ),
+    config: VisionCheckpointSpec._lfm3VlFiles.firstWhere(
+      (f) => f.name == 'config.json',
+    ),
+    processor: VisionCheckpointSpec._lfm3VlFiles.firstWhere(
+      (f) => f.name == 'processor_config.json',
+    ),
+    tokenizer: VisionCheckpointSpec._lfm3VlFiles.firstWhere(
+      (f) => f.name == 'tokenizer.json',
+    ),
+    licenseFile: VisionCheckpointSpec._lfm3VlFiles.firstWhere(
+      (f) => f.name == 'LICENSE',
+    ),
+  );
+}
+
+/// A prebuilt `pack-vl` bundle hosted by an app or its model distributor.
+///
+/// The application supplies a trusted, pinned manifest, for example from an
+/// asset reviewed with its release. Never trust an unverified manifest fetched
+/// from the same remote server: it defines the expected payload hashes.
+final class VisionModelSpec extends InstallableModel {
+  VisionModelSpec._({
+    required this.id,
+    required this.name,
+    required this.license,
+    required this.licenseUrl,
+    required this.files,
+  });
+
+  /// [manifestJson] is the exact `vl_bundle.json` produced by `pack-vl`.
+  /// All files, including that manifest, are fetched beneath [baseUrl] and
+  /// pinned by their sizes and SHA-256. Whitespace in the manifest is significant.
+  factory VisionModelSpec.fromManifest({
+    required String id,
+    required String name,
+    required String license,
+    required String licenseUrl,
+    required String baseUrl,
+    required String manifestJson,
+  }) {
+    final manifest = VlBundleManifest.parse(manifestJson);
+    final bytes = utf8.encode(manifestJson);
+    final files = [
+      RemoteFile(
+        'vl_bundle.json',
+        '',
+        size: bytes.length,
+        sha256: sha256.convert(bytes).toString(),
+      ),
+      for (final entry in manifest.files.entries)
+        RemoteFile(
+          entry.key,
+          '',
+          size: entry.value.bytes,
+          sha256: entry.value.sha256,
+        ),
+    ];
+    return VisionModelSpec._(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      files: List.unmodifiable(files),
+    ).fromMirror(baseUrl);
+  }
+
+  @override
+  final String id;
+  @override
+  final String name;
+  @override
+  final String license;
+  @override
+  final String licenseUrl;
+  @override
+  final List<RemoteFile> files;
+
+  /// Changes only the download host/path, preserving all pinned bytes.
+  @override
+  VisionModelSpec fromMirror(String baseUrl) {
+    final at = _mirrorFiles(baseUrl);
+    return VisionModelSpec._(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      files: List.unmodifiable(files.map(at)),
+    );
+  }
+}
+
 /// A model [ModelStore] can install: a GGUF checkpoint and the matching
 /// Hugging Face model's config, tokenizer and license.
-final class ModelSpec {
+final class ModelSpec extends InstallableModel {
   const ModelSpec({
     required this.id,
     required this.name,
     required this.license,
     required this.licenseUrl,
+    this.installedBytes,
+    this.setupBytes,
     required this.gguf,
     required this.config,
     required this.tokenizer,
@@ -28,37 +396,41 @@ final class ModelSpec {
   });
 
   /// The model's directory name in a store.
+  @override
   final String id;
+  @override
   final String name;
 
   /// The license the weights come under, which an app should show before
   /// downloading them, and where to read it.
+  @override
   final String license;
+  @override
   final String licenseUrl;
+  @override
+  final int? installedBytes;
+  @override
+  final int? setupBytes;
 
   final RemoteFile gguf, config, tokenizer, licenseFile;
 
+  @override
   List<RemoteFile> get files => [config, tokenizer, licenseFile, gguf];
-
-  /// Bytes to download.
-  int get downloadBytes => files.fold(0, (sum, f) => sum + f.size);
 
   /// This model with every file fetched from [baseUrl] instead, as
   /// `[baseUrl]/[RemoteFile.name]`: a mirror an app hosts, or a test
   /// server. The sizes and SHA-256 stay pinned, so a mirror can only serve
   /// the published bytes.
+  @override
   ModelSpec fromMirror(String baseUrl) {
-    RemoteFile at(RemoteFile f) => RemoteFile(
-      f.name,
-      '$baseUrl/${f.name}',
-      size: f.size,
-      sha256: f.sha256,
-    );
+    final at = _mirrorFiles(baseUrl);
     return ModelSpec(
       id: id,
       name: name,
       license: license,
       licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
       gguf: at(gguf),
       config: at(config),
       tokenizer: at(tokenizer),
@@ -114,7 +486,7 @@ final class ModelSpec {
 
 enum InstallStage { downloading, building, done }
 
-/// Where an [ModelStore.install] stands.
+/// Where a [ModelStore.install] stands.
 final class InstallProgress {
   const InstallProgress(this.stage, {this.bytes = 0, this.totalBytes = 0});
 
@@ -134,11 +506,42 @@ final class ModelStore {
 
   final String directory;
 
-  /// The bundle [LocalModel.load] takes, once [model] is installed.
-  String bundlePath(ModelSpec model) => '$directory/${model.id}/bundle';
+  /// The installed path for [LocalModel.load] or [LocalVisionModel.loadBundle].
+  String bundlePath(InstallableModel model) {
+    _checkId(model.id);
+    return '$directory/${model.id}/bundle';
+  }
 
-  bool isInstalled(ModelSpec model) =>
-      Directory(bundlePath(model)).existsSync();
+  /// Checks installation presence and, for VL, pinned manifest identity.
+  /// QAD installs also require a receipt matching every source pin and the
+  /// generated manifest. Older installs without that receipt need reinstalling.
+  /// Payload integrity is checked by [LocalVisionModel.loadBundle] when loading.
+  bool isInstalled(InstallableModel model) {
+    final bundle = bundlePath(model);
+    if (!Directory(bundle).existsSync()) return false;
+    if (model is VisionModelSpec) {
+      final manifest = File('$bundle/vl_bundle.json');
+      final pinned = model.files.first;
+      return manifest.existsSync() &&
+          manifest.lengthSync() == pinned.size &&
+          sha256.convert(manifest.readAsBytesSync()).toString() ==
+              pinned.sha256;
+    }
+    if (model is VisionGgufSpec) {
+      try {
+        final m = VlBundleManifest.parse(
+          File('$bundle/vl_bundle.json').readAsStringSync(),
+        );
+        return m.weights == 'q4' &&
+            m.inputEmbedding == 'q8-cache' &&
+            File('$bundle/qad_source.json').readAsStringSync() ==
+                _qadReceipt(model, bundle);
+      } on Object {
+        return false;
+      }
+    }
+    return true;
+  }
 
   /// Downloads [model]'s files and builds its bundle, reporting progress.
   /// What a previous install left half done is resumed; a lost connection
@@ -148,9 +551,48 @@ final class ModelStore {
   /// model runs at a time: a second throws [StateError]. The stream ends
   /// with [InstallStage.done], or with an error.
   ///
-  /// Needs about the download size again in free space while building; the
-  /// downloads are deleted afterwards.
-  Stream<InstallProgress> install(ModelSpec model, {int retries = 3}) {
+  /// Text models need about the download size again in free space while
+  /// building; downloads are deleted afterwards. Vision bundles are validated
+  /// in an isolate during [InstallStage.building], then renamed into place,
+  /// without a second copy or quantization. [VisionCheckpointSpec] instead
+  /// builds Q8/Q4 from upstream BF16 files, allowing about 13 GB during conversion
+  /// for the built-in LFM3-VL model. Cancellation during conversion or verification
+  /// waits for it to finish and leaves the downloads unpublished. [VisionGgufSpec]
+  /// imports prequantized QAD files with about 5 GB peak setup storage.
+  Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
+    _checkId(model.id);
+    if (model is VisionCheckpointSpec) {
+      const required = {
+        'config.json',
+        'processor_config.json',
+        'tokenizer.json',
+        'LICENSE',
+        'model.safetensors',
+      };
+      final names = model.files.map((f) => f.name).toSet();
+      if (model.files.length != required.length ||
+          names.length != required.length ||
+          !names.containsAll(required)) {
+        throw ArgumentError(
+          'VL checkpoint must contain exactly the five required files',
+        );
+      }
+    }
+    if (model is VisionGgufSpec) {
+      final names = model.files.map((f) => f.name).toSet();
+      if (model.config.name != 'config.json' ||
+          model.processor.name != 'processor_config.json' ||
+          model.tokenizer.name != 'tokenizer.json' ||
+          model.licenseFile.name != 'LICENSE' ||
+          names.length != 6 ||
+          names.any(
+            (n) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(n),
+          )) {
+        throw ArgumentError(
+          'GGUF model files must have six distinct safe names and canonical metadata',
+        );
+      }
+    }
     final key = '$directory/${model.id}';
     if (!_installing.add(key)) {
       throw StateError('${model.id} is already being installed in $directory');
@@ -168,10 +610,19 @@ final class ModelStore {
       final total = model.downloadBytes;
       try {
         if (!isInstalled(model)) {
+          if ((model is VisionModelSpec || model is VisionGgufSpec) &&
+              Directory(bundlePath(model)).existsSync()) {
+            throw StateError(
+              'installed VL manifest differs; remove ${model.id} before replacing it',
+            );
+          }
           final downloads = Directory('$directory/${model.id}/downloads')
             ..createSync(recursive: true);
           var done = 0;
           for (final file in model.files) {
+            File(
+              '${downloads.path}/${file.name}',
+            ).parent.createSync(recursive: true);
             for (var attempt = 0; ; attempt++) {
               try {
                 await downloadFile(
@@ -203,8 +654,44 @@ final class ModelStore {
               totalBytes: total,
             ),
           );
-          await _build(model, downloads.path, bundlePath(model));
-          await downloads.delete(recursive: true);
+          if (model is VisionModelSpec) {
+            await _verifyVision(downloads.path);
+            if (cancelled) return;
+            downloads.renameSync(bundlePath(model));
+          } else if (model is VisionGgufSpec) {
+            _removeStaging('$directory/${model.id}');
+            final partial = Directory('${bundlePath(model)}.partial');
+            try {
+              if (partial.existsSync()) partial.deleteSync(recursive: true);
+              await _buildQad(model, downloads.path, partial.path);
+              File(
+                '${partial.path}/qad_source.json',
+              ).writeAsStringSync(_qadReceipt(model, partial.path));
+              if (cancelled) return;
+              partial.renameSync(bundlePath(model));
+              await downloads.delete(recursive: true);
+            } finally {
+              if (partial.existsSync()) partial.deleteSync(recursive: true);
+            }
+          } else if (model is VisionCheckpointSpec) {
+            _removeStaging('$directory/${model.id}');
+            final partial = Directory('${bundlePath(model)}.partial');
+            try {
+              await _buildVision(
+                downloads.path,
+                partial.path,
+                model.quantization,
+              );
+              if (cancelled) return;
+              partial.renameSync(bundlePath(model));
+              await downloads.delete(recursive: true);
+            } finally {
+              if (partial.existsSync()) partial.deleteSync(recursive: true);
+            }
+          } else {
+            await _build(model as ModelSpec, downloads.path, bundlePath(model));
+            await downloads.delete(recursive: true);
+          }
         }
         report(
           InstallProgress(InstallStage.done, bytes: total, totalBytes: total),
@@ -233,13 +720,96 @@ final class ModelStore {
     return out.stream;
   }
 
+  /// Deletes the randomly named staging directories that a VL build of a
+  /// killed process left in [modelDir]; its finally blocks never ran.
+  /// Only one install of a model runs at a time, so none is in use.
+  static void _removeStaging(String modelDir) {
+    for (final entry in Directory(modelDir).listSync(followLinks: false)) {
+      final name = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (entry is Directory && name.startsWith('.dianoia-vl-')) {
+        entry.deleteSync(recursive: true);
+      }
+    }
+  }
+
+  static Future<void> _buildQad(
+    VisionGgufSpec model,
+    String downloads,
+    String bundle,
+  ) => Isolate.run(
+    () => importVlQadBundle(
+      '$downloads/${model.language.name}',
+      '$downloads/${model.vision.name}',
+      downloads,
+      bundle,
+    ),
+  );
+
+  // Use separate isolates for quantization and packing, so the first one's
+  // temporary quantized matrices are released before the packed cache is mapped.
+  static Future<void> _buildVision(
+    String downloads,
+    String bundle,
+    VisionQuantization quantization,
+  ) async {
+    final weights = quantization == VisionQuantization.q4
+        ? WeightFormat.q4
+        : WeightFormat.q8;
+    final backbone = '$bundle.backbone';
+    try {
+      for (final path in [backbone, bundle]) {
+        final directory = Directory(path);
+        if (directory.existsSync()) directory.deleteSync(recursive: true);
+      }
+      await _prepareVision(downloads, backbone, weights);
+      await _packVision(downloads, backbone, bundle, weights);
+    } finally {
+      final directory = Directory(backbone);
+      if (directory.existsSync()) directory.deleteSync(recursive: true);
+    }
+  }
+
+  static Future<void> _prepareVision(
+    String downloads,
+    String backbone,
+    WeightFormat weights,
+  ) => Isolate.run(() {
+    importVlBackbone(downloads, backbone);
+    if (!NativeKernels.isLoaded) NativeKernels.load(null);
+    buildVlBackboneCache(backbone, weights: weights);
+  });
+
+  static Future<void> _packVision(
+    String downloads,
+    String backbone,
+    String bundle,
+    WeightFormat weights,
+  ) => Isolate.run(
+    () => packVlBundle(downloads, backbone, bundle, weights: weights),
+  );
+
   /// The installs running in this isolate, by model directory.
   static final _installing = <String>{};
 
   /// Deletes [model]'s bundle and any downloads it left.
-  Future<void> remove(ModelSpec model) async {
+  Future<void> remove(InstallableModel model) async {
+    _checkId(model.id);
+    if (_installing.contains('$directory/${model.id}')) {
+      throw StateError('cannot remove ${model.id} during installation');
+    }
     final dir = Directory('$directory/${model.id}');
     if (dir.existsSync()) await dir.delete(recursive: true);
+  }
+
+  // Keep the isolate closure outside install's context, which holds unsendable
+  // stream controllers, clients and futures.
+  static Future<void> _verifyVision(String directory) =>
+      Isolate.run(() => validateVlBundle(directory));
+
+  static void _checkId(String id) {
+    if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$').hasMatch(id)) {
+      throw ArgumentError.value(id, 'model.id', 'expected a directory name');
+    }
   }
 
   /// Builds the bundle from the downloads in another isolate, so that an

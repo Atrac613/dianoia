@@ -1,0 +1,416 @@
+{
+  "date": "2026-11-01",
+  "runtime_implementation_commit": "e6ecdb695c2c98048fdf741ac6ab42486644790e",
+  "checkpoint": {
+    "revision": "ba44bd51db20a2753f28c273a1571ccaa210d954",
+    "bytes": 3836417920,
+    "sha256": "a9bb8b1c159c9d6c3007bc1c7ad8018b599f759d97da2701714e37426283e131",
+    "expected_sha256": "a9bb8b1c159c9d6c3007bc1c7ad8018b599f759d97da2701714e37426283e131",
+    "verified": true
+  },
+  "environment": {
+    "chip": "Apple M2 Max",
+    "memory": "64 GB",
+    "architecture": "macos_arm64",
+    "dart": "3.13.5 (AOT)",
+    "python": "3.14.6",
+    "torch": "2.15.0",
+    "transformers": "5.21.0",
+    "torchvision": "0.29.2"
+  },
+  "scope": "One public-domain photograph with English/Japanese questions and two generated OCR cards. Four prompts, CPU F32 and CPU-vision/Q8-Metal-language backends; greedy decoding, thinking disabled, max_new_tokens=32, dianoia max_seq=512.",
+  "bounds": {
+    "encoder_atol": 0.002,
+    "encoder_rtol": 0.0002,
+    "cpu_f32_logits_atol": 0.002,
+    "cpu_f32_logits_rtol": 0.0002,
+    "q8_metal_logits_atol": 0.5,
+    "q8_metal_logits_rtol": 0.0
+  },
+  "image_generation": {
+    "source": "https://raw.githubusercontent.com/scikit-image/scikit-image/v0.19.3/skimage/data/astronaut.png",
+    "source_sha256": "88431cd9653ccd539741b555fb0a46b61558b301d4110412b5bc28b5e3ea6cb5",
+    "pillow": "13.0.0",
+    "font_name": "ヒラギノ角ゴシック W3.ttc",
+    "font_sha256": "ff92033a300f55aff2f45f57479a560af2c5467973b425d3f724f870af07f83e",
+    "script_sha256": "a5b7addeeb8bd2881920ce5b02c2679884373683d0c5cfeb0875cba83153f75a",
+    "regenerated_rgb_hashes_match": true
+  },
+  "cases": [
+    {
+      "name": "photo-en",
+      "image": "astronaut.png",
+      "prompt": "What is the person wearing? Answer in a short phrase.",
+      "expected_concept": "astronaut clothing / spacesuit; assess specificity manually",
+      "height": 256,
+      "width": 256,
+      "rgb_sha256": "15cade58ef69634ea5321372f56de1948c64e5bb12313314e437b99d3fa4cc46",
+      "grid_thw": [
+        1,
+        16,
+        16
+      ],
+      "prompt_tokens": 89,
+      "reference_text": "Suit",
+      "reference_generated_ids": [
+        59,
+        3471
+      ],
+      "runs": [
+        {
+          "backend": "f32",
+          "comparison_passed": true,
+          "text": "Suit",
+          "generated_ids": [
+            59,
+            3471
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.8551945686340332e-06,
+          "largest_vision_stage_max_abs": 0.000591278076171875,
+          "prefill_logits": {
+            "max_abs": 6.103515625e-05,
+            "mean_abs": 8.668703835041924e-06,
+            "rmse": 1.0176746231534899e-05,
+            "reference_argmax": 59,
+            "actual_argmax": 59
+          },
+          "decode_logits": {
+            "max_abs": 6.103515625e-05,
+            "mean_abs": 5.099090405678908e-06,
+            "rmse": 6.8381769370935375e-06
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.224628,
+            "load_seconds": 3.217932,
+            "prefill_seconds": 9.827804,
+            "decode_seconds": 0.467645
+          }
+        },
+        {
+          "backend": "q8-metal",
+          "comparison_passed": true,
+          "text": "Suit",
+          "generated_ids": [
+            59,
+            3471
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.8551945686340332e-06,
+          "largest_vision_stage_max_abs": 0.000591278076171875,
+          "prefill_logits": {
+            "max_abs": 0.16820621490478516,
+            "mean_abs": 0.023279781889375385,
+            "rmse": 0.02957853140611679,
+            "reference_argmax": 59,
+            "actual_argmax": 59
+          },
+          "decode_logits": {
+            "max_abs": 0.34505271911621094,
+            "mean_abs": 0.02534104327256057,
+            "rmse": 0.03226936403953835
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.254949,
+            "load_seconds": 0.057379,
+            "prefill_seconds": 1.172887,
+            "decode_seconds": 0.020983
+          }
+        }
+      ]
+    },
+    {
+      "name": "photo-ja",
+      "image": "astronaut.png",
+      "prompt": "この人物は何を着ていますか。日本語で短く答えてください。",
+      "expected_concept": "astronaut clothing / spacesuit; assess Japanese wording manually",
+      "height": 256,
+      "width": 256,
+      "rgb_sha256": "15cade58ef69634ea5321372f56de1948c64e5bb12313314e437b99d3fa4cc46",
+      "grid_thw": [
+        1,
+        16,
+        16
+      ],
+      "prompt_tokens": 93,
+      "reference_text": "宇宙飛行士の服を着ています。",
+      "reference_generated_ids": [
+        108685,
+        37484,
+        2615,
+        11197,
+        583,
+        8413,
+        913,
+        6376,
+        69031,
+        646
+      ],
+      "runs": [
+        {
+          "backend": "f32",
+          "comparison_passed": true,
+          "text": "宇宙飛行士の服を着ています。",
+          "generated_ids": [
+            108685,
+            37484,
+            2615,
+            11197,
+            583,
+            8413,
+            913,
+            6376,
+            69031,
+            646
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.8551945686340332e-06,
+          "largest_vision_stage_max_abs": 0.000591278076171875,
+          "prefill_logits": {
+            "max_abs": 6.29425048828125e-05,
+            "mean_abs": 7.911944965940166e-06,
+            "rmse": 9.761061765862033e-06,
+            "reference_argmax": 108685,
+            "actual_argmax": 108685
+          },
+          "decode_logits": {
+            "max_abs": 7.066130638122559e-05,
+            "mean_abs": 4.379169295826944e-06,
+            "rmse": 5.9156455744175865e-06
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.31183,
+            "load_seconds": 2.897703,
+            "prefill_seconds": 10.367924,
+            "decode_seconds": 2.361216
+          }
+        },
+        {
+          "backend": "q8-metal",
+          "comparison_passed": true,
+          "text": "宇宙飛行士の服を着ています。",
+          "generated_ids": [
+            108685,
+            37484,
+            2615,
+            11197,
+            583,
+            8413,
+            913,
+            6376,
+            69031,
+            646
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.8551945686340332e-06,
+          "largest_vision_stage_max_abs": 0.000591278076171875,
+          "prefill_logits": {
+            "max_abs": 0.20959043502807617,
+            "mean_abs": 0.02635061762096723,
+            "rmse": 0.03408835997568105,
+            "reference_argmax": 108685,
+            "actual_argmax": 108685
+          },
+          "decode_logits": {
+            "max_abs": 0.22292840480804443,
+            "mean_abs": 0.02994328793068587,
+            "rmse": 0.03909629667286724
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.316528,
+            "load_seconds": 0.06174,
+            "prefill_seconds": 0.869443,
+            "decode_seconds": 0.102116
+          }
+        }
+      ]
+    },
+    {
+      "name": "ocr-latin",
+      "image": "ocr-latin.png",
+      "prompt": "Read the code after CODE. Return only the code.",
+      "expected_text": "AB42",
+      "height": 192,
+      "width": 384,
+      "rgb_sha256": "b8ba9773c0cdb1d110c13cd4bf2b1516c87ecab346d22bd9c5214eff68e42734",
+      "grid_thw": [
+        1,
+        12,
+        24
+      ],
+      "prompt_tokens": 96,
+      "reference_text": "AB42",
+      "reference_generated_ids": [
+        5193,
+        3843
+      ],
+      "runs": [
+        {
+          "backend": "f32",
+          "comparison_passed": true,
+          "text": "AB42",
+          "generated_ids": [
+            5193,
+            3843
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.0162591934204102e-05,
+          "largest_vision_stage_max_abs": 0.0004239082336425781,
+          "prefill_logits": {
+            "max_abs": 4.863739013671875e-05,
+            "mean_abs": 8.510123201688202e-06,
+            "rmse": 1.0069515902492978e-05,
+            "reference_argmax": 5193,
+            "actual_argmax": 5193
+          },
+          "decode_logits": {
+            "max_abs": 4.863739013671875e-05,
+            "mean_abs": 7.620925051639915e-06,
+            "rmse": 9.031155222739724e-06
+          },
+          "single_run_seconds": {
+            "vision_seconds": 5.009196,
+            "load_seconds": 2.946171,
+            "prefill_seconds": 10.553368,
+            "decode_seconds": 0.475436
+          },
+          "exact_ocr_text": true
+        },
+        {
+          "backend": "q8-metal",
+          "comparison_passed": true,
+          "text": "AB42",
+          "generated_ids": [
+            5193,
+            3843
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.0162591934204102e-05,
+          "largest_vision_stage_max_abs": 0.0004239082336425781,
+          "prefill_logits": {
+            "max_abs": 0.20331525802612305,
+            "mean_abs": 0.02395949930709827,
+            "rmse": 0.030825630751643324,
+            "reference_argmax": 5193,
+            "actual_argmax": 5193
+          },
+          "decode_logits": {
+            "max_abs": 0.20331525802612305,
+            "mean_abs": 0.023452152350860938,
+            "rmse": 0.030154256609385047
+          },
+          "single_run_seconds": {
+            "vision_seconds": 5.022922,
+            "load_seconds": 0.063872,
+            "prefill_seconds": 0.992858,
+            "decode_seconds": 0.021239
+          },
+          "exact_ocr_text": true
+        }
+      ]
+    },
+    {
+      "name": "ocr-ja",
+      "image": "ocr-ja.png",
+      "prompt": "画像に書かれた文字を、そのまま書き起こしてください。",
+      "expected_text": "東京 123",
+      "height": 192,
+      "width": 384,
+      "rgb_sha256": "61600be1f65b6de9c97c6133d8ac2a0eb82edddcd3e99676730b787ac0a1a4c6",
+      "grid_thw": [
+        1,
+        12,
+        24
+      ],
+      "prompt_tokens": 97,
+      "reference_text": "東京 123",
+      "reference_generated_ids": [
+        19873,
+        229,
+        9792
+      ],
+      "runs": [
+        {
+          "backend": "f32",
+          "comparison_passed": true,
+          "text": "東京 123",
+          "generated_ids": [
+            19873,
+            229,
+            9792
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.773238182067871e-06,
+          "largest_vision_stage_max_abs": 0.0002193450927734375,
+          "prefill_logits": {
+            "max_abs": 3.314018249511719e-05,
+            "mean_abs": 4.857723838437522e-06,
+            "rmse": 6.106474549481227e-06,
+            "reference_argmax": 19873,
+            "actual_argmax": 19873
+          },
+          "decode_logits": {
+            "max_abs": 4.100799560546875e-05,
+            "mean_abs": 7.81957655383092e-06,
+            "rmse": 1.1007504046345942e-05
+          },
+          "single_run_seconds": {
+            "vision_seconds": 5.061026,
+            "load_seconds": 3.014434,
+            "prefill_seconds": 10.720275,
+            "decode_seconds": 0.701033
+          },
+          "exact_ocr_text": true
+        },
+        {
+          "backend": "q8-metal",
+          "comparison_passed": true,
+          "text": "東京 123",
+          "generated_ids": [
+            19873,
+            229,
+            9792
+          ],
+          "exact_pixels": true,
+          "exact_prompt_ids": true,
+          "exact_generated_ids": true,
+          "projector_max_abs": 1.773238182067871e-06,
+          "largest_vision_stage_max_abs": 0.0002193450927734375,
+          "prefill_logits": {
+            "max_abs": 0.13134954497218132,
+            "mean_abs": 0.02058894923963077,
+            "rmse": 0.026155791192226965,
+            "reference_argmax": 19873,
+            "actual_argmax": 19873
+          },
+          "decode_logits": {
+            "max_abs": 0.24475812911987305,
+            "mean_abs": 0.029235979713585006,
+            "rmse": 0.03684815220363081
+          },
+          "single_run_seconds": {
+            "vision_seconds": 4.921411,
+            "load_seconds": 0.058437,
+            "prefill_seconds": 1.247486,
+            "decode_seconds": 0.031004
+          },
+          "exact_ocr_text": true
+        }
+      ]
+    }
+  ]
+}

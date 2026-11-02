@@ -37,7 +37,8 @@ final class ModelDownloadException implements Exception {
   String toString() => 'ModelDownloadException: $message';
 }
 
-/// Downloads [file] to [path] unless it is already there. Bytes arrive in
+/// Downloads [file] to [path], reusing an existing file only after checking
+/// its pinned size and SHA-256. Bytes arrive in
 /// `[path].part`, which a later call resumes with a Range request; only a
 /// file of the right size and SHA-256 is renamed to [path]. [onBytes] sees
 /// how many bytes of the file are on disk; [cancelled] is polled between
@@ -53,9 +54,22 @@ Future<void> downloadFile(
   void Function(int bytes)? onBytes,
   bool Function()? cancelled,
 }) async {
-  if (File(path).existsSync()) {
-    onBytes?.call(file.size);
-    return;
+  final existing = File(path);
+  if (existing.existsSync()) {
+    var matches = existing.lengthSync() == file.size;
+    if (matches) {
+      final digest = _Digest();
+      final hash = sha256.startChunkedConversion(digest);
+      if (!await _feed(existing, hash, cancelled)) return;
+      hash.close();
+      matches = digest.value.toString() == file.sha256;
+    }
+    if (cancelled?.call() ?? false) return;
+    if (matches) {
+      onBytes?.call(file.size);
+      return;
+    }
+    existing.deleteSync();
   }
   final part = File('$path.part');
   var have = part.existsSync() ? part.lengthSync() : 0;
@@ -75,7 +89,11 @@ Future<void> downloadFile(
         await response.drain<void>();
         throw ModelDownloadException('${file.url}: unexpected content range');
       }
-      await part.openRead().forEach(hash.add);
+      if (!await _feed(part, hash, cancelled)) {
+        // Unread, the response would keep its connection open.
+        await response?.listen(null).cancel();
+        return;
+      }
     case HttpStatus.ok:
       have = 0; // the server sent the whole file
     case final status:
@@ -146,6 +164,21 @@ bool _startsAt(HttpClientResponse response, int from) =>
         .value(HttpHeaders.contentRangeHeader)
         ?.startsWith('bytes $from-') ??
     false;
+
+/// Adds [file]'s bytes to [hash], polling [cancelled] between chunks: a
+/// file on disk can be gigabytes. Returns false, having stopped reading,
+/// once [cancelled] holds.
+Future<bool> _feed(
+  File file,
+  Sink<List<int>> hash,
+  bool Function()? cancelled,
+) async {
+  await for (final chunk in file.openRead()) {
+    if (cancelled?.call() ?? false) return false;
+    hash.add(chunk);
+  }
+  return true;
+}
 
 final class _Digest implements Sink<Digest> {
   late Digest value;

@@ -141,11 +141,13 @@ final class SafetensorsFile {
   }
 
   /// Writes the tensors for which [keep] holds to a new safetensors file
-  /// at [path], bytes unchanged and in this file's order.
+  /// at [path], bytes unchanged and in this file's order. [rename] changes
+  /// header names only; duplicate output names are rejected before writing.
   void writeSubset(
     String path,
-    bool Function(String name, TensorInfo info) keep,
-  ) {
+    bool Function(String name, TensorInfo info) keep, {
+    String Function(String name)? rename,
+  }) {
     final kept = tensors.entries.where((e) => keep(e.key, e.value)).toList()
       ..sort((a, b) => a.value.begin.compareTo(b.value.begin));
     final header = <String, Object?>{
@@ -154,7 +156,11 @@ final class SafetensorsFile {
     var offset = 0;
     for (final MapEntry(:key, :value) in kept) {
       final bytes = value.end - value.begin;
-      header[key] = {
+      final name = rename?.call(key) ?? key;
+      if (header.containsKey(name)) {
+        throw ArgumentError('duplicate output tensor name $name');
+      }
+      header[name] = {
         'dtype': value.dtype,
         'shape': value.shape,
         'data_offsets': [offset, offset + bytes],
@@ -164,12 +170,16 @@ final class SafetensorsFile {
     final out = File(path).openSync(mode: FileMode.write);
     try {
       _writeHeader(out, header);
-      var buffer = Uint8List(0);
+      // Embeddings alone can exceed 500 MB; copying needs bounded memory.
+      final buffer = Uint8List(1024 * 1024);
       for (final MapEntry(:value) in kept) {
-        final bytes = value.end - value.begin;
-        if (buffer.length < bytes) buffer = Uint8List(bytes);
-        _readFully(_file, buffer, _dataStart + value.begin, bytes);
-        out.writeFromSync(buffer, 0, bytes);
+        var offset = value.begin;
+        while (offset < value.end) {
+          final count = (value.end - offset).clamp(0, buffer.length);
+          _readFully(_file, buffer, _dataStart + offset, count);
+          out.writeFromSync(buffer, 0, count);
+          offset += count;
+        }
       }
     } finally {
       out.closeSync();

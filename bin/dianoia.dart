@@ -33,6 +33,26 @@
 ///       for --weights=q4 (see lib/src/gguf.dart), and prints how far each
 ///       imported tensor family is from DIR's weights.
 ///
+///   dianoia import-vl-backbone --model=VL_DIR --out=NEW_DIR
+///       Copies the VL language backbone into standalone engine layout;
+///       retains vl_config.json for matching vision inference.
+///
+///   dianoia pack-vl --model=VL_DIR --backbone=IMPORTED_DIR --out=NEW_DIR
+///       [--weights=q8|q4]
+///       Packs a standalone VL directory with unchanged vision/embedding bytes,
+///       native language cache and a per-file SHA-256 manifest.
+///
+///   dianoia vision-run --model=VL_DIR --backbone=IMPORTED_DIR --rgb=FILE
+///       --height=H --width=W --prompt=TEXT --out=NEW_DIR [--weights=f32 --gpu]
+///       Runs one raw RGB image and dumps encoder stages, prompt IDs, logits
+///       and greedy output for real-checkpoint comparison.
+///
+///   dianoia vision-bench --bundle=DIR --image=FILE --prompt=TEXT --out=FILE.json
+///       [--backend=cpu|gpu|auto --runs=3 --max-new=32 --max-seq=512
+///       --max-image-tokens=1024]
+///       Measures verified load, decode, fresh image turns, visual follow-up,
+///       first text latency and process memory. Optional --expected=TEXT.
+///
 ///   dianoia toolbench --model=DIR --cases=FILE [--weights=... --gpu]
 ///       Asks each case of FILE (example/tool_cases.json) greedily with its
 ///       tools and checks the tool call against the expected name and
@@ -104,13 +124,17 @@ Future<void> main(List<String> args) async {
     'selftest': _selftest,
     'pack': _pack,
     'import-gguf': _importGguf,
+    'import-vl-backbone': _importVlBackbone,
+    'vision-run': _visionRun,
+    'vision-bench': _visionBench,
+    'pack-vl': _packVl,
     'toolbench': _toolbench,
     'chatbench': _chatbench,
   };
   final command = args.isEmpty ? null : commands[args.first];
   if (command == null) {
     stderr.writeln(
-      'usage: dianoia ask|selftest|run|pack|import-gguf|toolbench|chatbench '
+      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|vision-bench|pack-vl|toolbench|chatbench '
       '--key=value ...',
     );
     exitCode = 2;
@@ -543,6 +567,182 @@ Future<int> _pack(Map<String, String> flags) async {
     bytes += f.lengthSync();
   }
   stdout.writeln('wrote $outDir: ${(bytes / 1e9).toStringAsFixed(2)} GB');
+  return 0;
+}
+
+/// Runs one decoded RGB image through the reference encoder and a matching
+/// imported VL language backbone, dumping evidence for upstream comparison.
+Future<int> _visionRun(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final vlDir = require('model');
+  final backbone = require('backbone');
+  final out = require('out');
+  final height = int.parse(require('height'));
+  final width = int.parse(require('width'));
+  final maxNew = int.parse(flags['max-new'] ?? '16');
+  final maxSeq = int.parse(flags['max-seq'] ?? '2048');
+  if (maxNew < 0) throw ArgumentError('--max-new must be nonnegative');
+  if (Directory(out).existsSync() || File(out).existsSync()) {
+    throw ArgumentError('--out must be a new directory');
+  }
+  final identity =
+      jsonDecode(File('$backbone/vl_backbone.json').readAsStringSync()) as Map;
+  validateVlBackbone(vlDir, backbone);
+  final processor = Lfm3ImageProcessor.load(vlDir);
+  final image = processor.prepareRgb(
+    File(require('rgb')).readAsBytesSync(),
+    height: height,
+    width: width,
+  );
+  final tokenizer = Lfm3Tokenizer.load(vlDir);
+  final encoder = Lfm3VisionEncoder.load(vlDir);
+  final prompt = prepareVisionPrompt(
+    [
+      {
+        'role': 'user',
+        'content': [
+          {'type': 'image'},
+          {'type': 'text', 'text': require('prompt')},
+        ],
+      },
+    ],
+    tokenizer: tokenizer,
+    config: encoder.config,
+    imageTokenCounts: [image.imageTokens],
+    enableThinking: flags['think'] == 'true',
+  );
+  if (prompt.ids.length >= maxSeq) {
+    throw ContextLengthExceeded(prompt.ids.length, maxSeq);
+  }
+  Directory(out).createSync(recursive: true);
+  final clock = Stopwatch()..start();
+  final stages = <String>[];
+  final features = encoder.encode(
+    image,
+    capture: (stage, rows) {
+      stages.add(stage);
+      _write('$out/vision_$stage.f32', rows);
+    },
+  );
+  final visionSeconds = clock.elapsedMicroseconds / 1e6;
+  _write('$out/pixels.f32', image.pixelValues);
+  _write('$out/ids.i32', Int32List.fromList(prompt.ids));
+  final weights = WeightFormat.values.byName(flags['weights'] ?? 'f32');
+  _loadNative(flags, needed: weights.isNative || NativeKernels.isAvailable);
+  clock.reset();
+  final model = await Lfm3Model.load(
+    backbone,
+    weights: weights,
+    q8CachePath: _q8CachePath(flags, backbone, weights),
+    maxSeq: maxSeq,
+    maxChunk: int.parse(flags['chunk'] ?? '64'),
+    gpu: flags['gpu'] == 'true',
+  );
+  final loadSeconds = clock.elapsedMicroseconds / 1e6;
+  try {
+    clock.reset();
+    await prompt.prefill(model, [features]);
+    final prefillSeconds = clock.elapsedMicroseconds / 1e6;
+    _write('$out/logits.f32', model.logits);
+    final generated = <int>[];
+    final allLogits = BytesBuilder();
+    clock.reset();
+    for (var i = 0; i < maxNew && model.length < maxSeq; i++) {
+      final copy = Float32List.fromList(model.logits);
+      allLogits.add(copy.buffer.asUint8List());
+      final token = _argmax(copy);
+      if (token == model.config.eosTokenId) break;
+      generated.add(token);
+      await model.step(token);
+    }
+    final decodeSeconds = clock.elapsedMicroseconds / 1e6;
+    _write('$out/gen.i32', Int32List.fromList(generated));
+    File('$out/gen_logits.f32').writeAsBytesSync(allLogits.takeBytes());
+    final text = tokenizer.decode(generated);
+    File('$out/meta.json').writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert({
+        'complete': true,
+        'prompt': flags['prompt'],
+        'thinking': flags['think'] == 'true',
+        'source_key': identity['source_key'],
+        'weights': weights.name,
+        'gpu': flags['gpu'] == 'true',
+        'prompt_tokens': prompt.ids.length,
+        'image_tokens': image.imageTokens,
+        'grid_thw': [image.gridThw.$1, image.gridThw.$2, image.gridThw.$3],
+        'stages': stages,
+        'vision_hidden_size': encoder.config.vision.hiddenSize,
+        'text_hidden_size': encoder.config.text.hiddenSize,
+        'vocab_size': model.config.vocabSize,
+        'generated_ids': generated,
+        'text': text,
+        'vision_seconds': visionSeconds,
+        'load_seconds': loadSeconds,
+        'prefill_seconds': prefillSeconds,
+        'decode_seconds': decodeSeconds,
+      }),
+    );
+    stdout.writeln(text);
+    stdout.writeln('wrote visual inference evidence to $out');
+  } finally {
+    await model.close();
+  }
+  return 0;
+}
+
+Future<int> _visionBench(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final output = File(require('out'));
+  if (FileSystemEntity.typeSync(output.path, followLinks: false) !=
+      FileSystemEntityType.notFound) {
+    throw ArgumentError('--out must be a new file');
+  }
+  output.parent.createSync(recursive: true);
+  final record = await benchmarkVisionBundle(
+    bundle: require('bundle'),
+    imagePath: require('image'),
+    prompt: require('prompt'),
+    backend: InferenceBackend.values.byName(flags['backend'] ?? 'gpu'),
+    contextLength: int.parse(flags['max-seq'] ?? '512'),
+    threads: int.parse(flags['native-threads'] ?? '4'),
+    maxNewTokens: int.parse(flags['max-new'] ?? '32'),
+    runs: int.parse(flags['runs'] ?? '3'),
+    maxImageTokens: int.parse(
+      flags['max-image-tokens'] ?? '${LocalVisionModel.defaultMaxImageTokens}',
+    ),
+    expectedText: flags['expected'],
+    log: stdout.writeln,
+    onRecord: (r) =>
+        output.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(r)),
+  );
+  return record['passed'] == true ? 0 : 1;
+}
+
+Future<int> _packVl(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  _loadNative(flags, needed: true);
+  final output = require('out');
+  await packVlBundle(
+    require('model'),
+    require('backbone'),
+    output,
+    weights: WeightFormat.values.byName(flags['weights'] ?? 'q8'),
+  );
+  final bytes = Directory(output)
+      .listSync(recursive: true)
+      .whereType<File>()
+      .fold(0, (sum, file) => sum + file.lengthSync());
+  stdout.writeln('wrote standalone VL bundle: $output ($bytes bytes)');
+  return 0;
+}
+
+Future<int> _importVlBackbone(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final out = require('out');
+  importVlBackbone(require('model'), out);
+  stdout.writeln(
+    'wrote VL language backbone to $out (image inference pending)',
+  );
   return 0;
 }
 

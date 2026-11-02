@@ -4,6 +4,7 @@
 library;
 
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:dianoia/dianoia.dart';
 
@@ -35,9 +36,26 @@ sealed class ChatCommand {
   const ChatCommand();
 }
 
+/// Encoded bytes are copied to the worker; file-picker paths never leave UI.
+final class ImageAttachment {
+  const ImageAttachment(this.name, this.bytes, {this.thumbnail});
+  final ImageThumbnail? thumbnail;
+  static const maxBytes = 32 * 1024 * 1024;
+  final String name;
+  final Uint8List bytes;
+}
+
+/// At most 240 by 240 pixels, encoded as PNG by the picker.
+final class ImageThumbnail {
+  const ImageThumbnail(this.name, this.bytes);
+  final String name;
+  final Uint8List? bytes;
+}
+
 final class SendMessage extends ChatCommand {
-  const SendMessage(this.text);
+  const SendMessage(this.text, {this.image});
   final String text;
+  final ImageAttachment? image;
 }
 
 /// Ends the reply being generated, keeping what is there.
@@ -60,6 +78,11 @@ final class CancelInstall extends ChatCommand {
   const CancelInstall();
 }
 
+/// Stops pending work and releases the model before the worker exits.
+final class CloseWorker extends ChatCommand {
+  const CloseWorker();
+}
+
 // Worker to UI.
 
 sealed class ChatEvent {
@@ -77,10 +100,10 @@ final class WorkerProgress extends ChatEvent {
   final String status;
 }
 
-/// No model on the device: the UI should offer to download [spec].
+/// No model on the device: offer [spec] for download.
 final class ModelNeeded extends ChatEvent {
   const ModelNeeded(this.spec);
-  final ModelSpec spec;
+  final InstallableModel spec;
 }
 
 final class InstallUpdate extends ChatEvent {
@@ -106,6 +129,12 @@ final class WorkerReady extends ChatEvent {
 final class WorkerFailed extends ChatEvent {
   const WorkerFailed(this.message);
   final String message;
+}
+
+/// Work before the first text; this never changes model setup state.
+final class ReplyProgress extends ChatEvent {
+  const ReplyProgress(this.status);
+  final String status;
 }
 
 /// The reply so far.

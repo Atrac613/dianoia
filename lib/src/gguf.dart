@@ -5,7 +5,7 @@
 /// typed key-value pairs, tensor infos (name, dims with the fastest first,
 /// type, offset), then tensor data from the next multiple of
 /// `general.alignment` (32 by default). Only the types LFM3's files use are
-/// supported: F32, Q4_0 and Q6_K.
+/// supported: F32, F16, BF16, Q4_0 and Q6_K.
 library;
 
 import 'dart:convert';
@@ -20,6 +20,8 @@ import 'safetensors.dart';
 
 enum GgufType {
   f32(0, 1, 4),
+  f16(1, 1, 2),
+  bf16(30, 1, 2),
   q4_0(2, 32, 18),
   q6K(14, 256, 210);
 
@@ -54,90 +56,119 @@ final class GgufFile {
     final file =
         MappedFile.open(path) ??
         (throw FileSystemException('cannot map', path));
-    final data = ByteData.sublistView(file.bytes(0, file.length));
-    var at = 0;
-    // Each reader returns the value at the cursor and moves past it.
-    T read<T>(int size, T Function(int offset) get) {
-      at += size;
-      return get(at - size);
-    }
-
-    int u32() => read(4, (o) => data.getUint32(o, Endian.little));
-    int u64() => read(8, (o) => data.getUint64(o, Endian.little));
-    String str() {
-      final n = u64();
-      at += n;
-      return utf8.decode(file.bytes(at - n, n), allowMalformed: true);
-    }
-
-    if (utf8.decode(file.bytes(0, 4)) != 'GGUF') {
-      throw FormatException('$path is not GGUF');
-    }
-    at = 4;
-    final version = u32();
-    if (version < 2) throw FormatException('GGUF version $version');
-    final tensorCount = u64();
-    final kvCount = u64();
-
-    // Scalars as their values; arrays are skipped and kept as their length.
-    Object? value(int type) {
-      switch (type) {
-        case 0 || 1 || 7:
-          return read(1, data.getUint8);
-        case 2 || 3:
-          return read(2, (o) => data.getUint16(o, Endian.little));
-        case 4:
-          return u32();
-        case 5:
-          return read(4, (o) => data.getInt32(o, Endian.little));
-        case 6:
-          return read(4, (o) => data.getFloat32(o, Endian.little));
-        case 8:
-          return str();
-        case 9:
-          final elementType = u32();
-          final n = u64();
-          for (var i = 0; i < n; i++) {
-            value(elementType);
-          }
-          return n;
-        case 10:
-          return u64();
-        case 11:
-          return read(8, (o) => data.getInt64(o, Endian.little));
-        case 12:
-          return read(8, (o) => data.getFloat64(o, Endian.little));
+    try {
+      final data = ByteData.sublistView(file.bytes(0, file.length));
+      var at = 0;
+      // Each reader returns the value at the cursor and moves past it.
+      T read<T>(int size, T Function(int offset) get) {
+        if (size < 0 || at + size > data.lengthInBytes) {
+          throw const FormatException('truncated GGUF metadata');
+        }
+        at += size;
+        return get(at - size);
       }
-      throw FormatException('GGUF metadata type $type');
-    }
 
-    final metadata = <String, Object?>{};
-    for (var i = 0; i < kvCount; i++) {
-      final key = str();
-      metadata[key] = value(u32());
+      int u32() => read(4, (o) => data.getUint32(o, Endian.little));
+      int u64() => read(8, (o) => data.getUint64(o, Endian.little));
+      String str() {
+        final n = u64();
+        if (n > file.length - at) {
+          throw const FormatException('truncated GGUF string');
+        }
+        at += n;
+        return utf8.decode(file.bytes(at - n, n), allowMalformed: true);
+      }
+
+      if (utf8.decode(file.bytes(0, 4)) != 'GGUF') {
+        throw FormatException('$path is not GGUF');
+      }
+      at = 4;
+      final version = u32();
+      if (version < 2) throw FormatException('GGUF version $version');
+      final tensorCount = u64();
+      final kvCount = u64();
+
+      // Scalars as their values; arrays are skipped and kept as their length.
+      Object? value(int type) {
+        switch (type) {
+          case 0 || 1 || 7:
+            return read(1, data.getUint8);
+          case 2 || 3:
+            return read(2, (o) => data.getUint16(o, Endian.little));
+          case 4:
+            return u32();
+          case 5:
+            return read(4, (o) => data.getInt32(o, Endian.little));
+          case 6:
+            return read(4, (o) => data.getFloat32(o, Endian.little));
+          case 8:
+            return str();
+          case 9:
+            final elementType = u32();
+            final n = u64();
+            for (var i = 0; i < n; i++) {
+              value(elementType);
+            }
+            return n;
+          case 10:
+            return u64();
+          case 11:
+            return read(8, (o) => data.getInt64(o, Endian.little));
+          case 12:
+            return read(8, (o) => data.getFloat64(o, Endian.little));
+        }
+        throw FormatException('GGUF metadata type $type');
+      }
+
+      final metadata = <String, Object?>{};
+      for (var i = 0; i < kvCount; i++) {
+        final key = str();
+        metadata[key] = value(u32());
+      }
+      final infos = <(String, List<int>, int, int)>[];
+      for (var i = 0; i < tensorCount; i++) {
+        final name = str();
+        final dims = [for (var d = u32(); d > 0; d--) u64()];
+        infos.add((name, dims, u32(), u64()));
+      }
+      final alignment = (metadata['general.alignment'] ?? 32) as int;
+      if (alignment <= 0 || (alignment & (alignment - 1)) != 0) {
+        throw const FormatException('invalid GGUF alignment');
+      }
+      final dataStart = (at + alignment - 1) ~/ alignment * alignment;
+      final tensors = <String, GgufTensor>{};
+      for (final (name, dims, typeId, offset) in infos) {
+        final type = GgufType.values.where((t) => t.id == typeId).firstOrNull;
+        if (type == null) continue; // a type this importer never needs
+        final tensor = GgufTensor(name, dims, type, dataStart + offset);
+        if (tensors.containsKey(name) ||
+            dims.isEmpty ||
+            dims.any((n) => n <= 0) ||
+            tensor.values % type.blockValues != 0 ||
+            offset % alignment != 0 ||
+            tensor.offset < dataStart ||
+            tensor.offset + tensor.bytes > file.length) {
+          throw FormatException('invalid GGUF tensor bounds: $name');
+        }
+        tensors[name] = tensor;
+      }
+      return GgufFile._(file, metadata, tensors);
+    } catch (_) {
+      file.release();
+      rethrow;
     }
-    final infos = <(String, List<int>, int, int)>[];
-    for (var i = 0; i < tensorCount; i++) {
-      final name = str();
-      final dims = [for (var d = u32(); d > 0; d--) u64()];
-      infos.add((name, dims, u32(), u64()));
-    }
-    final alignment = (metadata['general.alignment'] ?? 32) as int;
-    final dataStart = (at + alignment - 1) ~/ alignment * alignment;
-    final tensors = <String, GgufTensor>{};
-    for (final (name, dims, typeId, offset) in infos) {
-      final type = GgufType.values.where((t) => t.id == typeId).firstOrNull;
-      if (type == null) continue; // a type this importer never needs
-      tensors[name] = GgufTensor(name, dims, type, dataStart + offset);
-    }
-    return GgufFile._(file, metadata, tensors);
   }
 
   final MappedFile _file;
   final Map<String, Object?> metadata;
   final Map<String, GgufTensor> tensors;
 
-  Uint8List bytes(GgufTensor t) => _file.bytes(t.offset, t.bytes);
+  Uint8List bytes(GgufTensor t) {
+    if (t.offset < 0 || t.bytes < 0 || t.bytes > _file.length - t.offset) {
+      throw FormatException('GGUF tensor exceeds file: ${t.name}');
+    }
+    return _file.bytes(t.offset, t.bytes);
+  }
 
   GgufTensor tensor(String name, GgufType type, List<int> dims) {
     final t = tensors[name] ?? (throw StateError('GGUF lacks $name'));
@@ -146,6 +177,17 @@ final class GgufFile {
     }
     return t;
   }
+
+  /// Releases the mapped GGUF after all tensor views have been consumed.
+  /// The mapping is shared by path, so a second close must not give back
+  /// another opener's reference.
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _file.release();
+  }
+
+  bool _closed = false;
 
   /// An F32 tensor's values, copied.
   Float32List f32(GgufTensor t) =>
@@ -225,122 +267,134 @@ final class _RawMatrix implements CachedMatrix {
 /// is read right: a transposed or reordered tensor differs by about 1.4.
 List<String> importGguf(String ggufPath, String hfDir, String outDir) {
   final gguf = GgufFile.open(ggufPath);
-  final c = Lfm3Config.load(hfDir);
-  final h = c.hiddenSize, f = c.intermediateSize, hd = c.headDim;
-  if (gguf.metadata['general.architecture'] != 'lfm3' ||
-      gguf.metadata['lfm3.block_count'] != c.numLayers) {
-    throw StateError('$ggufPath is not this LFM3 model');
-  }
+  try {
+    final c = Lfm3Config.load(hfDir);
+    final h = c.hiddenSize, f = c.intermediateSize, hd = c.headDim;
+    if (gguf.metadata['general.architecture'] != 'lfm3' ||
+        gguf.metadata['lfm3.block_count'] != c.numLayers) {
+      throw StateError('$ggufPath is not this LFM3 model');
+    }
 
-  final small = <String, (List<int>, Float32List)>{};
-  // The cache's matrices, made one at a time while it is written: on a
-  // phone the whole set (1.1 GB) does not fit in memory at once.
-  final shapes = <(String, String, int, int)>[];
-  final produce = <String, CachedMatrix Function()>{};
-  // Imported tensors keyed by their Hugging Face name, for the comparison.
-  final imported = <String, Float32List Function()>{};
+    final small = <String, (List<int>, Float32List)>{};
+    // The cache's matrices, made one at a time while it is written: on a
+    // phone the whole set (1.1 GB) does not fit in memory at once.
+    final shapes = <(String, String, int, int)>[];
+    final produce = <String, CachedMatrix Function()>{};
+    // Imported tensors keyed by their Hugging Face name, for the comparison.
+    final imported = <String, Float32List Function()>{};
 
-  void vector(String gguf_, String hf, List<int> shape) {
-    final values = gguf.f32(
-      gguf.tensor(gguf_, GgufType.f32, shape.reversed.toList()),
-    );
-    small[hf] = (shape, values);
-    imported[hf] = () => values;
-  }
+    void vector(String gguf_, String hf, List<int> shape) {
+      final values = gguf.f32(
+        gguf.tensor(gguf_, GgufType.f32, shape.reversed.toList()),
+      );
+      small[hf] = (shape, values);
+      imported[hf] = () => values;
+    }
 
-  void matrix(
-    String gguf_,
-    String cacheName,
-    String hfName,
-    int rows,
-    int cols,
-  ) {
-    final t = gguf.tensor(gguf_, GgufType.q4_0, [cols, rows]);
-    CachedMatrix split() => splitQ4_0(gguf.bytes(t), rows, cols);
-    shapes.add((cacheName, 'q4', rows, cols));
-    produce[cacheName] = split;
-    imported[hfName] = () => _dequantizeQ4(split());
-  }
+    void matrix(
+      String gguf_,
+      String cacheName,
+      String hfName,
+      int rows,
+      int cols,
+    ) {
+      final t = gguf.tensor(gguf_, GgufType.q4_0, [cols, rows]);
+      CachedMatrix split() => splitQ4_0(gguf.bytes(t), rows, cols);
+      shapes.add((cacheName, 'q4', rows, cols));
+      produce[cacheName] = split;
+      imported[hfName] = () => _dequantizeQ4(split());
+    }
 
-  for (var i = 0; i < c.numLayers; i++) {
-    final g = 'blk.$i.';
-    final p = 'model.layers.$i.';
-    vector('${g}attn_norm.weight', '${p}operator_norm.weight', [h]);
-    vector('${g}post_attention_norm.weight', '${p}post_operator_norm.weight', [
-      h,
-    ]);
-    vector('${g}ffn_norm.weight', '${p}ffn_norm.weight', [h]);
-    vector('${g}post_ffw_norm.weight', '${p}post_ffn_norm.weight', [h]);
-    final ff = '${p}feed_forward.';
-    matrix('${g}ffn_gate.weight', '${ff}w1', '${ff}w1.weight', f, h);
-    matrix('${g}ffn_up.weight', '${ff}w3', '${ff}w3.weight', f, h);
-    matrix('${g}ffn_down.weight', '${ff}w2', '${ff}w2.weight', h, f);
-    if (c.layerTypes[i] == LayerType.conv) {
-      final t = gguf.tensor('${g}shortconv.conv.weight', GgufType.f32, [
-        c.convKernel,
-        h,
-      ]);
-      final values = gguf.f32(t);
-      small['${p}conv.conv.weight'] = ([h, 1, c.convKernel], values);
-      imported['${p}conv.conv.weight'] = () => values;
-      for (final (gName, hfName, rows) in [
-        ('shortconv.in_proj', 'conv.in_proj.weight', 3 * h),
-        ('shortconv.out_proj', 'conv.out_proj.weight', h),
-      ]) {
-        matrix('$g$gName.weight', '$p$hfName', '$p$hfName', rows, h);
-      }
-    } else {
-      final a = '${p}self_attn.';
-      vector('${g}attn_q_norm.weight', '${a}q_norm.weight', [hd]);
-      vector('${g}attn_k_norm.weight', '${a}k_norm.weight', [hd]);
-      for (final (gName, hfName, rows, cols) in [
-        ('attn_q', 'q_proj', c.numHeads * hd, h),
-        ('attn_k', 'k_proj', c.kvDim, h),
-        ('attn_v', 'v_proj', c.kvDim, h),
-        ('attn_gate', 'gate_proj', c.numHeads, h),
-        ('attn_output', 'o_proj', h, c.numHeads * hd),
-      ]) {
-        matrix('$g$gName.weight', '$a$hfName', '$a$hfName.weight', rows, cols);
+    for (var i = 0; i < c.numLayers; i++) {
+      final g = 'blk.$i.';
+      final p = 'model.layers.$i.';
+      vector('${g}attn_norm.weight', '${p}operator_norm.weight', [h]);
+      vector(
+        '${g}post_attention_norm.weight',
+        '${p}post_operator_norm.weight',
+        [h],
+      );
+      vector('${g}ffn_norm.weight', '${p}ffn_norm.weight', [h]);
+      vector('${g}post_ffw_norm.weight', '${p}post_ffn_norm.weight', [h]);
+      final ff = '${p}feed_forward.';
+      matrix('${g}ffn_gate.weight', '${ff}w1', '${ff}w1.weight', f, h);
+      matrix('${g}ffn_up.weight', '${ff}w3', '${ff}w3.weight', f, h);
+      matrix('${g}ffn_down.weight', '${ff}w2', '${ff}w2.weight', h, f);
+      if (c.layerTypes[i] == LayerType.conv) {
+        final t = gguf.tensor('${g}shortconv.conv.weight', GgufType.f32, [
+          c.convKernel,
+          h,
+        ]);
+        final values = gguf.f32(t);
+        small['${p}conv.conv.weight'] = ([h, 1, c.convKernel], values);
+        imported['${p}conv.conv.weight'] = () => values;
+        for (final (gName, hfName, rows) in [
+          ('shortconv.in_proj', 'conv.in_proj.weight', 3 * h),
+          ('shortconv.out_proj', 'conv.out_proj.weight', h),
+        ]) {
+          matrix('$g$gName.weight', '$p$hfName', '$p$hfName', rows, h);
+        }
+      } else {
+        final a = '${p}self_attn.';
+        vector('${g}attn_q_norm.weight', '${a}q_norm.weight', [hd]);
+        vector('${g}attn_k_norm.weight', '${a}k_norm.weight', [hd]);
+        for (final (gName, hfName, rows, cols) in [
+          ('attn_q', 'q_proj', c.numHeads * hd, h),
+          ('attn_k', 'k_proj', c.kvDim, h),
+          ('attn_v', 'v_proj', c.kvDim, h),
+          ('attn_gate', 'gate_proj', c.numHeads, h),
+          ('attn_output', 'o_proj', h, c.numHeads * hd),
+        ]) {
+          matrix(
+            '$g$gName.weight',
+            '$a$hfName',
+            '$a$hfName.weight',
+            rows,
+            cols,
+          );
+        }
       }
     }
-  }
-  vector('output_norm.weight', 'model.embedding_norm.weight', [h]);
-  const embed = 'model.embed_tokens.weight';
-  final embedding = gguf.tensor('token_embd.weight', GgufType.q6K, [
-    h,
-    c.vocabSize,
-  ]);
-  final embedBytes = gguf.bytes(embedding);
-  final perRow = h ~/ 256;
-  shapes.add((embed, 'q8', c.vocabSize, h));
-  produce[embed] = () => NativeQ8Matrix.quantizeRows(
-    c.vocabSize,
-    h,
-    (first, count, out) =>
-        dequantizeQ6K(embedBytes, first * perRow, count * perRow, out, 0),
-  );
-  imported[embed] = () {
-    const rows = 4096;
-    final out = Float32List(rows * h);
-    dequantizeQ6K(embedBytes, 0, rows * perRow, out, 0);
-    return out;
-  };
+    vector('output_norm.weight', 'model.embedding_norm.weight', [h]);
+    const embed = 'model.embed_tokens.weight';
+    final embedding = gguf.tensor('token_embd.weight', GgufType.q6K, [
+      h,
+      c.vocabSize,
+    ]);
+    final embedBytes = gguf.bytes(embedding);
+    final perRow = h ~/ 256;
+    shapes.add((embed, 'q8', c.vocabSize, h));
+    produce[embed] = () => NativeQ8Matrix.quantizeRows(
+      c.vocabSize,
+      h,
+      (first, count, out) =>
+          dequantizeQ6K(embedBytes, first * perRow, count * perRow, out, 0),
+    );
+    imported[embed] = () {
+      const rows = 4096;
+      final out = Float32List(rows * h);
+      dequantizeQ6K(embedBytes, 0, rows * perRow, out, 0);
+      return out;
+    };
 
-  Directory(outDir).createSync(recursive: true);
-  for (final name in ['config.json', 'tokenizer.json']) {
-    File('$hfDir/$name').copySync('$outDir/$name');
+    Directory(outDir).createSync(recursive: true);
+    for (final name in ['config.json', 'tokenizer.json']) {
+      File('$hfDir/$name').copySync('$outDir/$name');
+    }
+    writeSafetensorsF32('$outDir/model.safetensors', small);
+    Q8Cache.writeEach(
+      '$outDir/lfm3-q4.cache',
+      Q8Cache.keyFor(outDir, weights: 'q4'),
+      shapes,
+      (name) => produce[name]!(),
+      done: (m) {
+        if (m is NativeQ8Matrix) m.free();
+      },
+    );
+    return _compare(hfDir, c, imported);
+  } finally {
+    gguf.close();
   }
-  writeSafetensorsF32('$outDir/model.safetensors', small);
-  Q8Cache.writeEach(
-    '$outDir/lfm3-q4.cache',
-    Q8Cache.keyFor(outDir, weights: 'q4'),
-    shapes,
-    (name) => produce[name]!(),
-    done: (m) {
-      if (m is NativeQ8Matrix) m.free();
-    },
-  );
-  return _compare(hfDir, c, imported);
 }
 
 Float32List _dequantizeQ4(CachedMatrix m) {

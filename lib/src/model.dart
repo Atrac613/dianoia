@@ -298,6 +298,8 @@ final class Lfm3Model {
   int length = 0;
 
   /// The tokens processed so far, by position.
+  /// A -1 marks a position supplied through an embedding override; text
+  /// prefix reuse must stop before it, including after saving/restoring state.
   List<int> get history => List.unmodifiable(_history);
   final _history = <int>[];
 
@@ -565,12 +567,33 @@ final class Lfm3Model {
   /// (slot 0) and leaving each layer (slot i + 1), as `count` rows of hidden
   /// size starting at position `first`. With [computeLogits] the last
   /// token's logits are left in [logits].
+  /// [embeddingOverrides] replaces token lookup at zero-based positions in
+  /// this call with projected multimodal features of [Lfm3Config.hiddenSize].
+  /// Positions are relative to [tokens], not the current sequence length.
+  /// Such positions are recorded as -1 in [history] so text-only [prefill]
+  /// cannot reuse state conditioned on a different image. To feed another
+  /// multimodal prompt, reset and submit its embeddings again.
   Future<void> forward(
     List<int> tokens, {
     void Function(int slot, int first, Float32List rows, int count)? capture,
     bool computeLogits = true,
+    Map<int, Float32List> embeddingOverrides = const {},
   }) async {
     _checkOpen();
+    final overrides = <int, Float32List>{};
+    for (final entry in embeddingOverrides.entries) {
+      if (entry.key < 0 || entry.key >= tokens.length) {
+        throw RangeError.range(entry.key, 0, tokens.length - 1, 'position');
+      }
+      if (entry.value.length != config.hiddenSize ||
+          entry.value.any((v) => !v.isFinite)) {
+        throw ArgumentError(
+          'embedding at ${entry.key} must contain ${config.hiddenSize} finite values',
+        );
+      }
+      // CPU executors can yield between chunks: own the inputs throughout.
+      overrides[entry.key] = Float32List.fromList(entry.value);
+    }
     if (length + tokens.length > maxSeq) {
       throw StateError('sequence exceeds maxSeq=$maxSeq');
     }
@@ -580,7 +603,12 @@ final class Lfm3Model {
       for (var start = 0; start < tokens.length; start += maxChunk) {
         final n = math.min(maxChunk, tokens.length - start);
         for (var t = 0; t < n; t++) {
-          _embed(tokens[start + t], gpu.residual, t * h);
+          final override = overrides[start + t];
+          if (override == null) {
+            _embed(tokens[start + t], gpu.residual, t * h);
+          } else {
+            gpu.residual.setRange(t * h, (t + 1) * h, override);
+          }
         }
         gpu.forward(
           n,
@@ -594,13 +622,21 @@ final class Lfm3Model {
           }
         }
         length += n;
-        _history.addAll(tokens.sublist(start, start + n));
+        _history.addAll([
+          for (var t = start; t < start + n; t++)
+            overrides.containsKey(t) ? -1 : tokens[t],
+        ]);
       }
       return;
     }
     for (var start = 0; start < tokens.length; start += maxChunk) {
       final end = math.min(start + maxChunk, tokens.length);
-      await _forwardChunk(tokens.sublist(start, end), capture);
+      await _forwardChunk(
+        tokens.sublist(start, end),
+        capture,
+        overrides,
+        start,
+      );
     }
     if (computeLogits && tokens.isNotEmpty) {
       final h = config.hiddenSize;
@@ -630,12 +666,19 @@ final class Lfm3Model {
   Future<void> _forwardChunk(
     List<int> tokens,
     void Function(int slot, int first, Float32List rows, int count)? capture,
+    Map<int, Float32List> overrides,
+    int start,
   ) async {
     final n = tokens.length;
     final h = config.hiddenSize;
     final executor = _executor!;
     for (var t = 0; t < n; t++) {
-      _embed(tokens[t], _x, t * h);
+      final override = overrides[start + t];
+      if (override == null) {
+        _embed(tokens[t], _x, t * h);
+      } else {
+        _x.setRange(t * h, (t + 1) * h, override);
+      }
     }
     capture?.call(0, length, _x, n);
 
@@ -653,7 +696,10 @@ final class Lfm3Model {
       capture?.call(i + 1, length, _x, n);
     }
     length += n;
-    _history.addAll(tokens);
+    _history.addAll([
+      for (var t = 0; t < n; t++)
+        overrides.containsKey(start + t) ? -1 : tokens[t],
+    ]);
   }
 
   /// Writes token [token]'s embedding row into [out] at [offset].

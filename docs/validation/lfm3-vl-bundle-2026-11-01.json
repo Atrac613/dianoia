@@ -1,0 +1,111 @@
+{
+  "date": "2026-11-01",
+  "checkpoint_revision": "ba44bd51db20a2753f28c273a1571ccaa210d954",
+  "checkpoint_sha256": "a9bb8b1c159c9d6c3007bc1c7ad8018b599f759d97da2701714e37426283e131",
+  "environment": {
+    "chip": "Apple M2 Max",
+    "memory": "64 GB",
+    "dart": "3.13.5 (JIT)",
+    "language_weights": "q8",
+    "vision": "CPU float32"
+  },
+  "sizes_bytes": {
+    "original_checkpoint_directory": 3854507901,
+    "imported_backbone_with_q8_cache_directory": 5421061899,
+    "preparation_total": 9275569800,
+    "standalone_bundle": 2885204285,
+    "saved": 6390365515
+  },
+  "saved_percent": 68.8946,
+  "bundle_manifest_sha256": "6084c52d761459c8c7078f9a703e76e2f6d6c7c2e65b5af3403095e26e4600c9",
+  "bundle_manifest": {
+    "version": 1,
+    "kind": "lfm3-vl",
+    "weights": "q8",
+    "origin_source_key": "23abca68c67fa1d2",
+    "files": {
+      "config.json": {
+        "bytes": 2905,
+        "sha256": "18a02e8b5963e38c98683e2c948705ea45220d75f017e9b4bdd9cf54692e6dc3"
+      },
+      "processor_config.json": {
+        "bytes": 1535,
+        "sha256": "d3d5c3f9dc3d3f25c3177ba8bb05938b53c51799244af1ca6406cde78924b84e"
+      },
+      "tokenizer.json": {
+        "bytes": 17908258,
+        "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+      },
+      "LICENSE": {
+        "bytes": 10574,
+        "sha256": "30adf9d6478191fb87f2424f63ba0728598335aaf99cd2848ef17e8e545fe94b"
+      },
+      "model.safetensors": {
+        "bytes": 378777872,
+        "sha256": "50ead2d50bcdb36938d94cc6643391f250060c16caef1e47fbd4e62c0b42b81a"
+      },
+      "language/config.json": {
+        "bytes": 1225,
+        "sha256": "6aa7115f1f64959fb880651798034b8d75d19cd7cd43534ea0f5bc063b29ccc0"
+      },
+      "language/tokenizer.json": {
+        "bytes": 17908258,
+        "sha256": "a39eed58008cbcbc09e5b629b81338a654269c64cd13348aaa6090f4db75c7e7"
+      },
+      "language/model.safetensors": {
+        "bytes": 525078056,
+        "sha256": "cbaf8c8fe428b13f280d2ea0942696449b62626b72bc90f69ea9d952cd73f304"
+      },
+      "language/lfm3-q8.cache": {
+        "bytes": 1945513984,
+        "sha256": "02f324934d4c2255e249a9d97ec8ed86576d90735025fb60171776378b1d93f7"
+      },
+      "language/vl_backbone.json": {
+        "bytes": 81,
+        "sha256": "cb76de238b2d6df23ec0a0f05fbc9c6302e9673cdd5eeeb4bbdb248b8b6775f6"
+      }
+    }
+  },
+  "scope": "Packaging preserves existing arithmetic; real OCR logit comparisons are per backend, not CPU versus Metal. Q4 is covered by synthetic runtime tests only.",
+  "verification": {
+    "dart_format": "clean",
+    "dart_analyze": "no issues",
+    "dart_tests": {
+      "passed": 138,
+      "skipped": 2,
+      "skip_reason": "DIANOIA_LAB_MODELS not set for optional installation tests"
+    },
+    "python_compare_tests_passed": 5,
+    "lab_parity": {
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "CPU Q8",
+        "Metal Q8",
+        "Metal Q4"
+      ],
+      "files": [
+        "hidden.f32",
+        "logits.f32",
+        "gen.i32",
+        "gen_logits.f32"
+      ],
+      "all_byte_identical": true
+    },
+    "real_bundle_comparisons": [
+      {
+        "backend": "CPU Q8",
+        "text": "東京 123",
+        "all_observed_logit_bytes_identical": true
+      },
+      {
+        "backend": "Metal Q8",
+        "text": "東京 123",
+        "all_observed_logit_bytes_identical": true
+      }
+    ],
+    "synthetic_bundle_tests_passed": 9
+  }
+}

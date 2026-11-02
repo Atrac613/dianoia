@@ -60,8 +60,7 @@ class _BenchPageState extends State<BenchPage> {
     setState(() => _running = false);
   }
 
-  // Metal buffers live for the life of the process, so each run leaks its
-  // activations and KV caches (~150 MB); restart the app between many runs.
+  // Restart between backend measurements to reset process-lifetime memory peaks.
   static Future<void> _worker(SendPort out) async {
     try {
       await runBench(out.send);

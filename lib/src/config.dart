@@ -34,10 +34,14 @@ final class Lfm3Config {
   });
 
   factory Lfm3Config.load(String modelDir) {
-    final json =
-        jsonDecode(File('$modelDir/config.json').readAsStringSync())
-            as Map<String, Object?>;
+    return Lfm3Config.fromJson(
+      jsonDecode(File('$modelDir/config.json').readAsStringSync())
+          as Map<String, Object?>,
+    );
+  }
 
+  /// Parses a standalone text configuration, including a VL text_config.
+  factory Lfm3Config.fromJson(Map<String, Object?> json) {
     T field<T>(String key) {
       final value = json[key];
       if (value is! T) {
