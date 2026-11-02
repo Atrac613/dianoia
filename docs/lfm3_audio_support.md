@@ -9,7 +9,9 @@ CPU and Metal language inference have been exercised; the audio encoder always
 runs on the CPU. Chunked PCM input can prefill the language model before the
 recording finishes; transcription output starts after finalization. This is
 not yet an app API, an audio chat session or a
-`ModelStore` preset. Speech generation and microphone UI remain unimplemented.
+`ModelStore` preset. The Flutter example now has an experimental microphone
+preview for prepared local bundles; physical microphone/device behavior is not
+yet validated. Speech generation remains unimplemented.
 
 ## Q4_0 target and research commands
 
@@ -251,15 +253,17 @@ accuracy or microphone latency.
 
 ## Remaining implementation
 
-1. Connect microphone input to a worker/isolate and add app lifecycle,
-   cancellation and audio-session handling. File chunk simulation does not
-   establish realtime microphone behavior.
+1. Validate the example's microphone stream and OS audio-session behavior on
+   real devices, including interruptions, permission denial and backgrounding.
+   The preview implementation and simulated lifecycle tests do not establish
+   actual hardware capture quality or latency.
 2. Broaden real speech/noise/language validation beyond the two clean synthetic
    English/Japanese clips, and evaluate any activation quantization changes.
 3. Implement the noncausal three-layer Depthformer, 12-codebook parallel
    prediction and LiquidCodec streaming decoder for 24 kHz speech output.
-4. Add pinned app installation bundles, public sessions, cancellation and resource
-   limits, then the example UI and CPU/Metal/Vulkan device validation.
+4. Add pinned app installation bundles and public audio sessions, then broaden
+   CPU/Metal/Vulkan device validation. The example preview currently uses local
+   prepared bundles and its own worker/capture controller.
 
 The official [model card](https://huggingface.co/LiquidAI/LFM3-Audio-2B)
 describes text/audio input, text/speech output and multilingual transcription

@@ -12,7 +12,9 @@ dependencies:
   dianoia:
     path: ..
   file_selector: ^1.1.0
+  crypto: ^3.0.8
   path_provider: ^2.1.5
+  record: ^7.1.2
 
 dev_dependencies:
   flutter_test:

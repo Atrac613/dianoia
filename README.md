@@ -15,8 +15,10 @@ implementation, even when language inference uses the GPU.
 `package:dianoia/lab.dart` exposes internals without a stability promise.
 Experimental [LFM3-Audio Q4_0 transcription](docs/lfm3_audio_support.md) is
 available through research tools and `lab.dart`, with a CPU audio encoder and
-CPU/Metal language inference. Audio is not yet integrated into the app API or
-Flutter example. Speech output and general-purpose GGUF support are planned.
+CPU/Metal language inference. The Flutter example includes an experimental
+microphone transcription screen using a locally prepared audio model. Audio
+is not yet part of the app API. Speech output and general-purpose GGUF support
+are planned.
 
 ## Try the Flutter example
 

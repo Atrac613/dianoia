@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'chat_controller.dart';
 import 'chat_page.dart';
 import 'example_model.dart';
+import 'audio_page.dart';
 
 /// The models supported by the example, before any worker is started.
 class ModelSelectionPage extends StatelessWidget {
@@ -51,6 +52,21 @@ class ModelSelectionPage extends StatelessWidget {
                     ),
                   ),
                 ),
+              Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  title: const Text('LFM3-Audio-2B Q4_0'),
+                  subtitle: const Text(
+                    'Experimental audio transcription · Local model setup',
+                  ),
+                  trailing: const Icon(Icons.mic),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AudioTranscriptionPage(),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

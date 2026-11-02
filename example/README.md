@@ -14,6 +14,76 @@ licenses (LFM3-1.7B QAD Q4_0 and LFM3-VL-2B QAD Q4_0). Selecting a model opens i
 loads it if already installed. Back returns to model selection and releases
 the chat worker; opening a model again starts a fresh conversation.
 
+The separate **LFM3-Audio-2B Q4_0** entry opens an experimental microphone
+transcription preview. It uses a prepared local model rather than the chat
+download presets; see the setup below.
+
+## Audio transcription preview
+
+Prepare the official Q4_0 pair from the repository root:
+
+```sh
+dart run tool/prepare_audio_q4.dart build/audio-reference
+cd example
+flutter run -d macos
+```
+
+Select **LFM3-Audio-2B Q4_0**, choose **Choose model folder**, and select the
+prepared `build/audio-reference` directory. This needs the matching source
+receipt, metadata, Q4 audio mmproj and imported `language` subdirectory.
+The preview checks the pinned audio/config/tokenizer hashes and language-cache
+identity in the worker before loading it. It does not download models.
+
+For mobile sideloading, place the following prepared files under the
+`LFM3-Audio-2B-Q4` folder shown by the preview, then tap **Check again**:
+
+```text
+LFM3-Audio-2B-Q4/
+  audio_config.json
+  mmproj-LFM3-Audio-2B-Q4_0.gguf
+  language/
+    config.json
+    tokenizer.json
+    model.safetensors
+    lfm3-q4.cache
+    audio_source.json
+    LICENSE
+```
+
+The raw language GGUF is not required after preparation. Keep the imported
+language files together; the cache and source receipt must match. iOS exposes
+the app's Documents folder in Files/Finder. Android uses this app's external
+files folder (`Android/data/dev.atrac613.dianoia_example/files`); Windows uses
+the local app cache directory. Desktop users can choose an existing prepared
+folder directly. See [audio implementation notes](../docs/lfm3_audio_support.md)
+for source pins and storage requirements.
+
+Choose Japanese, English or automatic language detection. **Record** requests
+microphone permission only when pressed; **Stop and transcribe** flushes the
+final PCM and displays text. **Cancel recording**, route exit or backgrounding
+discards the current recording. Returning to the app never resumes capture
+automatically. Capture stops after 30 seconds. Audio is not saved or uploaded.
+
+`record` supplies mono PCM16 at 16 kHz. The UI converts it to owned 80 ms float
+chunks and permits only one inference request in flight. A one-second queue
+limit stops/discards capture if the worker cannot keep up; samples are never
+silently dropped. Models, hashing, encoding and incremental prefill live in a
+worker isolate. Its lifetime shares a gate with text/VL workers so a model
+switch waits for the previous isolate to release GPU resources and exit.
+
+Platform setup follows the [record 7.1.2 guide](https://pub.dev/packages/record/versions/7.1.2):
+iOS/macOS microphone usage descriptions, macOS audio-input sandbox entitlement,
+and Android `RECORD_AUDIO`. The UI also rejects a changed capture configuration
+that is not mono 16 kHz PCM16.
+
+macOS compilation, simulated microphone/lifecycle tests and real Q4 worker
+inference are validated. Physical microphone capture, mobile builds and device
+audio-session behavior remain unvalidated. This preview has no speech output,
+partial transcript while recording, app audio `ModelStore` preset or public
+audio session API.
+
+## Text and image model setup
+
 The text model is not bundled. Without one the app offers to download it,
 naming its size (1.07 GB) and license; `ModelStore.install` then fetches
 Liquid's published files from Hugging Face, checks each one's SHA-256,
