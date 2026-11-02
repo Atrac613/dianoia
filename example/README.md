@@ -15,10 +15,10 @@ loads it if already installed. Back returns to model selection and releases
 the chat worker; opening a model again starts a fresh conversation.
 
 The separate **LFM3-Audio-2B Q4_0** entry opens an experimental microphone
-transcription preview. It uses a prepared local model rather than the chat
+transcription and text-to-speech preview. It uses a prepared local model rather than the chat
 download presets; see the setup below.
 
-## Audio transcription preview
+## Audio preview
 
 Prepare the official Q4_0 pair from the repository root:
 
@@ -62,7 +62,24 @@ Choose Japanese, English or automatic language detection. **Record** requests
 microphone permission only when pressed; **Stop and transcribe** flushes the
 final PCM and displays text. **Cancel recording**, route exit or backgrounding
 discards the current recording. Returning to the app never resumes capture
-automatically. Capture stops after 30 seconds. Audio is not saved or uploaded.
+automatically. Capture stops after 30 seconds. Recordings are not saved or
+uploaded.
+
+For TTS, enter a short sentence under **Text to speech**, select the output
+language (Japanese/English) and voice instruction (Female/Male), then tap
+**Generate and play**. The model generates the complete utterance before
+playback; **Stop speech** cancels generation or stops playback. The input limit
+is 1000 characters and output is limited to 30 seconds. Context overflow or
+unfinished speech is reported as an error; try a shorter sentence. Recording
+and TTS are mutually exclusive. Route exit/backgrounding stops speech, and
+returning never restarts it.
+
+Generation uses the same loaded language backbone plus lazily loaded
+Depthformer/LiquidCodec weights in the worker. Playback uses
+[audioplayers 6.8.1](https://pub.dev/packages/audioplayers/versions/6.8.1) with a
+private temporary local WAV. The file is removed after completion, stop,
+interruption or playback error. Generated speech stays on the device; the
+preview does not upload it or provide permanent recording/export storage.
 
 `record` supplies mono PCM16 at 16 kHz. The UI converts it to owned 80 ms float
 chunks and permits only one inference request in flight. A one-second queue
@@ -78,9 +95,11 @@ that is not mono 16 kHz PCM16.
 
 macOS compilation, simulated microphone/lifecycle tests and real Q4 worker
 inference are validated. Physical microphone capture, mobile builds and device
-audio-session behavior remain unvalidated. This preview has no speech output,
-partial transcript while recording, app audio `ModelStore` preset or public
-audio session API.
+audio-session behavior remain unvalidated. Speech playback is implemented but
+has not been manually listened to or tested on a physical device. The preview
+has no partial transcript while recording, app audio `ModelStore` preset or
+public audio session API. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
+records automated checks; device playback and recording remain manual checks.
 
 ## Text and image model setup
 

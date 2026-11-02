@@ -71,6 +71,20 @@ void main() {
           await backend.finish(),
           'The quick brown fox jumps over the lazy dog.',
         );
+        // Generate bytes only: this test never opens a playback device.
+        final wav = await backend.synthesize('Hello world.', 'en', 'female');
+        expect(String.fromCharCodes(wav.sublist(0, 4)), 'RIFF');
+        expect(ByteData.sublistView(wav).getUint32(24, Endian.little), 24000);
+        expect(wav.length, greaterThan(44));
+        final speaking = backend.synthesize(
+          'This speech will be cancelled.',
+          'en',
+          'female',
+        );
+        final interrupted = expectLater(speaking, throwsStateError);
+        await Future<void>.delayed(Duration.zero);
+        await backend.cancel();
+        await interrupted;
         await backend.begin('English');
         await backend.addPcm(samples.sublist(0, 1280));
         await backend.cancel();

@@ -10,10 +10,10 @@ runs on the CPU. Chunked PCM input can prefill the language model before the
 recording finishes; transcription output starts after finalization. This is
 not yet an app API, an audio chat session or a
 `ModelStore` preset. The Flutter example now has an experimental microphone
-preview for prepared local bundles; physical microphone/device behavior is not
-yet validated. Text-to-speech is available through `lab.dart` and the research
-CLI, producing mono 24 kHz PCM or WAV. The example does not yet expose speech
-synthesis or playback.
+preview for prepared local bundles, including text-to-speech playback. Physical
+microphone/device behavior is not yet validated. Text-to-speech is also
+available through `lab.dart` and the research CLI, producing mono 24 kHz PCM
+or WAV.
 
 ## Q4_0 target and research commands
 
@@ -333,6 +333,24 @@ Dart and Torch RNGs differ; matching seeds do not promise identical code
 sequences. CPU and Metal may produce different samples under stochastic
 sampling. No weights or generated speech are included in test fixtures.
 
+## Flutter speech preview
+
+The example's audio screen accepts short Japanese or English text and a
+female/male voice instruction. **Generate and play** uses the existing worker
+and loaded language backbone, lazily loads generation weights, and returns a
+complete 24 kHz PCM16 WAV before playback. The worker rejects empty or
+length-limited speech rather than playing it as a complete utterance. The
+30-second output limit and 1000-character input field bound each request;
+context capacity can reject input earlier.
+
+**Stop speech**, backgrounding or route exit cancel generation and stop
+playback. Recording and TTS cannot overlap. A stopped operation cannot start
+playback when its late result arrives, and resume never restarts it. The local
+player uses a private temporary WAV, removed after completion, interruption,
+stop or error. Recordings remain unsaved. Tests inject a fake player and never
+open an audio device. See the [example guide](../example/README.md) for setup
+and the [example TTS validation record](validation/lfm3-audio-example-tts-2026-11-02.md).
+
 ## Remaining implementation
 
 1. Validate the example's microphone stream and OS audio-session behavior on
@@ -342,8 +360,7 @@ sampling. No weights or generated speech are included in test fixtures.
 2. Broaden real speech/noise/language validation beyond the clean synthetic
    English/Japanese clips, and evaluate pronunciation and voice quality by
    listening. No manual listening or device playback was performed here.
-3. Add speech synthesis/playback to the Flutter example and integrate pinned
-   app installation bundles and public audio sessions. Broaden
+3. Integrate pinned app installation bundles and public audio sessions. Broaden
    CPU/Metal/Vulkan device validation. The example preview currently uses local
    prepared bundles and its own worker/capture controller.
 

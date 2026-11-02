@@ -16,9 +16,9 @@ implementation, even when language inference uses the GPU.
 Experimental [LFM3-Audio Q4_0 transcription and speech synthesis](docs/lfm3_audio_support.md) is
 available through research tools and `lab.dart`, with a CPU audio encoder and
 CPU/Metal language inference. The Flutter example includes an experimental
-microphone transcription screen using a locally prepared audio model. Audio
-is not yet part of the app API. Speech synthesis produces 24 kHz WAV files
-through the research CLI; the example has no speech playback UI. General-purpose
+audio preview using a locally prepared model, with microphone transcription
+and text-to-speech playback. Speech synthesis also produces 24 kHz WAV files
+through the research CLI. Audio is not yet part of the app API. General-purpose
 GGUF support is planned.
 
 ## Try the Flutter example

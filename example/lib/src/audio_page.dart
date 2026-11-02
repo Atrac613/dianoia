@@ -63,7 +63,9 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
         state == AppLifecycleState.detached ||
         (state == AppLifecycleState.inactive &&
             (_audio.phase == AudioPhase.recording ||
-                _audio.phase == AudioPhase.finishing));
+                _audio.phase == AudioPhase.finishing ||
+                _audio.phase == AudioPhase.synthesizing ||
+                _audio.phase == AudioPhase.playing));
     if (leaving) unawaited(_audio.cancel());
   }
 
@@ -80,7 +82,7 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Audio transcription')),
+    appBar: AppBar(title: const Text('Audio preview')),
     body: AudioTranscriptionView(
       controller: _audio,
       directory: _defaultDirectory,
@@ -123,6 +125,8 @@ class AudioTranscriptionView extends StatelessWidget {
         AudioPhase.recording =>
           'Recording · ${a.recordedSeconds.toStringAsFixed(1)} / 30 seconds',
         AudioPhase.finishing => 'Finishing transcription…',
+        AudioPhase.synthesizing => 'Generating speech…',
+        AudioPhase.playing => 'Playing speech…',
         AudioPhase.cancelling => 'Stopping…',
         AudioPhase.failed => 'The audio model could not be loaded.',
         AudioPhase.closed => 'Closed',
@@ -141,12 +145,14 @@ class AudioTranscriptionView extends StatelessWidget {
                 const SizedBox(height: 8),
                 const Text(
                   'Experimental · Record up to 30 seconds, then stop to see the transcript. '
-                  'Audio stays on this device and is not saved.',
+                  'Or enter text to generate speech. Audio stays on this device. '
+                  'Recordings are not saved; generated speech uses a temporary playback file.',
                 ),
                 const SizedBox(height: 24),
                 Text(status),
                 if (a.phase == AudioPhase.loading ||
                     a.phase == AudioPhase.finishing ||
+                    a.phase == AudioPhase.synthesizing ||
                     a.phase == AudioPhase.cancelling) ...[
                   const SizedBox(height: 12),
                   const LinearProgressIndicator(),
@@ -227,7 +233,10 @@ class AudioTranscriptionView extends StatelessWidget {
                         icon: const Icon(Icons.mic),
                         label: const Text('Record'),
                       ),
-                    if (a.active && a.phase != AudioPhase.cancelling)
+                    if (a.active &&
+                        a.phase != AudioPhase.cancelling &&
+                        a.phase != AudioPhase.synthesizing &&
+                        a.phase != AudioPhase.playing)
                       TextButton(
                         onPressed: a.cancel,
                         child: const Text('Cancel recording'),
@@ -240,11 +249,118 @@ class AudioTranscriptionView extends StatelessWidget {
                     a.transcript,
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 16),
+                _SpeechComposer(controller: a, enabled: ready),
               ],
             ),
           ),
         ),
       );
     },
+  );
+}
+
+class _SpeechComposer extends StatefulWidget {
+  const _SpeechComposer({required this.controller, required this.enabled});
+  final AudioController controller;
+  final bool enabled;
+  @override
+  State<_SpeechComposer> createState() => _SpeechComposerState();
+}
+
+class _SpeechComposerState extends State<_SpeechComposer> {
+  final _text = TextEditingController();
+  String _language = 'ja', _voice = 'female';
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text('Text to speech', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      const Text(
+        'Use a short sentence. Speech is generated before playback, up to 30 seconds.',
+      ),
+      const SizedBox(height: 16),
+      TextField(
+        controller: _text,
+        enabled: widget.enabled,
+        minLines: 2,
+        maxLines: 4,
+        maxLength: 1000,
+        decoration: const InputDecoration(
+          labelText: 'Text to speak',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: _language,
+              decoration: const InputDecoration(labelText: 'Output language'),
+              items: const [
+                DropdownMenuItem(value: 'ja', child: Text('Japanese')),
+                DropdownMenuItem(value: 'en', child: Text('English')),
+              ],
+              onChanged: widget.enabled
+                  ? (value) => setState(() => _language = value!)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: _voice,
+              decoration: const InputDecoration(labelText: 'Voice'),
+              items: const [
+                DropdownMenuItem(value: 'female', child: Text('Female')),
+                DropdownMenuItem(value: 'male', child: Text('Male')),
+              ],
+              onChanged: widget.enabled
+                  ? (value) => setState(() => _voice = value!)
+                  : null,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.icon(
+          onPressed:
+              widget.controller.phase == AudioPhase.synthesizing ||
+                  widget.controller.phase == AudioPhase.playing
+              ? widget.controller.cancel
+              : widget.enabled
+              ? () => widget.controller.speak(
+                  _text.text,
+                  language: _language,
+                  voice: _voice,
+                )
+              : null,
+          icon: Icon(
+            widget.controller.phase == AudioPhase.synthesizing ||
+                    widget.controller.phase == AudioPhase.playing
+                ? Icons.stop
+                : Icons.volume_up,
+          ),
+          label: Text(
+            widget.controller.phase == AudioPhase.synthesizing ||
+                    widget.controller.phase == AudioPhase.playing
+                ? 'Stop speech'
+                : 'Generate and play',
+          ),
+        ),
+      ),
+    ],
   );
 }

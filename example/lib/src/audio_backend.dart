@@ -6,6 +6,7 @@ abstract interface class AudioBackend {
   Future<void> begin(String? language);
   Future<void> addPcm(Float32List samples);
   Future<String> finish();
+  Future<Uint8List> synthesize(String text, String language, String voice);
   Future<void> cancel();
   Future<void> close();
 }

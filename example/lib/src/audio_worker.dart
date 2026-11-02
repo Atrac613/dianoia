@@ -113,6 +113,18 @@ final class AudioIsolateBackend implements AudioBackend {
   @override
   Future<String> finish() async => (await _request('finish')) as String;
   @override
+  Future<Uint8List> synthesize(
+    String text,
+    String language,
+    String voice,
+  ) async =>
+      (await _request('synthesize', {
+            'text': text,
+            'language': language,
+            'voice': voice,
+          }))
+          as Uint8List;
+  @override
   Future<void> cancel() async {
     if (!_closed && _commands != null) await _request('cancel');
   }
@@ -143,6 +155,9 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
   Lfm3Model? model;
   Lfm3AudioEncoder? encoder;
   Lfm3Tokenizer? tokenizer;
+  Lfm3AudioGenerator? generator;
+  AudioSynthesizer? synthesizer;
+  String? directory;
   AudioTranscriptionPrefill? input;
   Lfm3AudioEncoderStream? stream;
   Lfm3AudioFeatureStream? features;
@@ -166,7 +181,10 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
   commands.listen((message) {
     final request = message as Map;
     final op = request['op'] as String;
-    if (op == 'cancel' || op == 'close') generation++;
+    if (op == 'cancel' || op == 'close') {
+      generation++;
+      synthesizer?.cancel();
+    }
     if (op == 'close') closing = true;
     final version = generation;
     chain = chain.then((_) async {
@@ -176,6 +194,7 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
           clear();
         } else if (op == 'close') {
           clear();
+          generator?.close();
           encoder?.close();
           await model?.close();
         } else {
@@ -211,7 +230,38 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
                 model = await open(false);
               }
               check(version);
+              directory = dir;
               result = gpu ? 'GPU' : 'CPU';
+            case 'synthesize':
+              if (model == null || tokenizer == null || directory == null) {
+                throw StateError('Model is not loaded');
+              }
+              if (input != null) throw StateError('Recording is active');
+              final options = request['value'] as Map;
+              generator ??= Lfm3AudioGenerator.load(
+                '$directory/${Lfm3AudioQ4Source.audio.name}',
+              );
+              final current = synthesizer = AudioSynthesizer(
+                model!,
+                tokenizer!,
+                generator!,
+              );
+              final speech = await current.synthesize(
+                options['text'] as String,
+                language: options['language'] as String,
+                voice: options['voice'] as String,
+              );
+              check(version);
+              synthesizer = null;
+              if (speech.stopReason != 'eos' || speech.samples.isEmpty) {
+                throw StateError(
+                  'Speech did not finish. Please try shorter text.',
+                );
+              }
+              result = encodeSpeechWav(
+                speech.samples,
+                sampleRate: speech.sampleRate,
+              );
             case 'begin':
               if (model == null || encoder == null || tokenizer == null) {
                 throw StateError('Model is not loaded');
@@ -268,6 +318,7 @@ Future<void> _runAudioWorker((SendPort, bool) args) async {
         }
         out.send({'id': request['id'], 'value': result});
       } catch (e) {
+        synthesizer = null;
         clear();
         // A failed load must not retain an encoder when the caller retries.
         if (op == 'load') {

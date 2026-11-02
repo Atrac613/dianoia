@@ -3,7 +3,10 @@ import 'package:dianoia_example/src/audio_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'audio_controller_test.dart' show TestAudioBackend, TestMicrophone;
+import 'dart:async';
+
+import 'audio_controller_test.dart'
+    show TestAudioBackend, TestMicrophone, TestSpeechPlayer;
 
 void main() {
   late AudioController audio;
@@ -11,6 +14,7 @@ void main() {
     audio = AudioController(
       backend: TestAudioBackend(),
       microphone: TestMicrophone(),
+      player: TestSpeechPlayer(),
     );
   });
   tearDown(() async {
@@ -28,6 +32,67 @@ void main() {
       ),
     ),
   );
+
+  testWidgets('speech composer generates only on tap and stops playback', (
+    tester,
+  ) async {
+    final backend = TestAudioBackend(), player = TestSpeechPlayer();
+    player.completing = Completer<void>();
+    final controller = AudioController(
+      backend: backend,
+      microphone: TestMicrophone(),
+      player: player,
+    );
+    addTearDown(controller.dispose);
+    await controller.load('/prepared');
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+    );
+    expect(backend.utterances, isEmpty);
+    await tester.ensureVisible(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'こんにちは。');
+    await tester.ensureVisible(find.text('Generate and play'));
+    await tester.tap(find.text('Generate and play'));
+    await tester.pump();
+    expect(backend.utterances, [('こんにちは。', 'ja', 'female')]);
+    expect(controller.phase, AudioPhase.playing);
+    await tester.ensureVisible(find.text('Stop speech'));
+    await tester.tap(find.text('Stop speech'));
+    await tester.pumpAndSettle();
+    expect(controller.phase, AudioPhase.ready);
+    expect(player.stops, 1);
+  });
+
+  testWidgets('background stops speech and resume does not restart it', (
+    tester,
+  ) async {
+    final backend = TestAudioBackend(), player = TestSpeechPlayer();
+    player.completing = Completer<void>();
+    final controller = AudioController(
+      backend: backend,
+      microphone: TestMicrophone(),
+      player: player,
+    );
+    addTearDown(controller.dispose);
+    await controller.load('/prepared');
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+    );
+    final speaking = controller.speak('Hello');
+    await tester.pump();
+    expect(controller.phase, AudioPhase.playing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pumpAndSettle();
+    await speaking;
+    expect(controller.phase, AudioPhase.ready);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(player.played, hasLength(1));
+    await tester.pumpWidget(const MaterialApp(home: Text('Left')));
+    await tester.pump();
+    await controller.close();
+    expect(player.disposals, 1);
+  });
 
   testWidgets('local model setup never requests microphone permission', (
     tester,
@@ -90,11 +155,15 @@ void main() {
       await tester.tap(find.text('Record'));
       await tester.pump();
       expect(mic.starts, 1);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pumpAndSettle();
       expect(controller.active, isFalse);
       expect(controller.transcript, isEmpty);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
       expect(mic.starts, 1);

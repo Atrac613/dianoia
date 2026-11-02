@@ -5,6 +5,7 @@ import 'package:dianoia_example/src/audio_backend.dart';
 import 'package:dianoia_example/src/audio_controller.dart';
 import 'package:dianoia_example/src/microphone.dart';
 import 'package:dianoia_example/src/pcm16_stream.dart';
+import 'package:dianoia_example/src/speech_player.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class TestMicrophone implements Microphone {
@@ -40,6 +41,8 @@ class TestAudioBackend implements AudioBackend {
   final samples = <double>[];
   Completer<void>? ack;
   Completer<String>? finishing;
+  Completer<Uint8List>? speech;
+  final utterances = <(String, String, String)>[];
   int begins = 0, finishes = 0, cancels = 0, closes = 0;
   @override
   Future<String> load(String directory) async => 'CPU';
@@ -61,6 +64,18 @@ class TestAudioBackend implements AudioBackend {
   }
 
   @override
+  Future<Uint8List> synthesize(
+    String text,
+    String language,
+    String voice,
+  ) async {
+    utterances.add((text, language, voice));
+    return speech == null
+        ? Uint8List.fromList([1, 2, 3])
+        : await speech!.future;
+  }
+
+  @override
   Future<void> cancel() async {
     cancels++;
     if (ack case final c? when !c.isCompleted) {
@@ -77,22 +92,143 @@ class TestAudioBackend implements AudioBackend {
   }
 }
 
+class TestSpeechPlayer implements SpeechPlayer {
+  final played = <Uint8List>[];
+  Completer<void>? completing;
+  Object? error;
+  int stops = 0, disposals = 0;
+  @override
+  Future<void> play(Uint8List wav) async {
+    played.add(wav);
+    if (error != null) throw error!;
+    await completing?.future;
+  }
+
+  @override
+  Future<void> stop() async {
+    stops++;
+    if (completing case final c? when !c.isCompleted) c.complete();
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposals++;
+    await stop();
+  }
+}
+
 Future<void> events() => Future<void>.delayed(Duration.zero);
 
 void main() {
   late AudioController audio;
   late TestMicrophone mic;
   late TestAudioBackend backend;
+  late TestSpeechPlayer player;
   setUp(() async {
     mic = TestMicrophone();
     backend = TestAudioBackend();
-    audio = AudioController(backend: backend, microphone: mic);
+    player = TestSpeechPlayer();
+    audio = AudioController(backend: backend, microphone: mic, player: player);
     await audio.load('/prepared');
   });
   tearDown(() async {
     await audio.close();
     audio.dispose();
   });
+
+  test(
+    'speech is explicit, keeps options and excludes capture until playback ends',
+    () async {
+      expect(backend.utterances, isEmpty);
+      player.completing = Completer<void>();
+      final speaking = audio.speak('Hello.', language: 'en', voice: 'male');
+      await events();
+      expect(backend.utterances, [('Hello.', 'en', 'male')]);
+      expect(audio.phase, AudioPhase.playing);
+      await audio.record();
+      await audio.speak('Ignored');
+      expect(mic.starts, 0);
+      expect(backend.utterances, hasLength(1));
+      expect(player.played.single, [1, 2, 3]);
+      player.completing!.complete();
+      await speaking;
+      expect(audio.phase, AudioPhase.ready);
+      await audio.record();
+      expect(mic.starts, 1);
+      await audio.cancel();
+    },
+  );
+
+  test(
+    'cancel during generation never plays a late result and permits reuse',
+    () async {
+      backend.speech = Completer<Uint8List>();
+      final speaking = audio.speak('Hello');
+      expect(audio.phase, AudioPhase.synthesizing);
+      await audio.cancel();
+      backend.speech!.complete(Uint8List(44));
+      await speaking;
+      expect(player.played, isEmpty);
+      expect(audio.phase, AudioPhase.ready);
+      backend.speech = null;
+      await audio.speak('Next');
+      expect(player.played, hasLength(1));
+    },
+  );
+
+  test(
+    'cancelling from the playback transition cannot start a late player',
+    () async {
+      void cancelOnPlayback() {
+        if (audio.phase == AudioPhase.playing) unawaited(audio.cancel());
+      }
+
+      audio.addListener(cancelOnPlayback);
+      await audio.speak('Hello');
+      await events();
+      audio.removeListener(cancelOnPlayback);
+      expect(player.played, isEmpty);
+      expect(audio.phase, AudioPhase.ready);
+    },
+  );
+
+  test(
+    'speech stop and route close stop playback and release the player',
+    () async {
+      player.completing = Completer<void>();
+      final speaking = audio.speak('Hello');
+      await events();
+      await audio.cancel();
+      await speaking;
+      expect(player.stops, 1);
+      expect(audio.phase, AudioPhase.ready);
+      player.completing = Completer<void>();
+      final second = audio.speak('Next');
+      await events();
+      await audio.close();
+      await second;
+      expect(audio.phase, AudioPhase.closed);
+      expect(player.disposals, 1);
+      expect(backend.closes, 1);
+    },
+  );
+
+  test(
+    'blank text and playback failures leave a reusable ready state',
+    () async {
+      await audio.speak('  ');
+      expect(backend.utterances, isEmpty);
+      expect(audio.error, contains('Enter text'));
+      player.error = StateError('Device unavailable');
+      await audio.speak('Hello');
+      expect(audio.error, contains('Device unavailable'));
+      expect(audio.phase, AudioPhase.ready);
+      player.error = null;
+      await audio.speak('Retry');
+      expect(audio.error, isNull);
+      expect(audio.phase, AudioPhase.ready);
+    },
+  );
 
   test(
     'PCM16 packetizer preserves signed samples across odd byte boundaries',

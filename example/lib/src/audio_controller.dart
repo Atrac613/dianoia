@@ -7,6 +7,7 @@ import 'audio_backend.dart';
 import 'audio_worker.dart';
 import 'microphone.dart';
 import 'pcm16_stream.dart';
+import 'speech_player.dart';
 
 enum AudioPhase {
   needsModel,
@@ -15,19 +16,27 @@ enum AudioPhase {
   requestingPermission,
   recording,
   finishing,
+  synthesizing,
+  playing,
   cancelling,
   failed,
   closed,
 }
 
 /// UI-side capture and bounded backpressure. Models and arithmetic stay in the
-/// backend isolate; PCM is never written to disk or retained after a recording.
+/// backend isolate; microphone PCM is never saved. Generated speech is passed
+/// to the player, which owns its temporary local source until playback ends.
 final class AudioController extends ChangeNotifier {
-  AudioController({AudioBackend? backend, Microphone? microphone})
-    : _backend = backend ?? AudioIsolateBackend(),
-      _microphone = microphone ?? RecordMicrophone();
+  AudioController({
+    AudioBackend? backend,
+    Microphone? microphone,
+    SpeechPlayer? player,
+  }) : _backend = backend ?? AudioIsolateBackend(),
+       _microphone = microphone ?? RecordMicrophone(),
+       _player = player ?? LocalSpeechPlayer();
   final AudioBackend _backend;
   final Microphone _microphone;
+  final SpeechPlayer _player;
   static const maxSamples = 30 * 16000;
   static const maxQueuedSamples = 16000;
   final _queue = ListQueue<Float32List>();
@@ -49,6 +58,8 @@ final class AudioController extends ChangeNotifier {
     AudioPhase.requestingPermission ||
     AudioPhase.recording ||
     AudioPhase.finishing ||
+    AudioPhase.synthesizing ||
+    AudioPhase.playing ||
     AudioPhase.cancelling => true,
     _ => false,
   };
@@ -79,6 +90,37 @@ final class AudioController extends ChangeNotifier {
       phase = AudioPhase.failed;
     }
     _notify();
+  }
+
+  Future<void> speak(
+    String text, {
+    String language = 'ja',
+    String voice = 'female',
+  }) async {
+    if (phase != AudioPhase.ready || _closing != null) return;
+    if (text.trim().isEmpty) {
+      error = 'Enter text to speak.';
+      _notify();
+      return;
+    }
+    final epoch = ++_epoch;
+    phase = AudioPhase.synthesizing;
+    error = null;
+    _notify();
+    if (!_valid(epoch)) return;
+    try {
+      final wav = await _backend.synthesize(text, language, voice);
+      if (!_valid(epoch)) return;
+      phase = AudioPhase.playing;
+      _notify();
+      if (!_valid(epoch)) return;
+      await _player.play(wav);
+      if (!_valid(epoch)) return;
+      phase = AudioPhase.ready;
+      _notify();
+    } catch (e) {
+      if (_valid(epoch)) await cancel(message: 'Speech failed: $e');
+    }
   }
 
   Future<void> record() async {
@@ -240,6 +282,7 @@ final class AudioController extends ChangeNotifier {
     _notify();
     // Interrupt the worker immediately, without waiting for an outstanding ACK.
     final cancelled = _quiet(_backend.cancel());
+    final stopped = _quiet(_player.stop());
     try {
       await _microphone.stop();
     } catch (e) {
@@ -249,6 +292,7 @@ final class AudioController extends ChangeNotifier {
     await _subscription?.cancel();
     _subscription = null;
     await cancelled;
+    await stopped;
     await _pumping;
     if (!_valid(epoch)) return;
     error = message;
@@ -266,12 +310,14 @@ final class AudioController extends ChangeNotifier {
     phase = AudioPhase.closed;
     final cancelled = _quiet(_backend.cancel());
     final workerClosed = _quiet(_backend.close());
+    final playerClosed = _quiet(_player.dispose());
     await _quiet(_microphone.stop());
     await _subscription?.cancel();
     _subscription = null;
     await cancelled;
     await _pumping;
     await workerClosed;
+    await playerClosed;
     await _quiet(_microphone.dispose());
   }
 
