@@ -8,7 +8,8 @@ frontend, LFM2 encoder, projector, ASR prompt expansion and greedy text decoding
 CPU and Metal language inference have been exercised; the audio encoder always
 runs on the CPU. Chunked PCM input can prefill the language model before the
 recording finishes; transcription output starts after finalization. This is
-not yet a public audio inference API or an audio chat session.
+not yet a stable public audio inference API. A native English voice
+conversation session is available through `lab.dart` and the Flutter example.
 `AudioGgufSpec.lfm3AudioQ4` now installs the paired model through `ModelStore`. The Flutter example now has an experimental audio
 preview with in-app downloads, optional prepared local bundles and
 text-to-speech playback. Physical
@@ -379,6 +380,73 @@ stop or error. Recordings remain unsaved. Tests inject a fake player and never
 open an audio device. See the [example guide](../example/README.md) for setup
 and the [example TTS validation record](validation/lfm3-audio-example-tts-2026-11-02.md).
 
+## Native voice conversation
+
+`AudioConversationSession` implements audio input and native interleaved
+text/speech output using the pinned model's recommended system instruction,
+`Respond with interleaved text and audio.`, and assistant `<|mixed_start|>`
+prefix. This uses the audio model directly; it is not an ASR/chat/TTS cascade.
+The official [model card](https://huggingface.co/LiquidAI/LFM3-Audio-2B/blob/0295e4130594c06800fd25451d97139ac2da1aff/README.md)
+limits voice chat to English. ASR and standalone TTS retain their separate
+language options.
+
+The generation state alternates six greedy text slots and twelve sampled audio
+slots. A text-end marker starts the remaining audio tail. Any codebook EOS
+normalizes the whole frame to EOS, supplies its feedback embedding and returns
+to text mode; EOS frames are never passed to LiquidCodec. Turn-end markers end
+the reply. Mode changes and text-end/EOS edge cases are compared with the
+actual pinned upstream per-row generation block by
+`tool/audio_conversation_oracle.py`, using scripted tokens and frames without
+checkpoint weights. Existing depth/encoder/codec numerical parity still applies.
+
+```dart
+final session = AudioConversationSession(backbone, tokenizer, generator);
+await session.begin();
+// Feed newly completed projected rows from the existing streaming encoder:
+await session.addProjected(projectedRows);
+final reply = await session.finish(onText: (text) { /* Current reply text. */ });
+// reply.samples: owned mono 24 kHz PCM; reply.text: decoded response.
+// Repeat begin/addProjected/finish for the next question.
+session.clear(); // Explicit new conversation, when no turn is active.
+session.close(); // Caller still owns backbone and generator.
+```
+
+Completed history retains exact input and output embeddings, including EOS
+feedback, plus text/marker IDs. It retains no PCM. Each new turn resets the
+backbone and replays committed slots, allowing standalone ASR/TTS to use it
+between turns. The caller must use the backbone exclusively during an active
+turn. Replays can use different kernel batch sizes; this does not promise
+bit-identical sampled replies. The preview uses a 2048-slot context and reserves
+768 output slots plus a final delimiter, with at most 375 speech frames (30
+seconds). Context exhaustion requests a new conversation; old turns are not
+silently discarded. Retained embeddings are bounded by context capacity.
+
+Cancellation, callback errors and incomplete/length-limited replies discard the
+current turn. `finish(deferCommit: true)` additionally requires `acceptReply()`
+before adding a completed reply to history. The example uses this acknowledgement
+so a response arriving after UI cancellation cannot become hidden context.
+Worker acknowledgements are ordered before subsequent cancel commands. Stopping
+playback after acceptance keeps the visible turn. Call `cancel()`, await any
+in-flight operation, then `clear()` to reset explicitly.
+
+The example's **Voice conversation (English)** mode records one question,
+generates a reply and then plays its complete WAV. Text updates during
+generation; user turns show recording duration without an extra transcription.
+**New conversation** clears history. This does not provide full-duplex capture,
+voice activity detection, automatic microphone restart or streamed device
+playback. The CLI performs the same session without audio devices:
+
+```sh
+dart run tool/audio_q4_converse.dart build/audio-reference build/voice-replies \
+  question-16k.f32 followup-16k.f32
+# --gpu accelerates the language backbone on a supported GPU.
+```
+
+The [voice validation record](validation/lfm3-audio-conversation-2026-11-03.md)
+records protocol tests, native session/worker cancellation and acknowledgement,
+CPU/Metal two-turn answers and CPU speech ASR round trips. No microphone use or
+listening was performed.
+
 ## Remaining implementation
 
 1. Validate the example's microphone stream and OS audio-session behavior on
@@ -388,12 +456,14 @@ and the [example TTS validation record](validation/lfm3-audio-example-tts-2026-1
 2. Broaden real speech/noise/language validation beyond the clean synthetic
    English/Japanese clips, and evaluate pronunciation and voice quality by
    listening. No manual listening or device playback was performed here.
-3. Add public audio sessions and broaden CPU/Metal/Vulkan device validation.
+3. Stabilize the public audio session API and broaden CPU/Metal/Vulkan device validation.
    The example preview currently uses its own worker/capture controller.
 
 The official [model card](https://huggingface.co/LiquidAI/LFM3-Audio-2B)
 describes text/audio input, text/speech output and multilingual transcription
 and synthesis. Full upstream feature coverage remains a target; the current
-dianoia subset covers single-clip transcription and text-to-speech.
+dianoia subset covers single-clip transcription, text-to-speech and English
+voice conversation. Live ASR and audio tool-call integration are not exposed by
+the preview.
 No weights are downloaded by the frontend or default Dart tests;
 only the explicitly invoked preparation tool downloads the pinned models.

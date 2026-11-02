@@ -19,6 +19,7 @@ final class AudioIsolateBackend implements AudioBackend {
   final bool useGpu;
   final String mirror;
   void Function(InstallProgress)? _progress;
+  void Function(String)? _replyText;
   final _pending = <int, Completer<Object?>>{};
   Future<void>? _starting, _closing;
   final _exited = Completer<void>();
@@ -47,6 +48,10 @@ final class AudioIsolateBackend implements AudioBackend {
         return;
       }
       final reply = event as Map;
+      if (reply['textUpdate'] == true) {
+        _replyText?.call(reply['text'] as String);
+        return;
+      }
       if (reply['progress'] == true) {
         _progress?.call(
           InstallProgress(
@@ -146,8 +151,36 @@ final class AudioIsolateBackend implements AudioBackend {
   }
 
   @override
-  Future<void> begin(String? language) async {
-    await _request('begin', language);
+  Future<void> begin(String? language, {bool conversation = false}) async {
+    await _request('begin', {
+      'language': language,
+      'conversation': conversation,
+    });
+  }
+
+  @override
+  Future<AudioVoiceReply> finishConversation(
+    void Function(String) onText,
+  ) async {
+    if (_replyText != null) {
+      throw StateError('Conversation is already generating');
+    }
+    _replyText = onText;
+    try {
+      return await _request('finishConversation') as AudioVoiceReply;
+    } finally {
+      _replyText = null;
+    }
+  }
+
+  @override
+  Future<void> acceptConversationReply() async {
+    await _request('acceptReply');
+  }
+
+  @override
+  Future<void> newConversation() async {
+    await _request('newConversation');
   }
 
   @override
@@ -206,6 +239,8 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
   Lfm3Tokenizer? tokenizer;
   Lfm3AudioGenerator? generator;
   AudioSynthesizer? synthesizer;
+  AudioConversationSession? conversation;
+  var recordingConversation = false;
   String? directory;
   StreamSubscription<InstallProgress>? installation;
   Completer<void>? installDone;
@@ -235,6 +270,15 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
     stream = null;
     features = null;
     samples = 0;
+    recordingConversation = false;
+  }
+
+  Future<void> addProjected(Float32List rows) async {
+    if (recordingConversation) {
+      await conversation!.addProjected(rows);
+    } else {
+      await input!.addProjected(rows);
+    }
   }
 
   void check(int version) {
@@ -246,9 +290,21 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
   commands.listen((message) {
     final request = message as Map;
     final op = request['op'] as String;
+    // Acknowledgement is synchronous and ordered before a subsequent cancel.
+    // A late reply that the UI discarded never becomes hidden conversation history.
+    if (op == 'acceptReply') {
+      try {
+        conversation!.acceptReply();
+        out.send({'id': request['id'], 'value': null});
+      } catch (e) {
+        out.send({'id': request['id'], 'error': '$e'});
+      }
+      return;
+    }
     if (op == 'cancel' || op == 'close') {
       generation++;
       synthesizer?.cancel();
+      conversation?.cancel();
       stoppingInstall ??= cancelInstallation().whenComplete(
         () => stoppingInstall = null,
       );
@@ -265,12 +321,15 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
         } else if (op == 'close') {
           await stoppingInstall;
           clear();
+          conversation?.close();
           generator?.close();
           encoder?.close();
           await model?.close();
         } else {
           check(version);
           switch (op) {
+            case 'newConversation':
+              conversation?.clear();
             case 'installed':
               final store = ModelStore(request['value'] as String);
               result = store.isInstalled(spec) ? store.bundlePath(spec) : null;
@@ -374,17 +433,34 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                 throw StateError('Model is not loaded');
               }
               clear();
-              input = await AudioTranscriptionPrefill.start(
-                model: model!,
-                tokenizer: tokenizer!,
-                hiddenSize: encoder!.config.projectionSize,
-                language: request['value'] as String?,
-              );
+              conversation?.cancel();
+              final options = request['value'] as Map;
+              recordingConversation = options['conversation'] as bool;
+              if (recordingConversation) {
+                generator ??= Lfm3AudioGenerator.load(
+                  '$directory/${Lfm3AudioQ4Source.audio.name}',
+                );
+                conversation ??= AudioConversationSession(
+                  model!,
+                  tokenizer!,
+                  generator!,
+                );
+                await conversation!.begin();
+              } else {
+                input = await AudioTranscriptionPrefill.start(
+                  model: model!,
+                  tokenizer: tokenizer!,
+                  hiddenSize: encoder!.config.projectionSize,
+                  language: options['language'] as String?,
+                );
+              }
               check(version);
               stream = encoder!.startStream();
               features = Lfm3AudioFrontend().startStream();
             case 'pcm':
-              if (input == null || features == null || stream == null) {
+              if ((!recordingConversation && input == null) ||
+                  features == null ||
+                  stream == null) {
                 throw StateError('Recording is not active');
               }
               final pcm = request['value'] as Float32List;
@@ -392,9 +468,33 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                 throw ArgumentError('Recording exceeds 30 seconds');
               }
               final rows = stream!.add(features!.add(pcm, samplingRate: 16000));
-              await input!.addProjected(rows);
+              await addProjected(rows);
               check(version);
               samples += pcm.length;
+            case 'finishConversation':
+              if (!recordingConversation ||
+                  stream == null ||
+                  features == null ||
+                  samples == 0) {
+                throw StateError('No voice message recorded');
+              }
+              await addProjected(stream!.add(features!.finish()));
+              check(version);
+              await addProjected(stream!.finish());
+              check(version);
+              final reply = await conversation!.finish(
+                deferCommit: true,
+                onText: (text) {
+                  out.send({'textUpdate': true, 'text': text});
+                },
+              );
+              check(version);
+              result = AudioVoiceReply(
+                reply.text,
+                encodeSpeechWav(reply.samples, sampleRate: reply.sampleRate),
+                conversation!.turns + 1,
+              );
+              clear();
             case 'finish':
               final current = input;
               if (current == null ||
@@ -426,6 +526,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
         out.send({'id': request['id'], 'value': result});
       } catch (e) {
         synthesizer = null;
+        conversation?.cancel();
         clear();
         // A failed load must not retain an encoder when the caller retries.
         if (op == 'load') {

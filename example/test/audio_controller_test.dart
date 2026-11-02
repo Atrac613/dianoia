@@ -70,8 +70,36 @@ class TestAudioBackend implements AudioBackend {
   }
 
   @override
-  Future<void> begin(String? language) async {
+  Future<void> begin(String? language, {bool conversation = false}) async {
     begins++;
+    conversationInput = conversation;
+  }
+
+  bool conversationInput = false;
+  Completer<AudioVoiceReply>? answering;
+  void Function(String)? onReplyText;
+  int replies = 0, acceptedReplies = 0, resets = 0;
+  Completer<void>? acceptance;
+  @override
+  Future<AudioVoiceReply> finishConversation(
+    void Function(String) onText,
+  ) async {
+    replies++;
+    onReplyText = onText;
+    return answering == null
+        ? AudioVoiceReply('Four.', Uint8List.fromList([1, 2, 3]), replies)
+        : await answering!.future;
+  }
+
+  @override
+  Future<void> acceptConversationReply() async {
+    acceptedReplies++;
+    await acceptance?.future;
+  }
+
+  @override
+  Future<void> newConversation() async {
+    resets++;
   }
 
   @override
@@ -158,6 +186,106 @@ void main() {
     await audio.close();
     audio.dispose();
   });
+
+  test(
+    'voice conversation accepts successive turns, plays answers and resets explicitly',
+    () async {
+      audio.setTask(AudioTask.conversation);
+      for (var i = 0; i < 2; i++) {
+        await audio.record();
+        expect(backend.conversationInput, isTrue);
+        mic.source!.add(Uint8List(32));
+        await events();
+        await audio.stop();
+        expect(audio.phase, AudioPhase.ready);
+        expect(audio.voiceTurns, hasLength(i + 1));
+        expect(audio.voiceTurns.last.reply, 'Four.');
+      }
+      expect(backend.finishes, 0);
+      expect(backend.acceptedReplies, 2);
+      expect(player.played, hasLength(2));
+      expect(() => audio.voiceTurns.clear(), throwsUnsupportedError);
+      await audio.newConversation();
+      expect(backend.resets, 1);
+      expect(audio.voiceTurns, isEmpty);
+      expect(audio.phase, AudioPhase.ready);
+    },
+  );
+
+  test(
+    'cancel rejects partial and late voice replies before acknowledgement',
+    () async {
+      audio.setTask(AudioTask.conversation);
+      backend.answering = Completer<AudioVoiceReply>();
+      await audio.record();
+      mic.source!.add(Uint8List(32));
+      await events();
+      final stopping = audio.stop();
+      await events();
+      await events();
+      expect(audio.phase, AudioPhase.replying);
+      backend.onReplyText!('A partial answer');
+      expect(audio.partialReply, 'A partial answer');
+      audio.setTask(AudioTask.transcription);
+      expect(audio.task, AudioTask.conversation);
+      await audio.cancel();
+      backend.answering!.complete(
+        AudioVoiceReply('A late answer', Uint8List(44), 1),
+      );
+      await stopping;
+      expect(audio.voiceTurns, isEmpty);
+      expect(audio.partialReply, isEmpty);
+      expect(backend.acceptedReplies, 0);
+      expect(player.played, isEmpty);
+    },
+  );
+
+  test(
+    'cancel after acceptance keeps visible history but never starts late playback',
+    () async {
+      audio.setTask(AudioTask.conversation);
+      backend.acceptance = Completer<void>();
+      await audio.record();
+      mic.source!.add(Uint8List(32));
+      await events();
+      final stopping = audio.stop();
+      await events();
+      await events();
+      expect(backend.acceptedReplies, 1);
+      expect(audio.voiceTurns, hasLength(1));
+      await audio.cancel();
+      backend.acceptance!.complete();
+      await stopping;
+      expect(player.played, isEmpty);
+      expect(audio.voiceTurns, hasLength(1));
+      expect(audio.phase, AudioPhase.ready);
+    },
+  );
+
+  test(
+    'stopping voice playback keeps completed turns for the next question',
+    () async {
+      audio.setTask(AudioTask.conversation);
+      player.completing = Completer<void>();
+      await audio.record();
+      mic.source!.add(Uint8List(32));
+      await events();
+      final stopping = audio.stop();
+      await events();
+      await events();
+      expect(audio.phase, AudioPhase.playing);
+      await audio.cancel();
+      await stopping;
+      expect(audio.voiceTurns, hasLength(1));
+      expect(backend.acceptedReplies, 1);
+      player.completing = null;
+      await audio.record();
+      mic.source!.add(Uint8List(32));
+      await events();
+      await audio.stop();
+      expect(audio.voiceTurns, hasLength(2));
+    },
+  );
 
   test(
     'model discovery never downloads; install progress leads to automatic load',

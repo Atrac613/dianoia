@@ -57,7 +57,7 @@ class ModelSelectionPage extends StatelessWidget {
                   contentPadding: const EdgeInsets.all(16),
                   title: const Text('LFM3-Audio-2B Q4_0'),
                   subtitle: const Text(
-                    'Transcription and text to speech\n1.23 GB download · LFM Open License v1.0',
+                    'Voice conversation, transcription and TTS\n1.23 GB download · LFM Open License v1.0',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.of(context).push(

@@ -15,7 +15,7 @@ loads it if already installed. Back returns to model selection and releases
 the chat worker; opening a model again starts a fresh conversation.
 
 The separate **LFM3-Audio-2B Q4_0** entry opens an experimental microphone
-transcription and text-to-speech preview. It offers an in-app model download
+voice conversation, transcription and text-to-speech preview. It offers an in-app model download
 and also accepts a prepared local model; see the setup below.
 
 ## Audio preview
@@ -82,7 +82,32 @@ the local app cache directory. Desktop users can choose an existing prepared
 folder directly. See [audio implementation notes](../docs/lfm3_audio_support.md)
 for source pins and storage requirements.
 
-Choose Japanese, English or automatic language detection. **Record** requests
+For voice conversation, select **Voice conversation (English)** under **Audio
+mode**. Tap **Record question**, speak in English, then **Stop and reply**.
+The model receives audio directly and generates interleaved text and speech;
+it does not route the question through ASR followed by a separate TTS request.
+Text appears during generation, and the complete speech plays afterwards.
+Record another question to continue with the earlier turns as context.
+**New conversation** clears that context. User turns show their duration;
+they are not separately transcribed.
+
+The model's voice chat currently supports English only. Japanese remains
+available in the separate ASR/TTS mode. Recording and reply speech are limited
+to 30 seconds each. The preview uses a 2048-slot language context; when it is
+full, start a new conversation rather than silently dropping earlier turns.
+The conversation stores audio embeddings and reply text in memory until reset
+or route exit. It does not save microphone recordings or persist chat history.
+
+**Cancel voice message** discards the current question; **Stop reply** cancels
+generation or playback. Backgrounding or route exit also stops active work.
+Cancelled, unaccepted replies never become hidden context. Once a reply is
+accepted and visible, stopping its playback keeps that turn for the next
+question. Returning to the app never starts recording or playback automatically.
+This is a record/send/reply workflow, without simultaneous listening and talking
+or streaming device playback. Existing prepared/downloaded Q4 models already
+contain all required weights.
+
+In **Transcription and TTS** mode, choose Japanese, English or automatic language detection. **Record** requests
 microphone permission only when pressed; **Stop and transcribe** flushes the
 final PCM and displays text. **Cancel recording**, route exit or backgrounding
 discards the current recording. Returning to the app never resumes capture
@@ -121,10 +146,13 @@ macOS compilation, simulated microphone/lifecycle tests and real Q4 worker
 inference are validated. Physical microphone capture, mobile builds and device
 audio-session behavior remain unvalidated. Speech playback is implemented but
 has not been manually listened to or tested on a physical device. The preview
-has no partial transcript while recording or public audio session API. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
+has no live partial transcription, full-duplex voice mode or stable public
+audio session API. `AudioConversationSession` is available through `lab.dart`. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
 records automated checks; device playback and recording remain manual checks.
 The [Audio download validation record](../docs/validation/lfm3-audio-download-2026-11-02.md)
 covers installation, cancellation, Range resume and real-model worker loading.
+The [voice conversation validation](../docs/validation/lfm3-audio-conversation-2026-11-03.md)
+covers the native generation protocol and two-turn CPU/Metal examples.
 
 For a local download mirror, `DIANOIA_MODEL_MIRROR` also applies to Audio.
 Serve the two pinned GGUFs plus `audio_config.json`, `tokenizer.json` and

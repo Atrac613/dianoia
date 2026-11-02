@@ -18,11 +18,21 @@ enum AudioPhase {
   requestingPermission,
   recording,
   finishing,
+  replying,
+  resettingConversation,
   synthesizing,
   playing,
   cancelling,
   failed,
   closed,
+}
+
+enum AudioTask { transcription, conversation }
+
+final class AudioVoiceTurn {
+  const AudioVoiceTurn(this.seconds, this.reply);
+  final double seconds;
+  final String reply;
 }
 
 /// UI-side capture and bounded backpressure. Models and arithmetic stay in the
@@ -56,6 +66,39 @@ final class AudioController extends ChangeNotifier {
   InstallProgress? installProgress;
   String transcript = '';
   String? language = 'Japanese';
+  AudioTask _task = AudioTask.transcription,
+      _recordingTask = AudioTask.transcription;
+  AudioTask get task => _task;
+  final _voiceTurns = <AudioVoiceTurn>[];
+  List<AudioVoiceTurn> get voiceTurns => List.unmodifiable(_voiceTurns);
+  String partialReply = '';
+  void setTask(AudioTask value) {
+    if (phase != AudioPhase.ready || _closing != null) return;
+    _task = value;
+    partialReply = '';
+    error = null;
+    _notify();
+  }
+
+  Future<void> newConversation() async {
+    if (phase != AudioPhase.ready || _closing != null) return;
+    final epoch = ++_epoch;
+    phase = AudioPhase.resettingConversation;
+    error = null;
+    _notify();
+    try {
+      await _backend.newConversation();
+      if (!_valid(epoch)) return;
+      _voiceTurns.clear();
+      partialReply = '';
+    } catch (e) {
+      if (!_valid(epoch)) return;
+      error = 'Could not clear the conversation: $e';
+    }
+    phase = AudioPhase.ready;
+    _notify();
+  }
+
   double get recordedSeconds => _bytes / 2 / 16000;
   int get queuedSamples => _queuedSamples;
   bool get active => switch (phase) {
@@ -63,6 +106,7 @@ final class AudioController extends ChangeNotifier {
     AudioPhase.installing ||
     AudioPhase.recording ||
     AudioPhase.finishing ||
+    AudioPhase.replying ||
     AudioPhase.synthesizing ||
     AudioPhase.playing ||
     AudioPhase.cancelling => true,
@@ -184,6 +228,7 @@ final class AudioController extends ChangeNotifier {
   Future<void> record() async {
     if (phase != AudioPhase.ready || _closing != null) return;
     final epoch = ++_epoch;
+    _recordingTask = _task;
     phase = AudioPhase.requestingPermission;
     error = null;
     transcript = '';
@@ -202,7 +247,10 @@ final class AudioController extends ChangeNotifier {
         _notify();
         return;
       }
-      await _backend.begin(language);
+      await _backend.begin(
+        language,
+        conversation: _recordingTask == AudioTask.conversation,
+      );
       if (!_valid(epoch)) return;
       final stream = await _microphone.start();
       if (!_valid(epoch)) {
@@ -307,6 +355,13 @@ final class AudioController extends ChangeNotifier {
       if (_bytes == 0) {
         throw StateError('No audio was received. Please try again.');
       }
+      if (_recordingTask == AudioTask.conversation) {
+        await _subscription?.cancel();
+        _subscription = null;
+        _packetizer = null;
+        await _answerVoice(epoch);
+        return;
+      }
       final text = await _backend.finish();
       if (!_valid(epoch)) return;
       transcript = text;
@@ -316,8 +371,48 @@ final class AudioController extends ChangeNotifier {
       _packetizer = null;
       _notify();
     } catch (e) {
-      if (_valid(epoch)) await cancel(message: 'Transcription failed: $e');
+      if (_valid(epoch)) {
+        await cancel(
+          message:
+              '${_recordingTask == AudioTask.conversation ? 'Voice conversation' : 'Transcription'} failed: $e',
+        );
+      }
     }
+  }
+
+  Future<void> _answerVoice(int epoch) async {
+    if (!_valid(epoch)) return;
+    phase = AudioPhase.replying;
+    partialReply = '';
+    _notify();
+    if (!_valid(epoch)) return;
+    final reply = await _backend.finishConversation((text) {
+      if (_valid(epoch)) {
+        partialReply = text;
+        _notify();
+      }
+    });
+    if (!_valid(epoch)) return;
+    // Send acceptance before any listener can cancel on the transition. The
+    // worker processes acknowledgement before later cancel messages.
+    final accepted = _backend.acceptConversationReply();
+    final turn = AudioVoiceTurn(recordedSeconds, reply.text);
+    _voiceTurns.add(turn);
+    partialReply = '';
+    try {
+      await accepted;
+    } catch (_) {
+      _voiceTurns.remove(turn);
+      rethrow;
+    }
+    if (!_valid(epoch)) return;
+    phase = AudioPhase.playing;
+    _notify();
+    if (!_valid(epoch)) return;
+    await _player.play(reply.wav);
+    if (!_valid(epoch)) return;
+    phase = AudioPhase.ready;
+    _notify();
   }
 
   Future<void> cancel({String? message}) {
@@ -334,6 +429,7 @@ final class AudioController extends ChangeNotifier {
     phase = AudioPhase.cancelling;
     _limit?.cancel();
     transcript = '';
+    partialReply = '';
     _queue.clear();
     _queuedSamples = 0;
     _packetizer = null;

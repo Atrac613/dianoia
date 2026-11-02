@@ -1,10 +1,12 @@
 import 'package:dianoia_example/src/audio_controller.dart';
+import 'package:dianoia_example/src/audio_backend.dart';
 import 'package:dianoia_example/src/audio_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dianoia/dianoia.dart';
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'audio_controller_test.dart'
     show TestAudioBackend, TestMicrophone, TestSpeechPlayer;
@@ -32,6 +34,105 @@ void main() {
         ),
       ),
     ),
+  );
+
+  testWidgets(
+    'background discards a generating voice reply without automatic resume',
+    (tester) async {
+      final backend = TestAudioBackend()
+        ..answering = Completer<AudioVoiceReply>();
+      final mic = TestMicrophone(), player = TestSpeechPlayer();
+      final controller = AudioController(
+        backend: backend,
+        microphone: mic,
+        player: player,
+      );
+      addTearDown(controller.dispose);
+      await controller.load('/prepared');
+      controller.setTask(AudioTask.conversation);
+      await tester.pumpWidget(
+        MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+      );
+      await tester.runAsync(controller.record);
+      mic.source!.add(Uint8List(32));
+      await tester.pump();
+      late Future<void> stopping;
+      await tester.runAsync(() async {
+        stopping = controller.stop();
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+      expect(controller.phase, AudioPhase.replying);
+      backend.onReplyText!('Partial reply');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+      backend.answering!.complete(
+        AudioVoiceReply('Late reply', Uint8List(44), 1),
+      );
+      await tester.pump();
+      await tester.runAsync(() => stopping);
+      expect(controller.partialReply, isEmpty);
+      expect(controller.voiceTurns, isEmpty);
+      expect(backend.acceptedReplies, 0);
+      expect(player.played, isEmpty);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(mic.starts, 1);
+      expect(controller.phase, AudioPhase.ready);
+    },
+  );
+
+  testWidgets(
+    'English voice mode records a question, displays the reply and clears context',
+    (tester) async {
+      final backend = TestAudioBackend(),
+          mic = TestMicrophone(),
+          player = TestSpeechPlayer();
+      player.completing = Completer<void>();
+      final controller = AudioController(
+        backend: backend,
+        microphone: mic,
+        player: player,
+      );
+      addTearDown(controller.dispose);
+      await controller.load('/prepared');
+      await tester.pumpWidget(
+        MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+      );
+      await tester.tap(find.text('Transcription and TTS'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Voice conversation (English)').last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('supports English only'), findsOneWidget);
+      await tester.ensureVisible(find.text('Record question'));
+      await tester.tap(find.text('Record question'));
+      await tester.pump();
+      expect(backend.conversationInput, isTrue);
+      mic.source!.add(Uint8List(32));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Stop and reply'));
+      await tester.tap(find.text('Stop and reply'));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+      expect(controller.voiceTurns, hasLength(1));
+      expect(controller.phase, AudioPhase.playing, reason: controller.error);
+      await tester.scrollUntilVisible(
+        find.text('Four.'),
+        160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Four.'), findsOneWidget);
+      await tester.ensureVisible(find.text('Stop reply'));
+      await tester.tap(find.text('Stop reply'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('New conversation'));
+      await tester.tap(find.text('New conversation'));
+      await tester.pumpAndSettle();
+      expect(controller.voiceTurns, isEmpty);
+      expect(backend.resets, 1);
+    },
   );
 
   testWidgets(

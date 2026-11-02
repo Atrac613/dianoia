@@ -75,6 +75,7 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
         (state == AppLifecycleState.inactive &&
             (_audio.phase == AudioPhase.recording ||
                 _audio.phase == AudioPhase.finishing ||
+                _audio.phase == AudioPhase.replying ||
                 _audio.phase == AudioPhase.synthesizing ||
                 _audio.phase == AudioPhase.playing));
     if (leaving) unawaited(_audio.cancel());
@@ -139,7 +140,12 @@ class AudioTranscriptionView extends StatelessWidget {
         AudioPhase.requestingPermission => 'Requesting microphone access…',
         AudioPhase.recording =>
           'Recording · ${a.recordedSeconds.toStringAsFixed(1)} / 30 seconds',
-        AudioPhase.finishing => 'Finishing transcription…',
+        AudioPhase.finishing =>
+          a.task == AudioTask.conversation
+              ? 'Finishing the voice message…'
+              : 'Finishing transcription…',
+        AudioPhase.replying => 'Generating a spoken reply…',
+        AudioPhase.resettingConversation => 'Starting a new conversation…',
         AudioPhase.synthesizing => 'Generating speech…',
         AudioPhase.playing => 'Playing speech…',
         AudioPhase.cancelling => 'Stopping…',
@@ -167,6 +173,7 @@ class AudioTranscriptionView extends StatelessWidget {
                 Text(status),
                 if (a.phase == AudioPhase.loading ||
                     a.phase == AudioPhase.finishing ||
+                    a.phase == AudioPhase.replying ||
                     a.phase == AudioPhase.synthesizing ||
                     a.phase == AudioPhase.cancelling) ...[
                   const SizedBox(height: 12),
@@ -243,28 +250,63 @@ class AudioTranscriptionView extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 24),
-                DropdownButtonFormField<String>(
-                  initialValue: a.language ?? 'auto',
-                  decoration: const InputDecoration(
-                    labelText: 'Speech language',
-                  ),
+                DropdownButtonFormField<AudioTask>(
+                  initialValue: a.task,
+                  decoration: const InputDecoration(labelText: 'Audio mode'),
                   items: const [
                     DropdownMenuItem(
-                      value: 'auto',
-                      child: Text('Detect language'),
+                      value: AudioTask.transcription,
+                      child: Text('Transcription and TTS'),
                     ),
                     DropdownMenuItem(
-                      value: 'Japanese',
-                      child: Text('Japanese'),
+                      value: AudioTask.conversation,
+                      child: Text('Voice conversation (English)'),
                     ),
-                    DropdownMenuItem(value: 'English', child: Text('English')),
                   ],
-                  onChanged: ready
-                      ? (value) {
-                          a.language = value == 'auto' ? null : value;
-                        }
-                      : null,
+                  onChanged: ready ? (value) => a.setTask(value!) : null,
                 ),
+                const SizedBox(height: 16),
+                if (a.task == AudioTask.conversation) ...[
+                  const Text(
+                    'Ask a question in English, then stop to receive text and speech. '
+                    'Record again to continue the conversation. Replies play after generation. '
+                    'Voice conversation currently supports English only.',
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: ready ? a.newConversation : null,
+                      icon: const Icon(Icons.add_comment_outlined),
+                      label: const Text('New conversation'),
+                    ),
+                  ),
+                ] else
+                  DropdownButtonFormField<String>(
+                    initialValue: a.language ?? 'auto',
+                    decoration: const InputDecoration(
+                      labelText: 'Speech language',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'auto',
+                        child: Text('Detect language'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Japanese',
+                        child: Text('Japanese'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'English',
+                        child: Text('English'),
+                      ),
+                    ],
+                    onChanged: ready
+                        ? (value) {
+                            a.language = value == 'auto' ? null : value;
+                          }
+                        : null,
+                  ),
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 12,
@@ -274,35 +316,69 @@ class AudioTranscriptionView extends StatelessWidget {
                       FilledButton.icon(
                         onPressed: a.stop,
                         icon: const Icon(Icons.stop),
-                        label: const Text('Stop and transcribe'),
+                        label: Text(
+                          a.task == AudioTask.conversation
+                              ? 'Stop and reply'
+                              : 'Stop and transcribe',
+                        ),
                       )
                     else
                       FilledButton.icon(
                         onPressed: ready ? a.record : null,
                         icon: const Icon(Icons.mic),
-                        label: const Text('Record'),
+                        label: Text(
+                          a.task == AudioTask.conversation
+                              ? 'Record question'
+                              : 'Record',
+                        ),
                       ),
                     if (a.active &&
                         a.phase != AudioPhase.cancelling &&
                         a.phase != AudioPhase.installing &&
+                        a.phase != AudioPhase.replying &&
                         a.phase != AudioPhase.synthesizing &&
                         a.phase != AudioPhase.playing)
                       TextButton(
                         onPressed: a.cancel,
-                        child: const Text('Cancel recording'),
+                        child: Text(
+                          a.task == AudioTask.conversation
+                              ? 'Cancel voice message'
+                              : 'Cancel recording',
+                        ),
+                      ),
+                    if (a.phase == AudioPhase.replying ||
+                        (a.phase == AudioPhase.playing &&
+                            a.task == AudioTask.conversation))
+                      TextButton(
+                        onPressed: a.cancel,
+                        child: const Text('Stop reply'),
                       ),
                   ],
                 ),
                 const SizedBox(height: 24),
-                if (a.transcript.isNotEmpty)
+                if (a.task == AudioTask.transcription &&
+                    a.transcript.isNotEmpty)
                   SelectableText(
                     a.transcript,
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 16),
-                _SpeechComposer(controller: a, enabled: ready),
+                if (a.task == AudioTask.conversation) ...[
+                  for (var i = 0; i < a.voiceTurns.length; i++) ...[
+                    Text(
+                      'Voice message ${i + 1} · ${a.voiceTurns[i].seconds.toStringAsFixed(1)} s',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(a.voiceTurns[i].reply),
+                    const SizedBox(height: 24),
+                  ],
+                  if (a.partialReply.isNotEmpty) SelectableText(a.partialReply),
+                ] else ...[
+                  const SizedBox(height: 24),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  _SpeechComposer(controller: a, enabled: ready),
+                ],
               ],
             ),
           ),
