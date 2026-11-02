@@ -11,6 +11,8 @@ import 'dart:isolate';
 import 'package:crypto/crypto.dart';
 
 import 'download.dart';
+import 'audio_bundle.dart';
+import 'audio_gguf.dart';
 import 'gguf.dart';
 import 'native.dart';
 import 'quant.dart';
@@ -61,7 +63,7 @@ String _qadReceipt(VisionGgufSpec model, String bundle) => jsonEncode({
       .toString(),
 });
 
-/// A pinned checkpoint or prebuilt vision bundle installed by [ModelStore].
+/// A pinned checkpoint or bundle installed by [ModelStore].
 sealed class InstallableModel {
   const InstallableModel();
 
@@ -82,6 +84,66 @@ sealed class InstallableModel {
 
   /// Total bytes downloaded, including metadata and license files.
   int get downloadBytes => files.fold(0, (sum, file) => sum + file.size);
+}
+
+/// Official paired Audio Q4_0 sources, prepared on device for the audio preview.
+final class AudioGgufSpec extends InstallableModel {
+  const AudioGgufSpec({
+    required this.id,
+    required this.name,
+    required this.language,
+    required this.audio,
+    required this.config,
+    required this.tokenizer,
+    required this.licenseFile,
+    this.license = 'LFM Open License v1.0',
+    this.licenseUrl =
+        'https://huggingface.co/LiquidAI/LFM3-Audio-2B/blob/0295e4130594c06800fd25451d97139ac2da1aff/LICENSE',
+    this.installedBytes,
+    this.setupBytes,
+  });
+  @override
+  final String id, name, license, licenseUrl;
+  @override
+  final int? installedBytes, setupBytes;
+  final RemoteFile language, audio, config, tokenizer, licenseFile;
+  @override
+  List<RemoteFile> get files => [
+    config,
+    tokenizer,
+    licenseFile,
+    language,
+    audio,
+  ];
+  @override
+  AudioGgufSpec fromMirror(String baseUrl) {
+    final at = _mirrorFiles(baseUrl);
+    return AudioGgufSpec(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
+      language: at(language),
+      audio: at(audio),
+      config: at(config),
+      tokenizer: at(tokenizer),
+      licenseFile: at(licenseFile),
+    );
+  }
+
+  static const lfm3AudioQ4 = AudioGgufSpec(
+    id: 'lfm3-audio-2b-q4',
+    name: 'LFM3-Audio-2B Q4_0',
+    language: Lfm3AudioQ4Source.language,
+    audio: Lfm3AudioQ4Source.audio,
+    config: Lfm3AudioQ4Source.config,
+    tokenizer: Lfm3AudioQ4Source.tokenizer,
+    licenseFile: Lfm3AudioQ4Source.license,
+    installedBytes: 1301000000,
+    setupBytes: 4000000000,
+  );
 }
 
 /// Language matrix quantization; the tied output head stays Q8.
@@ -506,7 +568,9 @@ final class ModelStore {
 
   final String directory;
 
-  /// The installed path for [LocalModel.load] or [LocalVisionModel.loadBundle].
+  /// The installed bundle directory. Text/vision use [LocalModel.load] or
+  /// [LocalVisionModel.loadBundle]; audio has a `language` subdirectory and the
+  /// original mmproj, consumed by the experimental audio example.
   String bundlePath(InstallableModel model) {
     _checkId(model.id);
     return '$directory/${model.id}/bundle';
@@ -519,6 +583,9 @@ final class ModelStore {
   bool isInstalled(InstallableModel model) {
     final bundle = bundlePath(model);
     if (!Directory(bundle).existsSync()) return false;
+    if (model is AudioGgufSpec) {
+      return audioBundleIsInstalled(bundle, model.files, model.audio.name);
+    }
     if (model is VisionModelSpec) {
       final manifest = File('$bundle/vl_bundle.json');
       final pinned = model.files.first;
@@ -559,8 +626,22 @@ final class ModelStore {
   /// for the built-in LFM3-VL model. Cancellation during conversion or verification
   /// waits for it to finish and leaves the downloads unpublished. [VisionGgufSpec]
   /// imports prequantized QAD files with about 5 GB peak setup storage.
+  /// [AudioGgufSpec] imports paired Q4 audio files with about 4 GB setup storage;
+  /// cancellation waits for conversion and keeps downloads for a retry.
   Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
     _checkId(model.id);
+    if (model is AudioGgufSpec &&
+        (model.config.name != 'audio_config.json' ||
+            model.tokenizer.name != 'tokenizer.json' ||
+            model.licenseFile.name != 'LICENSE' ||
+            model.files.map((f) => f.name).toSet().length != 5 ||
+            model.files.any(
+              (f) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(f.name),
+            ))) {
+      throw ArgumentError(
+        'Audio GGUF files need five distinct safe names and canonical metadata',
+      );
+    }
     if (model is VisionCheckpointSpec) {
       const required = {
         'config.json',
@@ -610,11 +691,17 @@ final class ModelStore {
       final total = model.downloadBytes;
       try {
         if (!isInstalled(model)) {
-          if ((model is VisionModelSpec || model is VisionGgufSpec) &&
+          if ((model is VisionModelSpec ||
+                  model is VisionGgufSpec ||
+                  model is AudioGgufSpec) &&
               Directory(bundlePath(model)).existsSync()) {
             throw StateError(
-              'installed VL manifest differs; remove ${model.id} before replacing it',
+              'installed model manifest differs; remove ${model.id} before replacing it',
             );
+          }
+          if (model is AudioGgufSpec) {
+            final stale = Directory('${bundlePath(model)}.partial');
+            if (stale.existsSync()) stale.deleteSync(recursive: true);
           }
           final downloads = Directory('$directory/${model.id}/downloads')
             ..createSync(recursive: true);
@@ -658,6 +745,17 @@ final class ModelStore {
             await _verifyVision(downloads.path);
             if (cancelled) return;
             downloads.renameSync(bundlePath(model));
+          } else if (model is AudioGgufSpec) {
+            final partial = Directory('${bundlePath(model)}.partial');
+            try {
+              if (partial.existsSync()) partial.deleteSync(recursive: true);
+              await _buildAudio(model, downloads.path, partial.path);
+              if (cancelled) return;
+              partial.renameSync(bundlePath(model));
+              await downloads.delete(recursive: true);
+            } finally {
+              if (partial.existsSync()) partial.deleteSync(recursive: true);
+            }
           } else if (model is VisionGgufSpec) {
             _removeStaging('$directory/${model.id}');
             final partial = Directory('${bundlePath(model)}.partial');
@@ -731,6 +829,20 @@ final class ModelStore {
       }
     }
   }
+
+  static Future<void> _buildAudio(
+    AudioGgufSpec model,
+    String downloads,
+    String bundle,
+  ) => Isolate.run(
+    () => buildAudioGgufBundle(
+      downloads,
+      model.language.name,
+      model.audio.name,
+      model.files,
+      bundle,
+    ),
+  );
 
   static Future<void> _buildQad(
     VisionGgufSpec model,

@@ -21,6 +21,8 @@
 /// [VisionGgufSpec.lfm3VlQadQ4]. Load it with [LocalVisionModel.loadBundle]. Image encoding
 /// currently runs on the CPU. Use [ChatImage.encoded] or [ChatImage.fromFile]
 /// for PNG/JPEG input, or [ChatImage.rgb] for caller-decoded pixels.
+/// [AudioGgufSpec.lfm3AudioQ4] installs the paired audio model. Audio inference
+/// remains experimental under `package:dianoia/lab.dart` and in the example.
 /// `package:dianoia/lab.dart` exposes the engine's internals.
 library;
 

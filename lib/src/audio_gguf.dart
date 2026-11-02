@@ -4,7 +4,7 @@ library;
 import 'download.dart';
 import 'gguf.dart';
 
-/// Research source files, not an installable app model yet.
+/// Shared source pins for research preparation and AudioGgufSpec installation.
 abstract final class Lfm3AudioQ4Source {
   static const repository = 'LiquidAI/LFM3-Audio-2B-GGUF';
   static const revision = '02355c1a141e464a064f2ab2c276638dbcb7f38a';
