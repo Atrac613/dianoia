@@ -35,3 +35,10 @@ then appends the official TTS audio-start marker. Regenerate using
 `python tool/audio_tts_prompt_oracle.py --gguf <language.gguf>
 --gguf-python /path/to/llama.cpp/gguf-py`. The tool verifies the pinned file
 hash and records the template hash; it does not store checkpoint weights.
+
+`conversation_oracle.json` executes the pinned upstream `_generate` per-row
+state machine with scripted text tokens/audio frames and zero embedding rows.
+It covers six/twelve alternation, early text-end, EOS inside a speech burst,
+mode reopening and turn termination. Its prompt is independently rendered from
+the official processor template. No learned weights are included. Regenerate
+with `python tool/audio_conversation_oracle.py` in the validation environment.

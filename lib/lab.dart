@@ -10,6 +10,7 @@ export 'dianoia.dart';
 export 'src/audio_features.dart';
 export 'src/audio_gguf.dart';
 export 'src/audio_bundle.dart';
+export 'src/audio_conversation.dart';
 export 'src/audio_encoder.dart';
 export 'src/audio_generation.dart';
 export 'src/audio_synthesis.dart';

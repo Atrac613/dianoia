@@ -1,0 +1,457 @@
+{
+  "sources": {
+    "modeling_lfm3_audio.py": {
+      "url": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/modeling_lfm3_audio.py",
+      "sha256": "8d7225d892b8b09edbe2285a8add883ce46e28c4027edc2b8c59b501eeadb9e0"
+    },
+    "processing_lfm3_audio.py": {
+      "url": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/processing_lfm3_audio.py",
+      "sha256": "fc87b2d078f292cb45a317395f9dc69aefb98ac383ae68cc16686025e87bbc38"
+    }
+  },
+  "torch": "2.15.0",
+  "first_prompt": "<|startoftext|><|im_start|>system\nRespond with interleaved text and audio.<|im_end|>\n<|im_start|>user\n<|audio|><|im_end|>\n<|im_start|>assistant\n<|mixed_start|>",
+  "cases": [
+    {
+      "name": "alternating_and_tail",
+      "rows": [
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 4,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 3,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 2,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 1,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 12,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 11,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 10,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 9,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 8,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 7,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 4,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 3,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 2,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 1,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 6,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 102,
+          "mode": "mixed",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "eos",
+          "mode": "text",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": 101,
+          "mode": "text",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": true
+        }
+      ]
+    },
+    {
+      "name": "early_text_end",
+      "rows": [
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 102,
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "eos",
+          "mode": "text",
+          "slots_left": 5,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": 101,
+          "mode": "text",
+          "slots_left": 5,
+          "speaking": true,
+          "text_done": true,
+          "finished": true
+        }
+      ]
+    },
+    {
+      "name": "eos_mid_burst_and_reopen",
+      "rows": [
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 4,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 3,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 2,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 1,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 12,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "eos",
+          "mode": "text",
+          "slots_left": 11,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 103,
+          "mode": "mixed",
+          "slots_left": 6,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 4,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 3,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 2,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 1,
+          "speaking": false,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 7,
+          "mode": "mixed",
+          "slots_left": 12,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "mixed",
+          "slots_left": 11,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": "eos",
+          "mode": "text",
+          "slots_left": 10,
+          "speaking": true,
+          "text_done": false,
+          "finished": false
+        },
+        {
+          "input": 102,
+          "mode": "text",
+          "slots_left": 10,
+          "speaking": true,
+          "text_done": false,
+          "finished": true
+        }
+      ]
+    },
+    {
+      "name": "turn_end_inside_mixed",
+      "rows": [
+        {
+          "input": 101,
+          "mode": "mixed",
+          "slots_left": 5,
+          "speaking": false,
+          "text_done": false,
+          "finished": true
+        }
+      ]
+    },
+    {
+      "name": "audio_only_after_eos",
+      "rows": [
+        {
+          "input": 102,
+          "mode": "mixed",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "eos",
+          "mode": "text",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": 104,
+          "mode": "audio",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "audio",
+          "mode": "audio",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": "eos",
+          "mode": "text",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": false
+        },
+        {
+          "input": 101,
+          "mode": "text",
+          "slots_left": 6,
+          "speaking": true,
+          "text_done": true,
+          "finished": true
+        }
+      ]
+    }
+  ]
+}
