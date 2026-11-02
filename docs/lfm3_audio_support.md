@@ -6,7 +6,9 @@ The research path now transcribes a complete audio clip with the official
 **Q4_0 language GGUF and Q4_0 audio mmproj GGUF**. It includes the log-mel
 frontend, LFM2 encoder, projector, ASR prompt expansion and greedy text decoding.
 CPU and Metal language inference have been exercised; the audio encoder always
-runs on the CPU. This is not yet an app API, an audio chat session or a
+runs on the CPU. Chunked PCM input can prefill the language model before the
+recording finishes; transcription output starts after finalization. This is
+not yet an app API, an audio chat session or a
 `ModelStore` preset. Speech generation and microphone UI remain unimplemented.
 
 ## Q4_0 target and research commands
@@ -36,6 +38,8 @@ ffmpeg -i speech.wav -ac 1 -ar 16000 -f f32le speech.f32
 dart run tool/audio_q4_transcribe.dart build/audio-reference speech.f32 Japanese
 # Accelerate the language backbone on a supported GPU:
 dart run tool/audio_q4_transcribe.dart build/audio-reference speech.f32 Japanese --gpu
+# Simulate arriving 80 ms PCM chunks, with incremental language prefill:
+dart run tool/audio_q4_transcribe.dart build/audio-reference speech.f32 Japanese --gpu --chunk-ms=80
 ```
 
 Preparation resumes and hash-verifies downloads, validates the encoder layout,
@@ -45,6 +49,9 @@ source hashes for research provenance; it is not an app installation receipt.
 The research runner expects prepared files and does not rehash them every run.
 The runner accepts clips up to 30 seconds and emits JSON with text, token IDs,
 timings and the stop reason. Omitting the language asks the model to infer it.
+Chunk mode is an unpaced file simulation; it reads a local PCM file and is not
+microphone capture or a realtime latency benchmark. Its JSON also records how
+many audio rows were prefilled before finish and the peak encoder cache size.
 
 Q4 matrix blocks are copied directly into native Q4 storage, without
 dequantization/requantization, in the encoder and language matrices. The
@@ -126,6 +133,42 @@ Closing the encoder closes all its active streams. Feature and encoder calls
 remain synchronous CPU work; microphone capture and language prefill are not
 implemented by this class.
 
+## Incremental ASR prefill
+
+`AudioTranscriptionPrefill` connects encoder rows to the language backbone
+without retaining or replaying earlier projected rows. Start resets the model
+and feeds the system/user prefix. Each `addProjected` feeds new audio rows;
+`finish` appends the user-turn end and assistant prefix, leaving `model.logits`
+ready for greedy text output. The caller owns the language model and must use
+it exclusively throughout input and generation.
+
+```dart
+final input = await AudioTranscriptionPrefill.start(
+  model: backbone,
+  tokenizer: tokenizer,
+  hiddenSize: encoder.config.projectionSize,
+  language: 'Japanese',
+  reservedTokens: 128,
+);
+final frontend = Lfm3AudioFrontend().startStream();
+final stream = encoder.startStream();
+await for (final pcm in pcmChunks) {
+  await input.addProjected(stream.add(frontend.add(pcm, samplingRate: 16000)));
+}
+await input.addProjected(stream.add(frontend.finish()));
+await input.addProjected(stream.finish());
+await input.finish();
+// Decode from backbone.logits with input.greedyToken/input.stopTokenIds.
+// The caller closes the encoder and backbone when no longer needed.
+```
+
+Input validation and context overflow fail before advancing language state;
+the context check reserves room for the assistant suffix and requested output
+tokens. Concurrent input calls are rejected. A failed forward pass or explicit
+close terminates the operation without closing the caller-owned model. A close
+cannot interrupt an in-flight kernel: await the pending operation before reusing
+the model. No partial transcript is emitted while audio is still arriving.
+
 ## Reference and validation
 
 The contract is pinned to official
@@ -196,10 +239,21 @@ with the real Q4 oracle enabled. Format and analysis passed. Existing text
 See [the Q4 validation record](validation/lfm3-audio-q4-2026-11-02.json) for
 the exact sources, commands, transcripts and limitations.
 
+The [streaming/prefill validation record](validation/lfm3-audio-stream-2026-11-02.json)
+records 281 default tests passed (27 skipped), 19 optional real-GGUF tests
+passed, and unchanged byte-identical text lab parity. The English and Japanese
+80 ms simulations produced the same token IDs as batch on CPU and Metal.
+Before finalization, 33/34 English and 52/53 Japanese audio tokens had already
+been prefilled. Peak encoder cache storage was 735,232 bytes, within the
+735,744-byte bound; this excludes shared weights, per-chunk scratch and the
+language KV context. These two synthesized clips do not establish general ASR
+accuracy or microphone latency.
+
 ## Remaining implementation
 
-1. Connect the streaming frontend/encoder to incremental language prefill and
-   validate resulting transcripts before adding microphone input.
+1. Connect microphone input to a worker/isolate and add app lifecycle,
+   cancellation and audio-session handling. File chunk simulation does not
+   establish realtime microphone behavior.
 2. Broaden real speech/noise/language validation beyond the two clean synthetic
    English/Japanese clips, and evaluate any activation quantization changes.
 3. Implement the noncausal three-layer Depthformer, 12-codebook parallel
