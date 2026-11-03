@@ -139,7 +139,9 @@ class AudioTranscriptionView extends StatelessWidget {
         AudioPhase.ready => 'Ready · ${a.backendName ?? ''}',
         AudioPhase.requestingPermission => 'Requesting microphone access…',
         AudioPhase.recording =>
-          'Recording · ${a.recordedSeconds.toStringAsFixed(1)} / 30 seconds',
+          a.task == AudioTask.liveTranscription
+              ? 'Transcribing live · ${a.recordedSeconds.toStringAsFixed(1)} seconds'
+              : 'Recording · ${a.recordedSeconds.toStringAsFixed(1)} / 30 seconds',
         AudioPhase.finishing =>
           a.task == AudioTask.conversation
               ? 'Finishing the voice message…'
@@ -165,7 +167,7 @@ class AudioTranscriptionView extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Experimental · Record up to 30 seconds, then stop to see the transcript. '
+                  'Experimental · Live transcription continues until stopped. Other recording modes allow up to 30 seconds. '
                   'Or enter text to generate speech. Audio stays on this device. '
                   'Recordings are not saved; generated speech uses a temporary playback file.',
                 ),
@@ -287,7 +289,7 @@ class AudioTranscriptionView extends StatelessWidget {
                   ),
                 ] else if (a.task == AudioTask.liveTranscription) ...[
                   const Text(
-                    'English LiveASR · Words appear about once per second of audio, plus processing time. '
+                    'English LiveASR · Continues until you stop. Words appear about once per second of audio, plus processing time. '
                     'Stop to finish the transcript. Cancel discards it. Japanese is available after recording in Transcription and TTS mode.',
                   ),
                 ] else

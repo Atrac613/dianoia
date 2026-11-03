@@ -49,6 +49,8 @@ final class AudioController extends ChangeNotifier {
   final AudioBackend _backend;
   final Microphone _microphone;
   final SpeechPlayer _player;
+
+  /// Clip ASR and voice chat only; LiveASR has no cumulative duration cap.
   static const maxSamples = 30 * 16000;
   static const maxQueuedSamples = 16000;
   final _queue = ListQueue<Float32List>();
@@ -278,7 +280,9 @@ final class AudioController extends ChangeNotifier {
           if (_valid(epoch) && phase == AudioPhase.recording) unawaited(stop());
         },
       );
-      _limit = Timer(const Duration(seconds: 30), () => unawaited(stop()));
+      _limit = _recordingTask == AudioTask.liveTranscription
+          ? null
+          : Timer(const Duration(seconds: 30), () => unawaited(stop()));
       _notify();
     } catch (e) {
       if (_valid(epoch)) await cancel(message: 'Could not start recording: $e');
@@ -290,7 +294,8 @@ final class AudioController extends ChangeNotifier {
         (phase != AudioPhase.recording && phase != AudioPhase.finishing)) {
       return;
     }
-    final remaining = maxSamples * 2 - _bytes;
+    final live = _recordingTask == AudioTask.liveTranscription;
+    final remaining = live ? bytes.length : maxSamples * 2 - _bytes;
     if (remaining <= 0) return;
     final accepted = bytes.length <= remaining
         ? bytes
@@ -311,7 +316,7 @@ final class AudioController extends ChangeNotifier {
         _enqueue(rows, epoch);
       }
       _notify();
-      if (_bytes == maxSamples * 2 && phase == AudioPhase.recording) {
+      if (!live && _bytes == maxSamples * 2 && phase == AudioPhase.recording) {
         unawaited(stop());
       }
     } catch (e) {

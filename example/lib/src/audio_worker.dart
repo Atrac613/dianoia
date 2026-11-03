@@ -516,7 +516,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                 throw StateError('Recording is not active');
               }
               final pcm = request['value'] as Float32List;
-              if (samples + pcm.length > 30 * 16000) {
+              if (live == null && samples + pcm.length > 30 * 16000) {
                 throw ArgumentError('Recording exceeds 30 seconds');
               }
               if (live != null) {

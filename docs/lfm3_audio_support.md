@@ -492,9 +492,23 @@ for an outstanding `addPcm`/`finish` future before reusing the backbone.
 Malformed PCM is rejected before advancing state. Computation/callback failures
 close the live state. PCM/feature history is not replayed: after each successful
 input call, fewer than 96 pending feature frames remain, plus the bounded
-frontend/encoder state and language context. The preview caps recordings at
-30 seconds and language context at 2048 slots. It does not automatically chain
-longer recordings by restarting the text context.
+frontend/encoder state and language context. Live recordings continue until stopped. Before a block would exceed 375
+encoded audio rows (about 30 seconds), or the language context's token budget,
+the session resets only the language model and replaces its deferred text-end
+with the original live-ASR prompt. The frontend/encoder stream is not finalized
+or restarted. With 12-row blocks, the normal rollover occurs after 372 rows.
+The preview keeps the language context at 2048 slots. Each submitted PCM chunk
+is limited to 30 seconds to bound temporary feature work; there is no cumulative
+recording-duration cap. Ordinary ASR/voice-chat clips retain their 30-second cap.
+
+Completed context text is retained as plain text and continued text starts a
+new paragraph. Raw generated token IDs are retained only for the current
+language context; `generatedTokens` still counts the entire recording. Decoder
+and encoder state stay bounded, while the cumulative transcript grows with the
+recording. `AudioLiveBlock.context` and `restarted`, plus transcriber counters,
+expose rollover for callers/tests. No full PCM recording is retained. Context
+resets preserve cumulative text; cancellation still discards the current
+recording in the example. Use Stop to finalize and retain visible text.
 
 Select **Live transcription (English)** in the example, then **Start live
 transcription**. Text appears while the microphone remains active. **Stop live
@@ -508,9 +522,15 @@ dart run tool/audio_q4_live_transcribe.dart build/audio-reference english-16k.f3
 ```
 
 The CLI emits JSON-line block/text/final events. Its input-time markers describe
-an unpaced file simulation, not measured microphone latency. See the
+an unpaced file simulation, not measured microphone latency. It reads the
+source file in 80 ms chunks rather than loading the full recording. Its final
+event reports the context count, total encoded rows and retained text-token
+count. See the
 [LiveASR validation](validation/lfm3-audio-live-2026-11-03.md) for real CPU/Metal
-updates, final text, cancellation and tests. No microphone use was performed.
+updates, final text, cancellation and tests. The
+[long-stream validation](validation/lfm3-audio-live-long-2026-11-03.md) records
+34.72-second CPU/Metal runs and language-context rollover. No microphone use
+was performed.
 
 ## Remaining implementation
 

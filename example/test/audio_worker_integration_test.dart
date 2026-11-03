@@ -133,6 +133,35 @@ void main() {
           'The quick brown fox jumps over the lazy dog.',
         );
         expect(updates.last, 'The quick brown fox jumps over the lazy dog.');
+        var received = 0, afterThirty = false, monotone = true;
+        var previous = '';
+        await backend.begin(
+          'English',
+          live: true,
+          onLiveText: (text) {
+            if (received > 30 * 16000 && text.isNotEmpty) afterThirty = true;
+            if (!text.startsWith(previous)) monotone = false;
+            previous = text;
+          },
+        );
+        for (var repeat = 0; repeat < 13; repeat++) {
+          for (var at = 0; at < pcm.length; at += 1280) {
+            final chunk = pcm.sublist(at, (at + 1280).clamp(0, pcm.length));
+            received += chunk.length;
+            await backend.addPcm(chunk);
+          }
+        }
+        final longText = await backend.finish();
+        expect(received / 16000, greaterThan(30));
+        expect(afterThirty, isTrue);
+        expect(monotone, isTrue);
+        expect(longText, startsWith('The quick'));
+        expect(longText.length, greaterThan(100));
+        expect(longText, contains('\n')); // The language context rolled over.
+        stdout.writeln(
+          'Live worker continued for ${received / 16000} input seconds; ${longText.length} characters',
+        );
+
         await backend.begin('English', live: true, onLiveText: updates.add);
         await backend.addPcm(pcm.sublist(0, 16640));
         await backend.cancel();
@@ -152,5 +181,6 @@ void main() {
     skip: directory == null || pcmPath == null
         ? 'set DIANOIA_AUDIO_EXAMPLE_DIR/PCM'
         : false,
+    timeout: const Timeout(Duration(minutes: 2)),
   );
 }

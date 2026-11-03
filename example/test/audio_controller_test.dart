@@ -198,6 +198,24 @@ void main() {
     await audio.close();
     audio.dispose();
   });
+  test(
+    'live recording accepts more than 30 seconds of samples without auto-stop',
+    () async {
+      audio.setTask(AudioTask.liveTranscription);
+      await audio.record();
+      for (var i = 0; i < 400; i++) {
+        mic.source!.add(Uint8List(2560));
+        await events();
+      }
+      expect(audio.recordedSeconds, 32);
+      expect(audio.phase, AudioPhase.recording);
+      expect(backend.finishes, 0);
+      backend.liveText!('Transcript after thirty seconds');
+      expect(audio.transcript, 'Transcript after thirty seconds');
+      await audio.stop();
+      expect(backend.finishes, 1);
+    },
+  );
 
   test(
     'live English text appears during recording and stop finalizes without speech playback',

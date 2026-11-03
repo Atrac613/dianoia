@@ -114,8 +114,12 @@ the final audio and completes the text. Updates are provisional until stop;
 **Cancel recording**, backgrounding or route exit discards the current text.
 A new recording starts a fresh live context. LiveASR is English only and uses
 the official live-ASR protocol, not repeated full-clip transcription. Capture
-still stops at 30 seconds, with the same queue/backpressure limit. No microphone
-recording is saved or uploaded.
+continues until you stop. The language context restarts at audio-block
+boundaries before about 30 seconds per context, or earlier if its token budget
+would be exceeded. The microphone, frontend and audio encoder keep their
+streaming states. Text already shown is retained, with continued text in a new
+paragraph. The one-second queue/backpressure limit remains in effect. No full
+microphone recording is saved or retained.
 
 In **Transcription and TTS** mode, choose Japanese, English or automatic language detection. **Record** requests
 microphone permission only when pressed; **Stop and transcribe** flushes the
@@ -164,6 +168,8 @@ The [voice conversation validation](../docs/validation/lfm3-audio-conversation-2
 covers the native generation protocol and two-turn CPU/Metal examples.
 The [LiveASR validation](../docs/validation/lfm3-audio-live-2026-11-03.md) records
 recording-time updates, final flush and cancellation checks.
+The [long-stream validation](../docs/validation/lfm3-audio-live-long-2026-11-03.md)
+covers context rollover and removal of the live mode’s recording-duration cap.
 
 For a local download mirror, `DIANOIA_MODEL_MIRROR` also applies to Audio.
 Serve the two pinned GGUFs plus `audio_config.json`, `tokenizer.json` and

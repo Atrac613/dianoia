@@ -35,6 +35,24 @@ void main() {
       ),
     ),
   );
+  testWidgets('live recording has no 30-second wall-clock timer', (
+    tester,
+  ) async {
+    await audio.load('/prepared');
+    audio.setTask(AudioTask.liveTranscription);
+    await show(tester);
+    await tester.ensureVisible(find.text('Start live transcription'));
+    await tester.tap(find.text('Start live transcription'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 31));
+    expect(audio.phase, AudioPhase.recording);
+    final cancelled = audio.cancel();
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => cancelled);
+    expect(audio.phase, AudioPhase.ready);
+  });
 
   testWidgets('live mode displays text while recording and finalizes on stop', (
     tester,
