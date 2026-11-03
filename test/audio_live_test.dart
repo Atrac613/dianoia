@@ -112,6 +112,69 @@ void main() {
       root.deleteSync(recursive: true);
     });
     test(
+      'audio-window rollover preserves text but replaces the pending delimiter with the prompt',
+      () async {
+        final session = await AudioLiveSession.start(
+          model,
+          tokenizer,
+          maxContextAudioTokens: 2,
+        );
+        final first = await session.addProjected(
+          Float32List(2 * 32),
+          maxNewTokens: 1,
+        );
+        final previous = session.text;
+        expect(previous, isNotEmpty);
+        final next = await session.addProjected(
+          Float32List(32),
+          maxNewTokens: 1,
+        );
+        expect(next.restarted, isTrue);
+        expect(next.context, 2);
+        expect(session.contexts, 2);
+        expect(session.contextAudioTokens, 1);
+        expect(
+          model.length,
+          tokenizer.encode(audioLivePrompt).length + 1 + next.ids.length,
+        );
+        expect(session.generatedTokens, first.ids.length + next.ids.length);
+        expect(session.retainedTextTokens, next.ids.length);
+        expect(session.text, startsWith(previous));
+        session.close();
+      },
+    );
+    test(
+      'language capacity can restart earlier than the 30-second audio window',
+      () async {
+        await model.close();
+        final dir = '${root.path}/backbone';
+        model = await Lfm3Model.load(
+          dir,
+          maxSeq: 256,
+          weights: WeightFormat.q8,
+          q8CachePath: '$dir/lfm3-q8.cache',
+        );
+        final session = await AudioLiveSession.start(model, tokenizer);
+        await session.addProjected(Float32List(150 * 32), maxNewTokens: 1);
+        final previous = session.text;
+        const count = 12;
+        expect(150 + count, lessThan(375));
+        final next = await session.addProjected(
+          Float32List(count * 32),
+          maxNewTokens: 96,
+        );
+        expect(next.restarted, isTrue);
+        expect(session.contexts, 2);
+        expect(session.contextAudioTokens, count);
+        expect(
+          model.length,
+          tokenizer.encode(audioLivePrompt).length + count + next.ids.length,
+        );
+        expect(session.text, startsWith(previous));
+        session.close();
+      },
+    );
+    test(
       'defers prompt/text-end; validates before state changes and finalizes empty tails',
       () async {
         final session = await AudioLiveSession.start(model, tokenizer);
@@ -170,6 +233,20 @@ void main() {
         );
         session.close();
         await expectLater(pending, throwsStateError);
+        final rolling = await AudioLiveSession.start(
+          model,
+          tokenizer,
+          maxContextAudioTokens: 1,
+        );
+        await rolling.addProjected(Float32List(32), maxNewTokens: 1);
+        final previous = rolling.text;
+        final restarting = rolling.addProjected(
+          Float32List(32),
+          maxNewTokens: 1,
+        );
+        rolling.close();
+        await expectLater(restarting, throwsStateError);
+        expect(rolling.text, previous);
         final next = await AudioLiveSession.start(model, tokenizer);
         await model.forward([1]);
         await expectLater(next.addProjected(Float32List(32)), throwsStateError);
@@ -275,6 +352,32 @@ void main() {
         await exact.finish();
         expect(blocks.last.isFinal, isTrue);
         expect(blocks.last.audioTokens, 0);
+        final rolloverBlocks = <AudioLiveBlock>[], cumulative = <String>[];
+        final rolling = await Lfm3LiveTranscriber.start(
+          model,
+          tokenizer,
+          encoder,
+          maxContextAudioTokens: 24,
+          onBlock: rolloverBlocks.add,
+          onText: cumulative.add,
+        );
+        for (var at = 0; at < pcm.length; at += 1280) {
+          await rolling.addPcm(
+            pcm.sublist(at, (at + 1280).clamp(0, pcm.length)),
+          );
+        }
+        final beforeFinal = rolling.text;
+        final finalText = await rolling.finish();
+        expect(rolling.contexts, 2);
+        expect(rolloverBlocks.map((b) => b.audioTokens), [12, 12, 10]);
+        expect(rolloverBlocks.last.restarted, isTrue);
+        expect(
+          rolling.encodedAudioTokens,
+          34,
+        ); // Encoder did not restart with the language model.
+        expect(finalText, startsWith(beforeFinal));
+        expect(finalText.length, greaterThan(beforeFinal.length));
+        expect(rolling.retainedTextTokens, lessThan(model.maxSeq));
       } finally {
         encoder.close();
         await model.close();

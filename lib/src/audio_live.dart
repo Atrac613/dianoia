@@ -12,11 +12,19 @@ const audioLivePrompt =
     '<|startoftext|><|im_start|>system\nPerform live ASR.<|im_end|>\n<|im_start|>assistant\n';
 
 final class AudioLiveBlock {
-  AudioLiveBlock(List<int> ids, this.audioTokens, this.closed, this.isFinal)
-    : ids = List.unmodifiable(ids);
+  AudioLiveBlock(
+    List<int> ids,
+    this.audioTokens,
+    this.closed,
+    this.isFinal, {
+    this.context = 1,
+    this.restarted = false,
+  }) : ids = List.unmodifiable(ids);
   final List<int> ids;
   final int audioTokens;
   final bool closed, isFinal;
+  final int context;
+  final bool restarted;
 }
 
 /// Token suppression differs on final/nonfinal chunks; placeholders are always
@@ -92,15 +100,26 @@ final class AudioLiveTokenPolicy {
   }
 }
 
-/// One caller-owned backbone context. The prompt/previous text-end is deferred
+/// Rolling language contexts on a caller-owned backbone. The prompt/text-end is deferred
 /// until a chunk completes audio rows. A sampled closing marker is not fed;
 /// a nonfinal block queues text-end for the next chunk, even at the token cap.
 final class AudioLiveSession {
-  AudioLiveSession._(this.model, this.tokenizer, this._pending, this._policy);
+  AudioLiveSession._(
+    this.model,
+    this.tokenizer,
+    List<int> prompt,
+    this._policy,
+    this.maxContextAudioTokens,
+  ) : _prompt = List.unmodifiable(prompt),
+      _pending = List.from(prompt);
   static Future<AudioLiveSession> start(
     Lfm3Model model,
-    Lfm3Tokenizer tokenizer,
-  ) async {
+    Lfm3Tokenizer tokenizer, {
+    int maxContextAudioTokens = 375,
+  }) async {
+    if (maxContextAudioTokens < 1 || maxContextAudioTokens > 375) {
+      throw ArgumentError('LiveASR audio context must fit within 30 seconds');
+    }
     final policy = AudioLiveTokenPolicy.fromTokenizer(
       tokenizer,
       model.config.vocabSize,
@@ -117,19 +136,36 @@ final class AudioLiveSession {
       throw ArgumentError('LiveASR prompt exceeds model context');
     }
     await model.reset();
-    return AudioLiveSession._(model, tokenizer, prompt, policy);
+    return AudioLiveSession._(
+      model,
+      tokenizer,
+      prompt,
+      policy,
+      maxContextAudioTokens,
+    );
   }
 
   final Lfm3Model model;
   final Lfm3Tokenizer tokenizer;
   final AudioLiveTokenPolicy _policy;
+  final List<int> _prompt;
+
+  /// Maximum encoded rows in one language context, at 80 ms per row.
+  final int maxContextAudioTokens;
   List<int> _pending;
   final _ids = <int>[];
+  String _completedText = '';
   bool _busy = false, _closed = false, _cancelled = false, _finished = false;
-  int _expectedLength = 0;
+  int _expectedLength = 0,
+      _contextAudioTokens = 0,
+      _contexts = 1,
+      _generatedTokens = 0;
   bool get isFinished => _finished;
-  int get generatedTokens => _ids.length;
-  String get text => tokenizer
+  int get generatedTokens => _generatedTokens;
+  int get retainedTextTokens => _ids.length;
+  int get contexts => _contexts;
+  int get contextAudioTokens => _contextAudioTokens;
+  String get _currentText => tokenizer
       .decode(
         _ids.where((id) {
           final piece = tokenizer.decode([id]);
@@ -137,6 +173,13 @@ final class AudioLiveSession {
         }).toList(),
       )
       .trim();
+  String get text {
+    final current = _currentText;
+    if (_completedText.isEmpty) return current;
+    if (current.isEmpty) return _completedText;
+    return '$_completedText\n$current';
+  }
+
   void close() {
     _closed = true;
     _cancelled = true;
@@ -171,18 +214,36 @@ final class AudioLiveSession {
       throw ArgumentError('Invalid LiveASR rows or token budget');
     }
     final count = rows.length ~/ h;
-    if (count == 0 && !isFinal) return AudioLiveBlock([], 0, false, false);
-    if (model.length + _pending.length + count + limit > model.maxSeq) {
+    if (count == 0 && !isFinal) {
+      return AudioLiveBlock([], 0, false, false, context: contexts);
+    }
+    final restart =
+        _contextAudioTokens + count > maxContextAudioTokens ||
+        model.length + _pending.length + count + limit > model.maxSeq;
+    if (count > maxContextAudioTokens ||
+        _prompt.length + count + limit > model.maxSeq) {
       throw StateError(
-        'Live transcription context is full. Start a new recording.',
+        'Live transcription block exceeds a fresh language context',
       );
     }
-    final prefix = List<int>.from(_pending), audio = _policy.audio;
+    final audio = _policy.audio;
     final owned = Float32List.fromList(rows);
     final ids = <int>[];
     var closed = false;
     _busy = true;
     try {
+      if (restart) {
+        final completed = text;
+        await model.reset();
+        _check();
+        _completedText = completed;
+        _ids.clear();
+        _pending = List.from(_prompt);
+        _expectedLength = 0;
+        _contextAudioTokens = 0;
+        _contexts++;
+      }
+      final prefix = List<int>.from(_pending);
       await model.forward(
         [...prefix, ...List.filled(count, audio)],
         embeddingOverrides: {
@@ -208,10 +269,19 @@ final class AudioLiveSession {
         _check();
       }
       _ids.addAll(ids);
+      _generatedTokens += ids.length;
+      _contextAudioTokens += count;
       _expectedLength = model.length;
       _pending = isFinal ? [] : [_policy.textEnd];
       _finished = isFinal;
-      return AudioLiveBlock(ids, count, closed, isFinal);
+      return AudioLiveBlock(
+        ids,
+        count,
+        closed,
+        isFinal,
+        context: contexts,
+        restarted: restart,
+      );
     } catch (_) {
       close();
       rethrow;
@@ -237,11 +307,19 @@ final class Lfm3LiveTranscriber {
     Lfm3AudioEncoder encoder, {
     void Function(String)? onText,
     void Function(AudioLiveBlock)? onBlock,
+    int maxContextAudioTokens = 375,
   }) async {
+    if (maxContextAudioTokens < 12) {
+      throw ArgumentError('LiveASR context must fit one 12-row audio block');
+    }
     if (model.config.hiddenSize != encoder.config.projectionSize) {
       throw ArgumentError('Audio projection differs');
     }
-    final session = await AudioLiveSession.start(model, tokenizer);
+    final session = await AudioLiveSession.start(
+      model,
+      tokenizer,
+      maxContextAudioTokens: maxContextAudioTokens,
+    );
     try {
       return Lfm3LiveTranscriber._(
         session,
@@ -264,6 +342,10 @@ final class Lfm3LiveTranscriber {
   int _frames = 0, _samples = 0;
   bool _closed = false, _busy = false;
   int get pendingFeatureFrames => _frames;
+  int get contexts => _session.contexts;
+  int get encodedAudioTokens => _encoder.tokens;
+  int get receivedSamples => _samples;
+  int get retainedTextTokens => _session.retainedTextTokens;
   String get text => _session.text;
   void close() {
     _closed = true;
@@ -323,9 +405,9 @@ final class Lfm3LiveTranscriber {
 
   Future<void> addPcm(Float32List pcm) async {
     _open();
-    if (_samples + pcm.length > 30 * 16000 || pcm.any((v) => !v.isFinite)) {
+    if (pcm.length > 30 * 16000 || pcm.any((v) => !v.isFinite)) {
       throw ArgumentError(
-        'Expected at most 30 seconds of finite mono 16 kHz PCM',
+        'Provide finite mono 16 kHz PCM in chunks of at most 30 seconds',
       );
     }
     _busy = true;

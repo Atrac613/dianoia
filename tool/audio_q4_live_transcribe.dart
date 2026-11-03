@@ -15,19 +15,13 @@ Future<void> main(List<String> args) async {
       'usage: audio_q4_live_transcribe.dart <prepared-dir> <16k-mono.f32> [--gpu]',
     );
   }
-  final dir = pos[0],
-      bytes = ByteData.sublistView(File(pos[1]).readAsBytesSync());
-  if (bytes.lengthInBytes == 0 ||
-      bytes.lengthInBytes % 4 != 0 ||
-      bytes.lengthInBytes > 30 * 16000 * 4) {
-    throw ArgumentError('expected at most 30 seconds of f32le PCM');
-  }
-  final pcm = Float32List(bytes.lengthInBytes ~/ 4);
-  for (var i = 0; i < pcm.length; i++) {
-    pcm[i] = bytes.getFloat32(i * 4, Endian.little);
+  final dir = pos[0], source = File(pos[1]);
+  if (source.lengthSync() == 0 || source.lengthSync() % 4 != 0) {
+    throw ArgumentError('expected nonempty mono 16 kHz f32le PCM');
   }
   NativeKernels.load(null);
   final encoder = Lfm3AudioEncoder.load('$dir/${Lfm3AudioQ4Source.audio.name}');
+  RandomAccessFile? reader;
   Lfm3Model? model;
   Lfm3LiveTranscriber? live;
   var fed = 0, block = 0;
@@ -54,6 +48,8 @@ Future<void> main(List<String> args) async {
             'ids': b.ids,
             'closed': b.closed,
             'final': b.isFinal,
+            'context': b.context,
+            'restarted': b.restarted,
           }),
         );
       },
@@ -65,9 +61,20 @@ Future<void> main(List<String> args) async {
         }),
       ),
     );
-    for (var at = 0; at < pcm.length; at += 1280) {
-      fed = (at + 1280).clamp(0, pcm.length);
-      await live.addPcm(pcm.sublist(at, fed));
+    reader = source.openSync();
+    while (true) {
+      final chunk = reader.readSync(1280 * 4);
+      if (chunk.isEmpty) break;
+      if (chunk.length % 4 != 0) {
+        throw const FormatException('Truncated f32le PCM');
+      }
+      final bytes = ByteData.sublistView(chunk),
+          pcm = Float32List(chunk.length ~/ 4);
+      for (var i = 0; i < pcm.length; i++) {
+        pcm[i] = bytes.getFloat32(i * 4, Endian.little);
+      }
+      fed += pcm.length;
+      await live.addPcm(pcm);
     }
     final text = await live.finish();
     stdout.writeln(
@@ -75,11 +82,16 @@ Future<void> main(List<String> args) async {
         'event': 'done',
         'text': text,
         'blocks': block,
+        'contexts': live.contexts,
+        'encoded_audio_tokens': live.encodedAudioTokens,
+        'retained_text_tokens': live.retainedTextTokens,
+        'language_context_tokens': model.length,
         'input_seconds': fed / 16000,
         'simulation': 'unpaced file',
       }),
     );
   } finally {
+    reader?.closeSync();
     live?.close();
     encoder.close();
     await model?.close();

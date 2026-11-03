@@ -36,7 +36,8 @@ def main():
     cases = []
     for name, chunks in [('blocks_and_final_tail', script),
                          ('final_without_new_audio', [script[1] | dict(prompt=[1,2]), dict(rows=0, final=True, limit=96, logits=[[18]])]),
-                         ('final_turn_start_stop', [dict(rows=1, final=True, limit=96, prompt=[1,2], logits=[[19]])])]:
+                         ('final_turn_start_stop', [dict(rows=1, final=True, limit=96, prompt=[1,2], logits=[[19]])]),
+                         ('context_restart', [script[1] | dict(prompt=[1,2]), dict(rows=12, final=False, limit=48, prompt=[3,4], logits=[[8],[14]]), dict(rows=0, final=True, limit=96, logits=[[18]])])]:
         state = None; outputs = []
         for chunk in chunks:
             inputs = []; scores = iter(chunk['logits'])
@@ -65,7 +66,7 @@ def main():
             state = result.state
             outputs.append(dict(**chunk, ids=result.sequences[0].tolist(),audio_tokens=result.num_audio_tokens,
                 closed=result.closed,pending=None if state.pending is None else state.pending[0,:,0].tolist(),
-                finished=state.finished,forward_inputs=inputs,context_tokens=state.attention_mask.shape[1]))
+                finished=state.finished,forward_inputs=inputs,context_tokens=state.attention_mask.shape[1],encoder_calls=state.encoder_cache.calls))
         cases.append(dict(name=name,chunks=outputs))
     Path('test/fixtures/audio/live_oracle.json').write_text(json.dumps(dict(source=URL,
         source_sha256=hashlib.sha256(source).hexdigest(),torch=torch.__version__,markers=markers,vocab_size=32,cases=cases),indent=2)+'\n')

@@ -36,7 +36,8 @@
           ],
           "finished": false,
           "forward_inputs": [],
-          "context_tokens": 0
+          "context_tokens": 0,
+          "encoder_calls": 1
         },
         {
           "rows": 12,
@@ -87,7 +88,8 @@
               7.0
             ]
           ],
-          "context_tokens": 15
+          "context_tokens": 15,
+          "encoder_calls": 2
         },
         {
           "rows": 12,
@@ -137,7 +139,8 @@
               9.0
             ]
           ],
-          "context_tokens": 30
+          "context_tokens": 30,
+          "encoder_calls": 3
         },
         {
           "rows": 0,
@@ -152,7 +155,8 @@
           ],
           "finished": false,
           "forward_inputs": [],
-          "context_tokens": 30
+          "context_tokens": 30,
+          "encoder_calls": 4
         },
         {
           "rows": 1,
@@ -191,7 +195,8 @@
               10.0
             ]
           ],
-          "context_tokens": 34
+          "context_tokens": 34,
+          "encoder_calls": 5
         }
       ]
     },
@@ -251,7 +256,8 @@
               7.0
             ]
           ],
-          "context_tokens": 15
+          "context_tokens": 15,
+          "encoder_calls": 1
         },
         {
           "rows": 0,
@@ -272,7 +278,8 @@
               14.0
             ]
           ],
-          "context_tokens": 16
+          "context_tokens": 16,
+          "encoder_calls": 2
         }
       ]
     },
@@ -304,7 +311,140 @@
               -1.0
             ]
           ],
-          "context_tokens": 3
+          "context_tokens": 3,
+          "encoder_calls": 1
+        }
+      ]
+    },
+    {
+      "name": "context_restart",
+      "chunks": [
+        {
+          "rows": 12,
+          "final": false,
+          "limit": 48,
+          "logits": [
+            [
+              15,
+              16,
+              12,
+              13,
+              11,
+              17,
+              18,
+              7
+            ],
+            [
+              14
+            ]
+          ],
+          "prompt": [
+            1,
+            2
+          ],
+          "ids": [
+            7
+          ],
+          "audio_tokens": 12,
+          "closed": true,
+          "pending": [
+            14.0
+          ],
+          "finished": false,
+          "forward_inputs": [
+            [
+              1.0,
+              2.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0
+            ],
+            [
+              7.0
+            ]
+          ],
+          "context_tokens": 15,
+          "encoder_calls": 1
+        },
+        {
+          "rows": 12,
+          "final": false,
+          "limit": 48,
+          "prompt": [
+            3,
+            4
+          ],
+          "logits": [
+            [
+              8
+            ],
+            [
+              14
+            ]
+          ],
+          "ids": [
+            8
+          ],
+          "audio_tokens": 12,
+          "closed": true,
+          "pending": [
+            14.0
+          ],
+          "finished": false,
+          "forward_inputs": [
+            [
+              3.0,
+              4.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0,
+              -1.0
+            ],
+            [
+              8.0
+            ]
+          ],
+          "context_tokens": 15,
+          "encoder_calls": 2
+        },
+        {
+          "rows": 0,
+          "final": true,
+          "limit": 96,
+          "logits": [
+            [
+              18
+            ]
+          ],
+          "ids": [],
+          "audio_tokens": 0,
+          "closed": true,
+          "pending": null,
+          "finished": true,
+          "forward_inputs": [
+            [
+              14.0
+            ]
+          ],
+          "context_tokens": 16,
+          "encoder_calls": 3
         }
       ]
     }
