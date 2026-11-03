@@ -2,9 +2,10 @@
 
 [![CI](https://github.com/Atrac613/dianoia/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Atrac613/dianoia/actions/workflows/ci.yml)
 
-On-device text, tool calling and image chat in Dart. dianoia runs
-**LFM3-1.7B** for text and tools, and **LFM3-VL-2B** for experimental image
-conversations with streaming replies and visual follow-up questions.
+On-device text, tool calling, image chat and experimental audio in Dart.
+dianoia runs **LFM3-1.7B** for text and tools, **LFM3-VL-2B** for image
+conversations, and **LFM3-Audio-2B Q4_0** for transcription, speech synthesis
+and English voice conversation.
 
 Dart owns the tokenizer, chat template, graph and conversation state. Native
 code provides quantized CPU kernels and the Metal/Vulkan language backend.
@@ -13,13 +14,10 @@ implementation, even when language inference uses the GPU.
 
 `package:dianoia/dianoia.dart` is the app API and may change before 1.0.
 `package:dianoia/lab.dart` exposes internals without a stability promise.
-Experimental [LFM3-Audio Q4_0 transcription and speech synthesis](docs/lfm3_audio_support.md) is
-available through research tools and `lab.dart`, with a CPU audio encoder and
-CPU/Metal language inference. The Flutter example includes an experimental
-audio preview with an in-app model download, English voice conversation,
-microphone transcription, English LiveASR and text-to-speech playback. `AudioGgufSpec.lfm3AudioQ4` installs the official pair
-through `ModelStore`. Speech synthesis also produces 24 kHz WAV files
-through the research CLI. Audio inference is not yet part of the app API. General-purpose
+Experimental [audio inference](docs/lfm3_audio_support.md) is available through
+research tools, `lab.dart` and the Flutter example, with a CPU audio encoder
+and CPU/Metal language inference. Audio model installation is available through
+`ModelStore`; audio inference is not yet part of the app API. General-purpose
 GGUF support is planned.
 
 ## Try the Flutter example
@@ -40,9 +38,10 @@ weights are downloaded only after that action and run on the device afterwards.
 |---|---|---:|---:|
 | LFM3-1.7B, text and tools | `ModelSpec.lfm3Q4` | 1.07 GB | About 1.14 GB |
 | LFM3-VL-2B, text and images | `VisionGgufSpec.lfm3VlQadQ4` | 1.45 GB | About 1.54 GB |
+| LFM3-Audio-2B, transcription and speech | `AudioGgufSpec.lfm3AudioQ4` | 1.23 GB | About 1.30 GB |
 
-Sizes use decimal GB. Allow at least **5 GB free** for the VL download and
-setup, including intermediate files. An interrupted download resumes when
+Sizes use decimal GB. Allow at least **5 GB free** for VL or **4 GB free** for
+Audio download and setup, including intermediate files. An interrupted download resumes when
 **Download** is selected again. No weights are bundled with the package.
 
 For VL, attach one PNG/JPEG and send it with a question or by itself. The app
@@ -56,10 +55,41 @@ fine detail, including small text. Profile mode uses AOT compilation for physica
 iPhone checks and avoids Debug JIT execution. See the
 [example guide](example/README.md) for mirrors, sideloading and device details.
 
+### Audio preview
+
+Select **LFM3-Audio-2B Q4_0** and download the model, then choose an audio mode:
+
+| Mode | Languages | Behavior |
+|---|---|---|
+| Transcription and TTS | Japanese / English; ASR also offers automatic detection | Record up to 30 seconds and transcribe after stopping; generate and play speech from text |
+| Voice conversation (English) | English | Record a question, receive text and speech, then record a follow-up using earlier turns as context |
+| Live transcription (English) | English | Show text during recording and continue until stopped, with no cumulative 30-second recording cap |
+
+Voice conversation feeds audio directly to the model and generates interleaved
+text and speech. Reply text appears during generation; the complete speech
+plays afterwards. **New conversation** clears earlier turns. Questions and
+generated speech are limited to 30 seconds each in the preview.
+
+Live transcription updates roughly once per second of audio, plus processing
+time. Before about 30 seconds of audio per context, or earlier when its token
+budget requires it, the language context restarts while microphone capture and
+the audio encoder continue. Earlier text stays visible; continued text starts
+a new paragraph. **Stop live transcription** flushes the final audio. Capture
+stops with an error if inference cannot keep up with the one-second audio queue.
+
+Recording and playback stop when the app is backgrounded or the route is left;
+they never resume automatically. Audio stays on the device. The preview does
+not save recordings or persist conversation history. CPU/Metal inference and
+simulated recording flows have automated coverage; physical microphone capture,
+mobile audio behavior and listening quality remain manual checks. See the
+[audio preview guide](example/README.md#audio-preview),
+[implementation notes](docs/lfm3_audio_support.md) and
+[long-stream validation](docs/validation/lfm3-audio-live-long-2026-11-03.md).
+
 ## What runs where
 
-The figures below are recorded **LFM3-1.7B text** measurements; image decoding
-and vision encoding are additional work and are not included.
+The figures below are recorded **LFM3-1.7B text** measurements; vision and audio
+processing are additional work and are not included.
 
 | Target | CPU kernels | GPU | Measured (LFM3-1.7B, QAD Q4_0, GPU) |
 |---|---|---|---|
@@ -100,7 +130,8 @@ See the [image API guide](docs/vision_chat_api.md) and
   headers in `src/vulkan/include`.
 - Model weights, supplied separately. The built-in presets use
   [LiquidAI/LFM3-1.7B](https://huggingface.co/LiquidAI/LFM3-1.7B) and
-  [LiquidAI/LFM3-VL-2B-GGUF](https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF)
+  [LiquidAI/LFM3-VL-2B-GGUF](https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF) and
+  [LiquidAI/LFM3-Audio-2B-GGUF](https://huggingface.co/LiquidAI/LFM3-Audio-2B-GGUF)
   under the LFM Open License v1.0. Review the model license before distribution.
 - Run model setup, loading and inference in a worker isolate in Flutter apps.
   Vision stages perform synchronous CPU work and yield between stages.
