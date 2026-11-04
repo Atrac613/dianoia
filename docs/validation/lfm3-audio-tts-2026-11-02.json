@@ -1,0 +1,197 @@
+{
+  "date": "2026-11-02",
+  "scope": "Q4_0 text-to-speech research API and WAV CLI",
+  "source": {
+    "repository": "LiquidAI/LFM3-Audio-2B-GGUF",
+    "revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+    "metadata_revision": "0295e4130594c06800fd25451d97139ac2da1aff",
+    "mmproj_sha256": "467a1ee5512a3faba79bf04e789a838959cc48c72a802bf6d9cb951a77736cfc",
+    "upstream_sources": {
+      "modeling_lfm3.py": {
+        "url": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/modeling_lfm3.py",
+        "sha256": "e8cd5254ea99ce6bd731b57b10908c2e8b5010ce8315341f895a38484885eeab"
+      },
+      "configuration_lfm3.py": {
+        "url": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/configuration_lfm3.py",
+        "sha256": "176cced35657aedfea7d7002221360582d1c05fcaca882c21508bc3a73b282e5"
+      },
+      "lfm3_conv.py": {
+        "url": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/lfm3_conv.py",
+        "sha256": "80d4a985382a22774212759248a6b4c737bfbf9c2a47b3dd7f797dda748e4bb4"
+      },
+      "modeling_lfm3_audio.py": {
+        "url": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/modeling_lfm3_audio.py",
+        "sha256": "8d7225d892b8b09edbe2285a8add883ce46e28c4027edc2b8c59b501eeadb9e0"
+      },
+      "modeling_liquid_codec.py": {
+        "url": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/modeling_liquid_codec.py",
+        "sha256": "5ca87e1b6e0549b40dc90fad5ee9d55620e9defb78c67e19c5937208c8e14f74"
+      }
+    },
+    "torch": "2.15.0",
+    "transformers": "5.21.0"
+  },
+  "arithmetic": {
+    "depth_cases": [
+      "all masked",
+      "partially revealed"
+    ],
+    "depth_stages": [
+      "input",
+      "layer.0",
+      "layer.1",
+      "layer.2",
+      "embedding",
+      "logits",
+      "feedback"
+    ],
+    "codec_frames": [
+      1,
+      2,
+      6
+    ],
+    "codec_internal_positions_max": 36,
+    "codec_attention_window": 30,
+    "codec_modes": [
+      "batch",
+      "one frame per chunk with final flush"
+    ],
+    "synthetic_tolerance": "abs(error) <= 3e-5 * (1 + abs(reference))",
+    "real_tolerance": "abs(error) <= 3e-4 * (1 + abs(reference))"
+  },
+  "commands": {
+    "cpu": "dart run tool/audio_q4_tts.dart build/audio-reference <text> <output.wav> --language=<en|ja>",
+    "metal": "dart run tool/audio_q4_tts.dart build/audio-reference <text> <output.wav> --language=en --gpu",
+    "real_parity": "DIANOIA_AUDIO_Q4_MMPROJ=build/audio-reference/mmproj-LFM3-Audio-2B-Q4_0.gguf DIANOIA_AUDIO_GENERATION_ORACLE=build/audio-reference/generation_oracle.json dart test test/audio_generation_test.dart"
+  },
+  "cases": [
+    {
+      "name": "english",
+      "text": "Hello world.",
+      "language": "en",
+      "voice": "female",
+      "seed": 0,
+      "backend": "cpu",
+      "generation": {
+        "sample_rate": 24000,
+        "frames": 14,
+        "audio_seconds": 1.12,
+        "stop_reason": "eos",
+        "wall_seconds": 3.354162,
+        "peak": 0.5104367136955261,
+        "clipped_samples": 0
+      },
+      "wav_sha256": "468072279b680d83187313ed5890d681a85edf4d224785840116bfbfccec57f3",
+      "asr_round_trip": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "cpu",
+        "input_mode": "batch",
+        "audio_seconds": 1.12,
+        "audio_tokens": 14,
+        "prompt_tokens": 34,
+        "input_chunks": 1,
+        "generated_ids": [
+          35808,
+          1530,
+          22
+        ],
+        "text": "Hello world.",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.119405,
+        "encoder_seconds": 0.155829,
+        "language_prefill_seconds": 0.586323,
+        "input_processing_seconds": 0.866274,
+        "language_prefill_decode_seconds": 0.66688
+      }
+    },
+    {
+      "name": "japanese",
+      "text": "こんにちは。今日は良い天気ですね。",
+      "language": "ja",
+      "voice": "female",
+      "seed": 0,
+      "backend": "cpu",
+      "generation": {
+        "sample_rate": 24000,
+        "frames": 34,
+        "audio_seconds": 2.72,
+        "stop_reason": "eos",
+        "wall_seconds": 3.781406,
+        "peak": 0.45433083176612854,
+        "clipped_samples": 0
+      },
+      "wav_sha256": "d9e393907cd6a5e94363f0eed72c2536f46e8033772028132e492b5d2dd7ea02",
+      "asr_round_trip": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "cpu",
+        "input_mode": "batch",
+        "audio_seconds": 2.72,
+        "audio_tokens": 34,
+        "prompt_tokens": 54,
+        "input_chunks": 1,
+        "generated_ids": [
+          71560,
+          36916,
+          29979,
+          17070,
+          6364,
+          5038,
+          23091,
+          646
+        ],
+        "text": "こんにちは。今日は良い天気ですね。",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.280957,
+        "encoder_seconds": 0.34762,
+        "language_prefill_seconds": 0.90484,
+        "input_processing_seconds": 1.539015,
+        "language_prefill_decode_seconds": 1.10108
+      }
+    }
+  ],
+  "metal_english_smoke": {
+    "sample_rate": 24000,
+    "frames": 15,
+    "audio_seconds": 1.2,
+    "stop_reason": "eos",
+    "wall_seconds": 1.406393,
+    "peak": 0.3454653024673462,
+    "clipped_samples": 0
+  },
+  "checks": {
+    "format": "passed",
+    "analyze": "passed",
+    "default_tests": {
+      "passed": 287,
+      "skipped": 28
+    },
+    "generation_tests_with_real_oracle": {
+      "passed": 7,
+      "skipped": 0
+    },
+    "lab_parity": {
+      "passed": true,
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "CPU Q8",
+        "Metal Q8",
+        "Metal Q4"
+      ],
+      "byte_identical_dumps": 24
+    }
+  },
+  "limitations": [
+    "No listening, audio-device playback or physical-device validation was performed.",
+    "Two short ASR round trips do not establish pronunciation, voice similarity or general synthesis quality.",
+    "Dart random seeds are not Torch random seeds; sampled code sequences are not compared to upstream.",
+    "CPU and Metal stochastic output is not identical: the English sample used 14 and 15 frames, respectively.",
+    "Timing excludes model loading and is a single run, not a latency benchmark.",
+    "Generation and codec run on CPU; only the language backbone uses Metal.",
+    "Research API and CLI only; Flutter speech synthesis/playback UI, public app sessions and ModelStore integration remain pending."
+  ]
+}

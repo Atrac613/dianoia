@@ -14,6 +14,178 @@ licenses (LFM3-1.7B QAD Q4_0 and LFM3-VL-2B QAD Q4_0). Selecting a model opens i
 loads it if already installed. Back returns to model selection and releases
 the chat worker; opening a model again starts a fresh conversation.
 
+The separate **LFM3-Audio-2B Q4_0** entry opens an experimental microphone
+voice conversation, transcription and text-to-speech preview. It offers an in-app model download
+and also accepts a prepared local model; see the setup below.
+
+## Audio preview
+
+Select **LFM3-Audio-2B Q4_0** on the root screen and tap **Download**. The
+preview shows the pinned model's license and download/storage estimates before
+starting. It downloads 1.23 GB from Hugging Face, verifies every source by
+SHA-256 and prepares the Q4 language cache on device. Allow at least 4 GB free
+during setup; about 1.30 GB remains installed. No Python or external conversion
+tool is required in the app.
+
+Download progress includes a cancel button. Leaving the route or backgrounding
+the app also cancels installation. Downloaded/partial source files are kept for
+the next attempt, which resumes them; conversion cancellation waits for the
+current conversion to finish and does not publish a partial bundle. Successful
+setup loads the model automatically and removes source downloads. Later visits
+load the installed bundle without downloading again. Inference and installation
+run in the existing audio worker.
+
+`AudioGgufSpec.lfm3AudioQ4` uses `ModelStore` under the app's support `models`
+directory (Local AppData cache on Windows). The installed bundle includes an
+`audio_bundle.json` with pinned source identity and hashes/sizes of every
+runtime payload. These hashes are verified before loading. Older prepared
+research folders remain accepted through their original source receipts.
+
+### Optional prepared model
+
+Prepare the official Q4_0 pair from the repository root:
+
+```sh
+dart run tool/prepare_audio_q4.dart build/audio-reference
+cd example
+flutter run -d macos
+```
+
+Select **LFM3-Audio-2B Q4_0**, choose **Choose model folder**, and select the
+prepared `build/audio-reference` directory. This needs the matching source
+receipt, metadata, Q4 audio mmproj and imported `language` subdirectory.
+The preview checks the pinned audio/config/tokenizer hashes and language-cache
+identity in the worker before loading it. Choosing a folder does not start a
+download or modify that folder.
+
+For mobile sideloading, place the following prepared files under the
+`LFM3-Audio-2B-Q4` folder shown by the preview, then tap **Check again**:
+
+```text
+LFM3-Audio-2B-Q4/
+  audio_config.json
+  mmproj-LFM3-Audio-2B-Q4_0.gguf
+  language/
+    config.json
+    tokenizer.json
+    model.safetensors
+    lfm3-q4.cache
+    audio_source.json
+    LICENSE
+```
+
+The raw language GGUF is not required after preparation. Keep the imported
+language files together; the cache and source receipt must match. iOS exposes
+the app's Documents folder in Files/Finder. Android uses this app's external
+files folder (`Android/data/dev.atrac613.dianoia_example/files`); Windows uses
+the local app cache directory. Desktop users can choose an existing prepared
+folder directly. See [audio implementation notes](../docs/lfm3_audio_support.md)
+for source pins and storage requirements.
+
+For voice conversation, select **Voice conversation (English)** under **Audio
+mode**. Tap **Record question**, speak in English, then **Stop and reply**.
+The model receives audio directly and generates interleaved text and speech;
+it does not route the question through ASR followed by a separate TTS request.
+Text appears during generation, and the complete speech plays afterwards.
+Record another question to continue with the earlier turns as context.
+**New conversation** clears that context. User turns show their duration;
+they are not separately transcribed.
+
+The model's voice chat currently supports English only. Japanese remains
+available in the separate ASR/TTS mode. Recording and reply speech are limited
+to 30 seconds each. The preview uses a 2048-slot language context; when it is
+full, start a new conversation rather than silently dropping earlier turns.
+The conversation stores audio embeddings and reply text in memory until reset
+or route exit. It does not save microphone recordings or persist chat history.
+
+**Cancel voice message** discards the current question; **Stop reply** cancels
+generation or playback. Backgrounding or route exit also stops active work.
+Cancelled, unaccepted replies never become hidden context. Once a reply is
+accepted and visible, stopping its playback keeps that turn for the next
+question. Returning to the app never starts recording or playback automatically.
+This is a record/send/reply workflow, without simultaneous listening and talking
+or streaming device playback. Existing prepared/downloaded Q4 models already
+contain all required weights.
+
+For recording-time text, select **Live transcription (English)**. Tap **Start
+live transcription** and speak English. The transcript updates roughly once
+per second of audio, plus processing time. **Stop live transcription** flushes
+the final audio and completes the text. Updates are provisional until stop;
+**Cancel recording**, backgrounding or route exit discards the current text.
+A new recording starts a fresh live context. LiveASR is English only and uses
+the official live-ASR protocol, not repeated full-clip transcription. Capture
+continues until you stop. The language context restarts at audio-block
+boundaries before about 30 seconds per context, or earlier if its token budget
+would be exceeded. The microphone, frontend and audio encoder keep their
+streaming states. Text already shown is retained, with continued text in a new
+paragraph. The one-second queue/backpressure limit remains in effect. No full
+microphone recording is saved or retained.
+
+In **Transcription and TTS** mode, choose Japanese, English or automatic language detection. **Record** requests
+microphone permission only when pressed; **Stop and transcribe** flushes the
+final PCM and displays text. **Cancel recording**, route exit or backgrounding
+discards the current recording. Returning to the app never resumes capture
+automatically. Capture stops after 30 seconds. Recordings are not saved or
+uploaded.
+
+For TTS, enter a short sentence under **Text to speech**, select the output
+language (Japanese/English) and voice instruction (Female/Male), then tap
+**Generate and play**. The model generates the complete utterance before
+playback; **Stop speech** cancels generation or stops playback. The input limit
+is 1000 characters and output is limited to 30 seconds. Context overflow or
+unfinished speech is reported as an error; try a shorter sentence. Recording
+and TTS are mutually exclusive. Route exit/backgrounding stops speech, and
+returning never restarts it.
+
+Generation uses the same loaded language backbone plus lazily loaded
+Depthformer/LiquidCodec weights in the worker. Playback uses
+[audioplayers 6.8.1](https://pub.dev/packages/audioplayers/versions/6.8.1) with a
+private temporary local WAV. The file is removed after completion, stop,
+interruption or playback error. Generated speech stays on the device; the
+preview does not upload it or provide permanent recording/export storage.
+
+`record` supplies mono PCM16 at 16 kHz. The UI converts it to owned 80 ms float
+chunks and permits only one inference request in flight. A one-second queue
+limit stops/discards capture if the worker cannot keep up; samples are never
+silently dropped. Models, hashing, encoding and incremental prefill live in a
+worker isolate. Its lifetime shares a gate with text/VL workers so a model
+switch waits for the previous isolate to release GPU resources and exit.
+
+Platform setup follows the [record 7.1.2 guide](https://pub.dev/packages/record/versions/7.1.2):
+iOS/macOS microphone usage descriptions, macOS audio-input sandbox entitlement,
+and Android `RECORD_AUDIO`. The UI also rejects a changed capture configuration
+that is not mono 16 kHz PCM16.
+
+macOS compilation, simulated microphone/lifecycle tests and real Q4 worker
+inference are validated. Physical microphone capture, mobile builds and device
+audio-session behavior remain unvalidated. Speech playback is implemented but
+has not been manually listened to or tested on a physical device. The preview
+has no full-duplex voice mode or stable public audio session API. `AudioConversationSession` is available through `lab.dart`. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
+records automated checks; device playback and recording remain manual checks.
+The [Audio download validation record](../docs/validation/lfm3-audio-download-2026-11-02.md)
+covers installation, cancellation, Range resume and real-model worker loading.
+The [voice conversation validation](../docs/validation/lfm3-audio-conversation-2026-11-03.md)
+covers the native generation protocol and two-turn CPU/Metal examples.
+The [LiveASR validation](../docs/validation/lfm3-audio-live-2026-11-03.md) records
+recording-time updates, final flush and cancellation checks.
+The [long-stream validation](../docs/validation/lfm3-audio-live-long-2026-11-03.md)
+covers context rollover and removal of the live mode’s recording-duration cap.
+
+For a local download mirror, `DIANOIA_MODEL_MIRROR` also applies to Audio.
+Serve the two pinned GGUFs plus `audio_config.json`, `tokenizer.json` and
+`LICENSE` under those names, for example from `build/audio-reference`:
+
+```sh
+cd example
+dart run tool/serve_model.dart ../build/audio-reference
+# In another terminal:
+flutter run -d macos --dart-define=DIANOIA_MODEL_MIRROR=http://127.0.0.1:8642
+```
+
+Mirrors change only URLs; all published sizes and hashes still apply.
+
+## Text and image model setup
+
 The text model is not bundled. Without one the app offers to download it,
 naming its size (1.07 GB) and license; `ModelStore.install` then fetches
 Liquid's published files from Hugging Face, checks each one's SHA-256,

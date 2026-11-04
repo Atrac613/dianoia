@@ -545,6 +545,34 @@ final class NativeQ4Matrix implements NativeMatrix {
     bool owned = true,
   }) : _owned = owned;
 
+  /// Copies GGUF Q4_0 blocks without dequantizing or requantizing them.
+  /// Each block is a little-endian half scale followed by 16 nibble bytes.
+  factory NativeQ4Matrix.fromGgufBlocks(Uint8List blocks, int rows, int cols) {
+    if (rows <= 0 ||
+        cols <= 0 ||
+        cols % 32 != 0 ||
+        blocks.length != rows * cols ~/ 32 * 18) {
+      throw ArgumentError('invalid Q4_0 blocks for $rows x $cols');
+    }
+    final qs = NativeKernels.allocate<Uint8>(rows * cols ~/ 2);
+    Pointer<Uint16> scales = nullptr;
+    try {
+      scales = NativeKernels.allocate<Uint16>(rows * cols ~/ 32 * 2);
+      final q = qs.asTypedList(rows * cols ~/ 2);
+      final s = scales.cast<Uint8>().asTypedList(rows * cols ~/ 32 * 2);
+      for (var b = 0; b < rows * cols ~/ 32; b++) {
+        s[2 * b] = blocks[18 * b];
+        s[2 * b + 1] = blocks[18 * b + 1];
+        q.setRange(16 * b, 16 * b + 16, blocks, 18 * b + 2);
+      }
+      return NativeQ4Matrix._(rows, cols, qs, scales);
+    } catch (_) {
+      _free(qs.cast());
+      if (scales != nullptr) _free(scales.cast());
+      rethrow;
+    }
+  }
+
   /// Quantizes float weights with llama.cpp's Q4_0 rule.
   factory NativeQ4Matrix.quantize(Float32List w, int rows, int cols) {
     if (cols % 32 != 0) {

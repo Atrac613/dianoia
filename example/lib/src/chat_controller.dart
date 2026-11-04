@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'chat_protocol.dart';
 import 'chat_worker.dart';
 import 'example_model.dart';
+import 'model_worker_gate.dart';
 
 enum ChatRole { user, assistant }
 
@@ -68,27 +69,20 @@ class ChatController extends ChangeNotifier {
   SendPort? _commands;
   ReceivePort? _events;
 
-  /// When the last worker started exits. The next one waits for it: the GPU
-  /// layer is process-wide, so two workers must not run models at once, and
-  /// each holds its model's mappings until it exits.
-  static Future<void> _lastExit = Future<void>.value();
-
   bool get ready => setup == Setup.ready;
 
   Future<void> start() async {
     final events = _events = ReceivePort();
     events.listen((event) => _handle(event as ChatEvent));
-    final previous = _lastExit;
-    final exited = Completer<void>();
-    _lastExit = exited.future;
+    final lease = ModelWorkerLease.reserve();
     final exit = ReceivePort();
     try {
       final location = this.location = await _modelLocation();
-      await previous;
+      await lease.ready;
       if (_disposed) {
         events.close();
         exit.close();
-        exited.complete();
+        lease.release();
         return;
       }
       await Isolate.spawn(runChatWorker, (
@@ -99,12 +93,12 @@ class ChatController extends ChangeNotifier {
       unawaited(
         exit.first.then((_) {
           exit.close();
-          exited.complete();
+          lease.release();
         }),
       );
     } catch (e) {
       exit.close();
-      if (!exited.isCompleted) exited.complete();
+      lease.release();
       events.close();
       if (_disposed) return;
       setup = Setup.failed;

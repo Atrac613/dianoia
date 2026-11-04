@@ -33,9 +33,20 @@ void writeTestGguf(
   _number(header, metadata.length, 8);
   for (final e in metadata.entries) {
     _string(header, e.key);
-    _number(header, e.value is String ? 8 : 4, 4);
+    _number(
+      header,
+      e.value is String
+          ? 8
+          : e.value is double
+          ? 6
+          : 4,
+      4,
+    );
     if (e.value is String) {
       _string(header, e.value as String);
+    } else if (e.value is double) {
+      final data = ByteData(4)..setFloat32(0, e.value as double, Endian.little);
+      header.add(data.buffer.asUint8List());
     } else {
       _number(header, e.value as int, 4);
     }

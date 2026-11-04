@@ -1,0 +1,18 @@
+{
+  "source": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/processing_lfm3_audio.py",
+  "source_sha256": "fc87b2d078f292cb45a317395f9dc69aefb98ac383ae68cc16686025e87bbc38",
+  "cases": [
+    {
+      "language": null,
+      "text": "<|startoftext|><|im_start|>system\nPerform ASR.<|im_end|>\n<|im_start|>user\n<|audio|><|im_end|>\n<|im_start|>assistant\n"
+    },
+    {
+      "language": "English",
+      "text": "<|startoftext|><|im_start|>system\nPerform ASR in English.<|im_end|>\n<|im_start|>user\n<|audio|><|im_end|>\n<|im_start|>assistant\n"
+    },
+    {
+      "language": "Japanese",
+      "text": "<|startoftext|><|im_start|>system\nPerform ASR in Japanese.<|im_end|>\n<|im_start|>user\n<|audio|><|im_end|>\n<|im_start|>assistant\n"
+    }
+  ]
+}

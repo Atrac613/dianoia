@@ -1,0 +1,257 @@
+{
+  "date": "2026-11-02",
+  "scope": "bounded streaming Q4 audio encoder and incremental ASR prefill",
+  "source": {
+    "repository": "LiquidAI/LFM3-Audio-2B-GGUF",
+    "revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+    "metadata_revision": "0295e4130594c06800fd25451d97139ac2da1aff",
+    "upstream_stream_graph": "https://huggingface.co/LiquidAI/LFM3-Audio-2B/resolve/0295e4130594c06800fd25451d97139ac2da1aff/modeling_lfm3_audio.py",
+    "upstream_source_sha256": "8d7225d892b8b09edbe2285a8add883ce46e28c4027edc2b8c59b501eeadb9e0",
+    "torch": "2.15.0",
+    "transformers": "5.21.0",
+    "mmproj_sha256": "467a1ee5512a3faba79bf04e789a838959cc48c72a802bf6d9cb951a77736cfc"
+  },
+  "encoder": {
+    "real_upstream_parity": "passed",
+    "real_cases": [
+      0,
+      1,
+      7,
+      8,
+      9,
+      16,
+      33,
+      65,
+      265
+    ],
+    "real_tolerance": "abs(error) <= 2e-4 * (1 + abs(reference))",
+    "synthetic_tolerance": "abs(error) <= 3e-5 * (1 + abs(reference))",
+    "batch_stage_comparison_chunk_frames": [
+      1,
+      7,
+      8,
+      9,
+      17,
+      64,
+      1000
+    ],
+    "retained_feature_frames_max": 15,
+    "convolution_history_rows": 2,
+    "attention_kv_rows_max": 31,
+    "maximum_persistent_signal_cache_bytes": 735744,
+    "cache_bytes_excludes": "Shared weights, temporary per-chunk work and language context."
+  },
+  "commands": {
+    "cpu": "dart run tool/audio_q4_transcribe.dart build/audio-reference <clip.f32> <language> --chunk-ms=80",
+    "metal": "dart run tool/audio_q4_transcribe.dart build/audio-reference <clip.f32> <language> --gpu --chunk-ms=80",
+    "real_parity": "DIANOIA_AUDIO_Q4_MMPROJ=build/audio-reference/mmproj-LFM3-Audio-2B-Q4_0.gguf DIANOIA_AUDIO_ENCODER_ORACLE=build/audio-reference/encoder_oracle.json DIANOIA_AUDIO_ENCODER_STREAM_ORACLE=build/audio-reference/encoder_stream_oracle.json dart test test/audio_encoder_test.dart test/audio_encoder_stream_test.dart"
+  },
+  "cases": [
+    {
+      "name": "english",
+      "baseline_generated_ids": [
+        597,
+        4104,
+        10299,
+        35886,
+        56085,
+        890,
+        278,
+        45698,
+        4448,
+        22
+      ],
+      "cpu": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "cpu",
+        "input_mode": "streaming",
+        "audio_seconds": 2.67075,
+        "audio_tokens": 34,
+        "prompt_tokens": 54,
+        "input_chunks": 34,
+        "chunk_ms": 80,
+        "audio_tokens_prefilled_before_finish": 33,
+        "peak_encoder_cache_bytes": 735232,
+        "generated_ids": [
+          597,
+          4104,
+          10299,
+          35886,
+          56085,
+          890,
+          278,
+          45698,
+          4448,
+          22
+        ],
+        "text": "The quick brown fox jumps over the lazy dog.",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.16581,
+        "encoder_seconds": 0.55057,
+        "language_prefill_seconds": 2.196609,
+        "input_processing_seconds": 2.914404,
+        "language_prefill_decode_seconds": 2.45527
+      },
+      "metal": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "gpu",
+        "input_mode": "streaming",
+        "audio_seconds": 2.67075,
+        "audio_tokens": 34,
+        "prompt_tokens": 54,
+        "input_chunks": 34,
+        "chunk_ms": 80,
+        "audio_tokens_prefilled_before_finish": 33,
+        "peak_encoder_cache_bytes": 735232,
+        "generated_ids": [
+          597,
+          4104,
+          10299,
+          35886,
+          56085,
+          890,
+          278,
+          45698,
+          4448,
+          22
+        ],
+        "text": "The quick brown fox jumps over the lazy dog.",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.162282,
+        "encoder_seconds": 0.595183,
+        "language_prefill_seconds": 0.734838,
+        "input_processing_seconds": 1.493618,
+        "language_prefill_decode_seconds": 0.838748
+      },
+      "generated_tokens_match_batch": true,
+      "pcm_sha256": "6eb9e6c4e28dbdba2b7597c93ee9fa818f619fecaa6f79548908df2baa8c41b6"
+    },
+    {
+      "name": "japanese",
+      "baseline_generated_ids": [
+        71638,
+        17070,
+        6364,
+        5038,
+        2050,
+        646,
+        5692,
+        24010,
+        35372,
+        913,
+        52158,
+        10502,
+        646
+      ],
+      "cpu": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "cpu",
+        "input_mode": "streaming",
+        "audio_seconds": 4.2206875,
+        "audio_tokens": 53,
+        "prompt_tokens": 73,
+        "input_chunks": 53,
+        "chunk_ms": 80,
+        "audio_tokens_prefilled_before_finish": 52,
+        "peak_encoder_cache_bytes": 735232,
+        "generated_ids": [
+          71638,
+          17070,
+          6364,
+          5038,
+          2050,
+          646,
+          5692,
+          24010,
+          35372,
+          913,
+          52158,
+          10502,
+          646
+        ],
+        "text": "今日は良い天気です。明日の予定を教えてください。",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.247423,
+        "encoder_seconds": 0.848581,
+        "language_prefill_seconds": 1.552527,
+        "input_processing_seconds": 2.650406,
+        "language_prefill_decode_seconds": 1.879545
+      },
+      "metal": {
+        "model": "LFM3-Audio-2B-Q4_0",
+        "source_revision": "02355c1a141e464a064f2ab2c276638dbcb7f38a",
+        "backend": "gpu",
+        "input_mode": "streaming",
+        "audio_seconds": 4.2206875,
+        "audio_tokens": 53,
+        "prompt_tokens": 73,
+        "input_chunks": 53,
+        "chunk_ms": 80,
+        "audio_tokens_prefilled_before_finish": 52,
+        "peak_encoder_cache_bytes": 735232,
+        "generated_ids": [
+          71638,
+          17070,
+          6364,
+          5038,
+          2050,
+          646,
+          5692,
+          24010,
+          35372,
+          913,
+          52158,
+          10502,
+          646
+        ],
+        "text": "今日は良い天気です。明日の予定を教えてください。",
+        "stop_reason": "eos",
+        "frontend_seconds": 0.253756,
+        "encoder_seconds": 0.88163,
+        "language_prefill_seconds": 0.822846,
+        "input_processing_seconds": 1.960002,
+        "language_prefill_decode_seconds": 0.95881
+      },
+      "generated_tokens_match_batch": true,
+      "pcm_sha256": "df10020aab0838578c42316a15054072cc41b6d16bfd0dff50a90b918d9fd85c"
+    }
+  ],
+  "checks": {
+    "format": "passed",
+    "analyze": "passed",
+    "default_tests": {
+      "passed": 281,
+      "skipped": 27
+    },
+    "optional_real_encoder_tests": {
+      "passed": 19,
+      "skipped": 0
+    },
+    "incremental_prefill_unit_tests": 9,
+    "existing_batch_cli_preserved": true,
+    "lab_parity": {
+      "passed": true,
+      "cases": [
+        "chat",
+        "long"
+      ],
+      "backends": [
+        "CPU Q8",
+        "Metal Q8",
+        "Metal Q4"
+      ],
+      "byte_identical_dumps": 24
+    }
+  },
+  "limitations": [
+    "Unpaced file chunk simulation, not microphone capture or a realtime latency measurement.",
+    "Only two clean synthesized clips; this is not a speech recognition quality benchmark.",
+    "Generated token equality on these clips does not establish bit-identical CPU/Metal logits.",
+    "The stream holds bounded audio encoder context; language KV/history still grows up to the configured maxSeq.",
+    "No partial transcript during recording; text decoding starts after finalization.",
+    "No speech output, app ModelStore integration, Android/Windows or physical-device validation."
+  ]
+}

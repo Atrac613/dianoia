@@ -40,7 +40,9 @@ void main() {
     expect(vl.id, isNot(VisionCheckpointSpec.lfm3VlQ8.id));
     expect(ExampleModel.lfm3Vl.directoryName, 'LFM3-VL-2B-QAD-Q4');
     expect(find.textContaining('1.07 GB download'), findsOneWidget);
-    expect(find.textContaining(ModelSpec.lfm3Q4.license), findsNWidgets(2));
+    expect(find.textContaining(ModelSpec.lfm3Q4.license), findsNWidgets(3));
+    expect(find.text(AudioGgufSpec.lfm3AudioQ4.name), findsOneWidget);
+    expect(find.textContaining('1.23 GB download'), findsOneWidget);
     expect(find.byType(ChatPage), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });

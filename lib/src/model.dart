@@ -317,6 +317,16 @@ final class Lfm3Model {
   late final Float32List _normed = Float32List(config.hiddenSize);
   late final Float32List _logits =
       _gpu?.logits ?? Float32List(config.vocabSize);
+  bool _hasHiddenState = false;
+
+  /// Final-normalized state of the last forward/logitsOf computation.
+  /// A borrowed view, valid until the next computation or close. TTS uses
+  /// this rather than logits to condition its depth decoder.
+  Float32List get lastHiddenState {
+    _checkOpen();
+    if (!_hasHiddenState) throw StateError('no computed hidden state');
+    return _gpu?.lastHiddenState ?? _normed;
+  }
 
   /// The logits of the last token fed with logits. On the GPU this is a
   /// view of GPU memory: do not read it after [close].
@@ -359,6 +369,7 @@ final class Lfm3Model {
   /// Clears all state so the next call starts a new sequence.
   Future<void> reset() async {
     _checkOpen();
+    _hasHiddenState = false;
     length = 0;
     _history.clear();
     _checkpoints.clear();
@@ -597,6 +608,7 @@ final class Lfm3Model {
     if (length + tokens.length > maxSeq) {
       throw StateError('sequence exceeds maxSeq=$maxSeq');
     }
+    if (tokens.isNotEmpty) _hasHiddenState = false;
     final gpu = _gpu;
     if (gpu != null) {
       final h = config.hiddenSize;
@@ -627,6 +639,7 @@ final class Lfm3Model {
             overrides.containsKey(t) ? -1 : tokens[t],
         ]);
       }
+      if (computeLogits && tokens.isNotEmpty) _hasHiddenState = true;
       return;
     }
     for (var start = 0; start < tokens.length; start += maxChunk) {
@@ -649,7 +662,11 @@ final class Lfm3Model {
   /// leaving the result in [logits].
   Future<Float32List> logitsOf(Float32List residual) async {
     _checkOpen();
-    if (_gpu != null) return _gpu.logitsOf(residual);
+    if (_gpu != null) {
+      final result = _gpu.logitsOf(residual);
+      _hasHiddenState = true;
+      return result;
+    }
     rmsNorm(
       residual,
       _finalNorm,
@@ -660,6 +677,7 @@ final class Lfm3Model {
       config.normEps,
     );
     await _executor!.lmHead(_normed, logits);
+    _hasHiddenState = true;
     return logits;
   }
 
