@@ -66,8 +66,10 @@ class TestAudioBackend implements AudioBackend {
   @override
   Future<String> load(String directory) async {
     loads++;
-    return 'CPU';
+    return loading == null ? 'CPU' : await loading!.future;
   }
+
+  Completer<String>? loading;
 
   @override
   Future<void> begin(
@@ -141,6 +143,12 @@ class TestAudioBackend implements AudioBackend {
   @override
   Future<void> cancel() async {
     cancels++;
+    // The worker replies to a load it already finished before the cancel ACK.
+    if (loading case final c? when !c.isCompleted) {
+      try {
+        await c.future;
+      } catch (_) {}
+    }
     if (ack case final c? when !c.isCompleted) {
       c.completeError(StateError('cancelled'));
     }
@@ -623,6 +631,29 @@ void main() {
       expect(audio.transcript, isEmpty);
     },
   );
+
+  test('a cancel that overtakes a finished load keeps the model', () async {
+    final fresh = AudioController(
+      backend: backend,
+      microphone: mic,
+      player: player,
+    );
+    try {
+      backend.loading = Completer<String>();
+      final loading = fresh.load('/prepared');
+      await events();
+      expect(fresh.phase, AudioPhase.loading);
+      final cancel = fresh.cancel();
+      backend.loading!.complete('GPU');
+      await cancel;
+      await loading;
+      expect(fresh.backendName, 'GPU');
+      expect(fresh.phase, AudioPhase.ready);
+    } finally {
+      await fresh.close();
+      fresh.dispose();
+    }
+  });
 
   test(
     'cancel discards an in-flight transcription and the next recording works',

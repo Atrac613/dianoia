@@ -186,8 +186,10 @@ final class AudioController extends ChangeNotifier {
     _notify();
     try {
       final used = await _backend.load(path);
+      // The worker keeps a model it finished loading even when a cancel
+      // overtook this request; record it so the cancel returns to ready.
+      if (!_disposed && _closing == null) backendName = used;
       if (!_valid(epoch)) return;
-      backendName = used;
       phase = AudioPhase.ready;
     } catch (e) {
       if (!_valid(epoch)) return;
