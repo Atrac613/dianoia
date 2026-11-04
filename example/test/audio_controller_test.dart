@@ -632,6 +632,26 @@ void main() {
     },
   );
 
+  test('LiveASR queues several blocks while a block decodes', () async {
+    audio.setTask(AudioTask.liveTranscription);
+    backend.ack = Completer<void>();
+    await audio.record();
+    for (var i = 0; i < 13; i++) {
+      mic.source!.add(Uint8List(2560));
+    }
+    await events();
+    await events();
+    expect(audio.error, isNull);
+    expect(audio.phase, AudioPhase.recording);
+    expect(
+      audio.queuedSamples,
+      lessThanOrEqualTo(AudioController.maxLiveQueuedSamples),
+    );
+    backend.ack!.complete();
+    await events();
+    expect(audio.queuedSamples, 0);
+  });
+
   test('a cancel that overtakes a finished load keeps the model', () async {
     final fresh = AudioController(
       backend: backend,

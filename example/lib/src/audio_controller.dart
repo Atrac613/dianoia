@@ -53,6 +53,13 @@ final class AudioController extends ChangeNotifier {
   /// Clip ASR and voice chat only; LiveASR has no cumulative duration cap.
   static const maxSamples = 30 * 16000;
   static const maxQueuedSamples = 16000;
+
+  /// LiveASR decodes text after every ~0.96 s block, so input queues while a
+  /// block decodes; sustained lag beyond this still fails closed.
+  static const maxLiveQueuedSamples = 5 * 16000;
+  int get _queueLimit => _recordingTask == AudioTask.liveTranscription
+      ? maxLiveQueuedSamples
+      : maxQueuedSamples;
   final _queue = ListQueue<Float32List>();
   Pcm16Packetizer? _packetizer;
   StreamSubscription<Uint8List>? _subscription;
@@ -308,7 +315,7 @@ final class AudioController extends ChangeNotifier {
       if (_queuedSamples +
               (_packetizer?.pendingSamples ?? 0) +
               (accepted.length + 1) ~/ 2 >
-          maxQueuedSamples) {
+          _queueLimit) {
         throw StateError(
           'Audio processing fell behind. Please try a shorter recording.',
         );
@@ -328,7 +335,7 @@ final class AudioController extends ChangeNotifier {
 
   void _enqueue(Float32List rows, int epoch) {
     if (rows.isEmpty || !_valid(epoch)) return;
-    if (_queuedSamples + rows.length > maxQueuedSamples) {
+    if (_queuedSamples + rows.length > _queueLimit) {
       throw StateError(
         'Audio processing fell behind. Please try a shorter recording.',
       );
