@@ -255,6 +255,10 @@ final class AudioIsolateBackend implements AudioBackend {
   }
 }
 
+/// Text budget for a 30-second clip, reserved in the context before audio.
+/// Reaching it fails instead of returning a silently truncated transcript.
+const _maxTranscriptTokens = 256;
+
 Future<void> _runAudioWorker((SendPort, bool, String) args) async {
   final (out, useGpu, mirror) = args;
   final spec = mirror.isEmpty
@@ -501,6 +505,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                   tokenizer: tokenizer!,
                   hiddenSize: encoder!.config.projectionSize,
                   language: options['language'] as String?,
+                  reservedTokens: _maxTranscriptTokens,
                 );
               }
               check(version);
@@ -574,12 +579,21 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
               await current.finish();
               check(version);
               final ids = <int>[];
-              for (var i = 0; i < 128; i++) {
+              var stopped = false;
+              for (var i = 0; i < _maxTranscriptTokens; i++) {
                 check(version);
                 final token = current.greedyToken(model!.logits);
-                if (current.stopTokenIds.contains(token)) break;
+                if (current.stopTokenIds.contains(token)) {
+                  stopped = true;
+                  break;
+                }
                 ids.add(token);
-                if (i < 127) await model!.step(token);
+                if (i < _maxTranscriptTokens - 1) await model!.step(token);
+              }
+              if (!stopped) {
+                throw StateError(
+                  'Transcript reached the decoding limit. Please try a shorter recording.',
+                );
               }
               result = tokenizer!.decode(ids);
               clear();
