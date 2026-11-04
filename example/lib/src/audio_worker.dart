@@ -625,7 +625,8 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
 
 /// Prepared research bundle provenance, checked before mapping any model.
 Future<void> _verifyBundle(String dir, void Function() check) async {
-  if (File('$dir/audio_bundle.json').existsSync()) {
+  final installed = File('$dir/audio_bundle.json').existsSync();
+  if (installed) {
     await validateAudioBundle(
       dir,
       AudioGgufSpec.lfm3AudioQ4.files,
@@ -652,10 +653,14 @@ Future<void> _verifyBundle(String dir, void Function() check) async {
       throw const FormatException('Audio source receipt differs');
     }
   }
+  // The installed manifest pins these payloads to the source hashes and
+  // validateAudioBundle has just hashed them; only research folders need it.
   for (final (file, spec) in [
-    (File('$dir/${Lfm3AudioQ4Source.audio.name}'), Lfm3AudioQ4Source.audio),
-    (File('$dir/language/tokenizer.json'), Lfm3AudioQ4Source.tokenizer),
-    (File('$dir/audio_config.json'), Lfm3AudioQ4Source.config),
+    if (!installed) ...[
+      (File('$dir/${Lfm3AudioQ4Source.audio.name}'), Lfm3AudioQ4Source.audio),
+      (File('$dir/language/tokenizer.json'), Lfm3AudioQ4Source.tokenizer),
+      (File('$dir/audio_config.json'), Lfm3AudioQ4Source.config),
+    ],
   ]) {
     check();
     if (await file.length() != spec.size) {
