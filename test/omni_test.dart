@@ -125,6 +125,121 @@ void main() {
     });
   });
 
+  group('mixed Omni prompts', () {
+    late Directory temp;
+    late Lfm3Tokenizer tokenizer;
+    late Lfm3VlConfig config;
+    setUp(() {
+      temp = Directory.systemTemp.createTempSync('dianoia-omni-mixed-');
+      writeSyntheticTokenizer(temp.path, additionalSpecials: _speechSpecials);
+      tokenizer = Lfm3Tokenizer.load(temp.path);
+      final json =
+          jsonDecode(File('test/fixtures/omni/config.json').readAsStringSync())
+              as Map<String, Object?>;
+      final id = tokenizer.addedTokenId;
+      config = Lfm3VlConfig.fromOmniJson(
+        {
+          ...json,
+          'image_token_id': id('<|image|>'),
+          'video_token_id': id('<|video|>'),
+        },
+        visionStartTokenId: id('<|vision_start|>')!,
+        visionEndTokenId: id('<|vision_end|>')!,
+      );
+    });
+    tearDown(() => temp.deleteSync(recursive: true));
+
+    List<Map<String, Object?>> messages(String name) => [
+      for (final m
+          in (oracle['cases'] as List).firstWhere(
+                (c) => c['name'] == name,
+              )['messages']
+              as List)
+        (m as Map).cast<String, Object?>(),
+    ];
+
+    test('renders every oracle case with its reply marker', () {
+      for (final (name, mode, marker) in [
+        ('asr_english', AudioReplyMode.text, ''),
+        ('image_text', AudioReplyMode.text, ''),
+        ('image_spoken_question', AudioReplyMode.text, ''),
+        ('tts', AudioReplyMode.audio, '<|audio_start|>'),
+        ('interleaved_audio', AudioReplyMode.mixed, '<|mixed_start|>'),
+      ]) {
+        expect(
+          renderOmniChat(messages(name), mode: mode),
+          '${rendered(name)}$marker',
+          reason: name,
+        );
+      }
+    });
+
+    test('expands image and audio runs in content order', () {
+      final prompt = prepareOmniPrompt(
+        messages('image_spoken_question'),
+        tokenizer: tokenizer,
+        config: config,
+        imageTokenCounts: [4],
+        audioTokenCounts: [3],
+      );
+      final id = tokenizer.addedTokenId;
+      final [image, audio] = prompt.spans;
+      expect([image.kind, image.count], [OmniMediaKind.image, 4]);
+      expect([audio.kind, audio.count], [OmniMediaKind.audio, 3]);
+      expect(prompt.ids.sublist(image.start - 1, image.start + 5), [
+        id('<|vision_start|>'),
+        ...List.filled(4, id('<|image|>')),
+        id('<|vision_end|>'),
+      ]);
+      expect(audio.start, image.start + 4 + 2);
+      expect(prompt.ids.sublist(audio.start, audio.start + 4), [
+        ...List.filled(3, id('<|audio|>')),
+        id('<|vision_end|>'),
+      ]);
+      expect(
+        tokenizer.decode(prompt.ids),
+        rendered('image_spoken_question')
+            .replaceFirst('<|image|>', '<|image|>' * 4)
+            .replaceFirst('<|audio|>', '<|audio|>' * 3),
+      );
+    });
+
+    test('rejects missing counts, bare placeholders and video', () {
+      final question = messages('image_spoken_question');
+      expect(
+        () => prepareOmniPrompt(
+          question,
+          tokenizer: tokenizer,
+          config: config,
+          imageTokenCounts: [4],
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => prepareOmniPrompt(
+          [
+            {'role': 'user', 'content': 'say <|audio|>'},
+          ],
+          tokenizer: tokenizer,
+          config: config,
+          audioTokenCounts: [1],
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => renderOmniChat([
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'video'},
+            ],
+          },
+        ]),
+        throwsUnsupportedError,
+      );
+    });
+  });
+
   test('Omni config parses the shared towers with tokenizer span IDs', () {
     final json =
         jsonDecode(File('test/fixtures/omni/config.json').readAsStringSync())

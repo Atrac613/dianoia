@@ -44,3 +44,4 @@ export 'src/image_decode.dart';
 export 'src/vision_bench.dart';
 export 'src/vision_gguf.dart';
 export 'src/omni_gguf.dart';
+export 'src/omni_prompt.dart';
