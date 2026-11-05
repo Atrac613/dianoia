@@ -78,6 +78,7 @@ void main() {
         ...(generator['metadata'] as Map).cast<String, Object>(),
         'clip.audio.projection_dim': 256,
         'clip.gen.audio.projection_dim': 256,
+        ...lfm3AudioSamplingMetadata,
       },
       [
         for (final t in [

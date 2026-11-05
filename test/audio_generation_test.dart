@@ -87,7 +87,10 @@ void main() {
     NativeKernels.load(null, threads: 2);
     writeTestGguf(
       '${temp.path}/mmproj.gguf',
-      (oracle['metadata'] as Map).cast<String, Object>(),
+      {
+        ...((oracle['metadata'] as Map).cast<String, Object>()),
+        ...lfm3AudioSamplingMetadata,
+      },
       [
         for (final t in oracle['tensors'] as List)
           (

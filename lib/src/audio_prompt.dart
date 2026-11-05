@@ -1,13 +1,16 @@
-/// The single-clip ASR subset of the official LFM3-Audio ChatML template.
+/// The single-clip ASR subset of the official LFM3-Audio and LFM3-Omni
+/// ChatML templates.
 library;
 
 import 'dart:typed_data';
 
+import 'audio_gguf.dart';
 import 'model.dart';
 import 'tokenizer.dart';
 
 /// Research prompt for transcription, with one audio-token run.
-/// No tool calls, speech output, history or thinking prefix is added.
+/// No tool calls, speech output or history is added; LFM3-Omni's prompt
+/// wraps the run in span markers and opens the reply with `<think></think>`.
 final class AudioTranscriptionPrompt {
   AudioTranscriptionPrompt._(
     this.text,
@@ -53,8 +56,9 @@ final class AudioTranscriptionPrompt {
     await model.forward(ids, embeddingOverrides: overrides);
   }
 
-  /// Greedy text-mode selection, suppressing the two input placeholders and
-  /// speech/mixed mode markers as upstream generation_mode="text" does.
+  /// Greedy text-mode selection, suppressing the input placeholders (Omni's
+  /// image and video ones too) and speech/mixed mode markers, as upstream
+  /// generation_mode="text" does.
   int greedyToken(Float32List logits) {
     var best = -1;
     var value = double.negativeInfinity;
@@ -77,6 +81,7 @@ AudioTranscriptionPrompt prepareAudioTranscriptionPrompt({
   required int audioTokens,
   required int hiddenSize,
   String? language,
+  Lfm3SpeechVariant variant = Lfm3SpeechVariant.audio,
 }) {
   if (audioTokens <= 0 ||
       hiddenSize <= 0 ||
@@ -94,17 +99,30 @@ AudioTranscriptionPrompt prepareAudioTranscriptionPrompt({
     token('<|audio_out|>'),
     token('<|audio_start|>'),
     token('<|mixed_start|>'),
+    if (variant == Lfm3SpeechVariant.omni) ...[
+      token('<|image|>'),
+      token('<|video|>'),
+    ],
   };
   final system = 'Perform ASR${language == null ? '' : ' in $language'}.';
   final prefix =
-      '<|startoftext|><|im_start|>system\n$system<|im_end|>\n<|im_start|>user\n';
-  const suffix = '<|im_end|>\n<|im_start|>assistant\n';
+      '<|startoftext|><|im_start|>system\n$system<|im_end|>\n<|im_start|>user\n'
+      '${variant.audioOpen}';
+  final suffix =
+      '${variant.audioClose}<|im_end|>\n<|im_start|>assistant\n'
+      '${variant.assistantOpen}';
   final head = tokenizer.encode(prefix), tail = tokenizer.encode(suffix);
+  final close = variant == Lfm3SpeechVariant.omni
+      ? [token('<|vision_end|>'), end]
+      : [end];
   // Check token boundaries: no marker may be split or silently encoded as BPE.
   if (head.first != bos ||
       head.where((id) => id == start).length != 2 ||
       head.where((id) => id == end).length != 1 ||
-      tail.first != end) {
+      (variant == Lfm3SpeechVariant.omni &&
+          head.last != token('<|vision_start|>')) ||
+      tail.length < close.length ||
+      tail.sublist(0, close.length).join(',') != close.join(',')) {
     throw const FormatException('incompatible audio tokenizer markers');
   }
   return AudioTranscriptionPrompt._(
@@ -134,6 +152,7 @@ final class AudioTranscriptionPrefill {
     required int hiddenSize,
     String? language,
     int reservedTokens = 128,
+    Lfm3SpeechVariant variant = Lfm3SpeechVariant.audio,
   }) async {
     if (model.isClosed) throw StateError('Language model is closed');
     if (hiddenSize != model.config.hiddenSize || reservedTokens < 0) {
@@ -144,6 +163,7 @@ final class AudioTranscriptionPrefill {
       audioTokens: 1,
       hiddenSize: hiddenSize,
       language: language,
+      variant: variant,
     );
     if (template.ids.any((id) => id < 0 || id >= model.config.vocabSize) ||
         template.ids.length + reservedTokens > model.maxSeq) {

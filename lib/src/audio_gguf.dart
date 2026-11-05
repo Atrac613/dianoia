@@ -47,7 +47,72 @@ abstract final class Lfm3AudioQ4Source {
   static const metadataFiles = [config, tokenizer, license];
 }
 
-/// Input encoder configuration read from an LFM3-Audio Q4_0 mmproj GGUF.
+/// Prompt conventions of the two speech-capable LFM3 checkpoints. Their
+/// language, audio encoder and generation tensors share one layout.
+enum Lfm3SpeechVariant {
+  /// LFM3-Audio-2B: bare `<|audio|>` rows and no reasoning prefix.
+  audio,
+
+  /// LFM3-Omni-2B: input audio is wrapped in the vision span markers, and
+  /// every assistant turn opens with an empty `<think></think>`.
+  omni;
+
+  /// Omni mmprojs also carry the LFM3-VL vision tower and projector.
+  static Lfm3SpeechVariant of(GgufFile mmproj) =>
+      mmproj.metadata['clip.vision.projector_type'] == 'lfm3vl' ? omni : audio;
+
+  String get audioOpen => this == omni ? '<|vision_start|>' : '';
+  String get audioClose => this == omni ? '<|vision_end|>' : '';
+  String get assistantOpen => this == omni ? '<think></think>' : '';
+}
+
+/// The official speech sampling defaults, stored in each mmproj GGUF:
+/// LFM3-Audio samples at temperature 1 from the top 128 codes; LFM3-Omni
+/// at 0.4 from all codes, penalizing codes of the last 64 frames.
+final class Lfm3SpeechSampling {
+  const Lfm3SpeechSampling({
+    required this.temperature,
+    required this.topK,
+    required this.repetitionPenalty,
+    required this.repetitionWindow,
+  });
+
+  factory Lfm3SpeechSampling.fromGguf(GgufFile mmproj) {
+    final m = mmproj.metadata;
+    const p = 'clip.gen.audio.sampling.';
+    final temperature = m['${p}temp'], penalty = m['${p}penalty_repeat'];
+    final topK = m['${p}top_k'], window = m['${p}penalty_last_n'];
+    if (temperature is! double ||
+        !temperature.isFinite ||
+        temperature < 0 ||
+        penalty is! double ||
+        !penalty.isFinite ||
+        penalty < 1 ||
+        (topK != null && (topK is! int || topK < 1)) ||
+        window is! int ||
+        window < 1) {
+      throw const FormatException('invalid speech sampling metadata');
+    }
+    return Lfm3SpeechSampling(
+      // Stored as float32: round to the published decimal values.
+      temperature: double.parse(temperature.toStringAsPrecision(6)),
+      topK: topK as int?,
+      repetitionPenalty: double.parse(penalty.toStringAsPrecision(6)),
+      repetitionWindow: window,
+    );
+  }
+
+  final double temperature, repetitionPenalty;
+
+  /// Null samples from every code.
+  final int? topK;
+
+  /// Previous frames whose codes the repetition penalty covers.
+  final int repetitionWindow;
+}
+
+/// Input encoder configuration read from an LFM3-Audio or LFM3-Omni Q4_0
+/// mmproj GGUF; Omni's vision tensors are left to the vision loader.
 /// Does not treat the LFM2 encoder as a language or LFM3 graph.
 final class Lfm3AudioEncoderConfig {
   Lfm3AudioEncoderConfig._(
@@ -61,6 +126,7 @@ final class Lfm3AudioEncoderConfig {
     this.window,
     this.normEps,
     this.convLayers,
+    this.variant,
   );
 
   factory Lfm3AudioEncoderConfig.fromGguf(GgufFile file) {
@@ -122,6 +188,7 @@ final class Lfm3AudioEncoderConfig {
       positive('window_size'),
       eps.toDouble(),
       List.unmodifiable(conv),
+      Lfm3SpeechVariant.of(file),
     );
     // Checking every consumed tensor before allocating matrices makes malformed
     // layouts fail atomically. Generation tensors are deliberately not loaded.
@@ -150,6 +217,9 @@ final class Lfm3AudioEncoderConfig {
   final int projectionSize, convChannels, melBins, window;
   final double normEps;
   final List<bool> convLayers;
+
+  /// Which checkpoint's prompt conventions the projected rows expect.
+  final Lfm3SpeechVariant variant;
   int get headDim => hiddenSize ~/ numHeads;
   int get numLayers => convLayers.length;
   static const ropeTheta = 1000000.0;

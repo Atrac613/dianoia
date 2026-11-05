@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'audio_generation.dart';
+import 'audio_gguf.dart';
 import 'audio_synthesis.dart';
 import 'model.dart';
 import 'tokenizer.dart';
@@ -74,6 +75,15 @@ const audioConversationUser = '<|im_start|>user\n';
 const audioConversationAssistant =
     '<|im_end|>\n<|im_start|>assistant\n<|mixed_start|>';
 
+/// The user-turn opening for [variant], ending where audio rows begin.
+String audioConversationUserOpen(Lfm3SpeechVariant variant) =>
+    '$audioConversationUser${variant.audioOpen}';
+
+/// Closes the user's audio and opens the interleaved assistant reply.
+String audioConversationAssistantOpen(Lfm3SpeechVariant variant) =>
+    '${variant.audioClose}<|im_end|>\n<|im_start|>assistant\n'
+    '${variant.assistantOpen}<|mixed_start|>';
+
 final class AudioConversationReply {
   AudioConversationReply(
     this.text,
@@ -114,6 +124,12 @@ final class AudioConversationSession {
       '<|text_end|>',
       '<|mixed_start|>',
       '<|audio_start|>',
+      if (generator.variant == Lfm3SpeechVariant.omni) ...[
+        '<|vision_start|>',
+        '<|vision_end|>',
+        '<|image|>',
+        '<|video|>',
+      ],
     ]) {
       _id(marker);
     }
@@ -188,6 +204,9 @@ final class AudioConversationSession {
     _turns++;
   }
 
+  List<_Slot> get _assistant =>
+      _tokens(audioConversationAssistantOpen(generator.variant));
+
   List<_Slot> _tokens(String text) {
     final ids = tokenizer.encode(text);
     if (ids.any((id) => id < 0 || id >= model.config.vocabSize)) {
@@ -238,14 +257,10 @@ final class AudioConversationSession {
     _maxSlots = maxNewSlots;
     _maxFrames = maxFrames;
     final head = _tokens(
-      '${_history.isEmpty ? audioConversationHead : '\n'}$audioConversationUser',
+      '${_history.isEmpty ? audioConversationHead : '\n'}'
+      '${audioConversationUserOpen(generator.variant)}',
     );
-    _capacity(
-      _history.length +
-          head.length +
-          _tokens(audioConversationAssistant).length +
-          1,
-    );
+    _capacity(_history.length + head.length + _assistant.length + 1);
     _busy = true;
     _cancelled = false;
     _rows = 0;
@@ -270,9 +285,7 @@ final class AudioConversationSession {
       throw ArgumentError('Expected finite projected audio rows');
     }
     final count = rows.length ~/ h;
-    _capacity(
-      pending.length + count + _tokens(audioConversationAssistant).length,
-    );
+    _capacity(pending.length + count + _assistant.length);
     if (count == 0) return;
     final added = [
       for (var i = 0; i < count; i++)
@@ -327,7 +340,7 @@ final class AudioConversationSession {
     }
 
     try {
-      final suffix = _tokens(audioConversationAssistant);
+      final suffix = _assistant;
       await _forward(suffix);
       pending.addAll(suffix);
       while (!state.finished && generated < _maxSlots) {
@@ -357,7 +370,14 @@ final class AudioConversationSession {
           slot = _Slot(_id('<|audio_out|>'), generator.feedback(codes));
         } else {
           final scores = model.logits;
-          final suppressed = {_id('<|audio|>'), _id('<|audio_out|>')};
+          final suppressed = {
+            _id('<|audio|>'),
+            _id('<|audio_out|>'),
+            if (generator.variant == Lfm3SpeechVariant.omni) ...[
+              _id('<|image|>'),
+              _id('<|video|>'),
+            ],
+          };
           var token = -1, best = double.negativeInfinity;
           for (var i = 0; i < scores.length; i++) {
             if (!suppressed.contains(i) &&
