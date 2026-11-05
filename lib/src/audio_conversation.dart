@@ -8,6 +8,7 @@ import 'audio_generation.dart';
 import 'audio_gguf.dart';
 import 'audio_synthesis.dart';
 import 'model.dart';
+import 'speech_reply.dart';
 import 'tokenizer.dart';
 
 enum AudioReplyMode { mixed, audio, text }
@@ -320,114 +321,36 @@ final class AudioConversationSession {
     _open();
     final pending = _pending;
     if (pending == null || _rows == 0) throw StateError('No audio received');
-    final codec = generator.startCodecStream();
     _busy = true;
-    final state = AudioInterleavingState(
-      textEnd: _id('<|text_end|>'),
-      turnEnd: _id('<|im_end|>'),
-      mixedStart: _id('<|mixed_start|>'),
-      audioStart: _id('<|audio_start|>'),
-    );
-    final audio = <Float32List>[],
-        visible = <int>[],
-        codesHistory = <List<int>>[];
-    final random = math.Random(seed);
-    var frames = 0, generated = 0;
-    void emit(Float32List pcm) {
-      if (pcm.isEmpty) return;
-      audio.add(pcm);
-      onAudio?.call(Float32List.fromList(pcm));
-    }
-
     try {
       final suffix = _assistant;
       await _forward(suffix);
       pending.addAll(suffix);
-      while (!state.finished && generated < _maxSlots) {
-        _check();
-        late final _Slot slot;
-        List<int>? codes;
-        if (state.nextIsAudio) {
-          codes = generator.sampleFrame(
-            model.lastHiddenState,
-            random,
-            history: codesHistory,
-          );
-          final eos = codes.contains(generator.eosCode);
-          if (eos) {
-            codes = List.filled(generator.codebooks, generator.eosCode);
-          } else {
-            if (frames == _maxFrames) {
-              throw StateError(
-                'Speech reply exceeded 30 seconds. Try a shorter question.',
-              );
-            }
-            frames++;
-            codesHistory.add(codes);
-            emit(codec.add(codes));
-          }
-          state.acceptAudio(eos: eos);
-          slot = _Slot(_id('<|audio_out|>'), generator.feedback(codes));
-        } else {
-          final scores = model.logits;
-          final suppressed = {
-            _id('<|audio|>'),
-            _id('<|audio_out|>'),
-            if (generator.variant == Lfm3SpeechVariant.omni) ...[
-              _id('<|image|>'),
-              _id('<|video|>'),
-            ],
-          };
-          var token = -1, best = double.negativeInfinity;
-          for (var i = 0; i < scores.length; i++) {
-            if (!suppressed.contains(i) &&
-                scores[i].isFinite &&
-                scores[i] > best) {
-              token = i;
-              best = scores[i];
-            }
-          }
-          if (token < 0) throw StateError('No finite conversation token');
-          state.acceptText(token);
-          slot = _Slot(token);
-          final piece = tokenizer.decode([token]);
-          if (tokenizer.addedTokenId(piece) != token) {
-            visible.add(token);
-            onText?.call(tokenizer.decode(visible));
-          }
-        }
-        _check();
-        onSlot?.call(slot.id, codes == null ? null : List.unmodifiable(codes));
-        await _forward([slot], logits: !state.finished);
-        pending.add(slot);
-        generated++;
-      }
-      if (!state.finished) {
-        throw StateError(
-          'Speech reply reached the generation limit. Try a shorter question.',
-        );
-      }
-      emit(codec.finish());
-      _check();
-      final text = tokenizer.decode(visible).trim();
-      if (text.isEmpty || frames == 0) {
+      final reply = await decodeSpeechReply(
+        model: model,
+        tokenizer: tokenizer,
+        generator: generator,
+        mode: AudioReplyMode.mixed,
+        maxSlots: _maxSlots,
+        maxFrames: _maxFrames,
+        seed: seed,
+        check: _check,
+        onText: onText,
+        onAudio: onAudio,
+        onSlot: onSlot,
+        feed: (id, embedding, {required logits}) async {
+          final slot = _Slot(id, embedding);
+          await _forward([slot], logits: logits);
+          pending.add(slot);
+        },
+      );
+      if (reply.text.isEmpty || reply.frames == 0) {
         throw StateError(
           'Model returned no complete spoken reply. Please try again.',
         );
       }
       if (pending.last.id != _id('<|im_end|>')) {
         pending.add(_Slot(_id('<|im_end|>')));
-      }
-      final samples = Float32List(
-        audio.fold(0, (n, chunk) => n + chunk.length),
-      );
-      var at = 0;
-      for (final chunk in audio) {
-        samples.setAll(at, chunk);
-        at += chunk.length;
-      }
-      if (samples.length != frames * generator.frameSamples) {
-        throw StateError('Conversation codec length differs');
       }
       _candidate = pending;
       if (!deferCommit) {
@@ -438,15 +361,14 @@ final class AudioConversationSession {
         _turns++;
       }
       return AudioConversationReply(
-        text,
-        samples,
-        generator.sampleRate,
-        frames,
-        generated,
+        reply.text,
+        reply.samples,
+        reply.sampleRate,
+        reply.frames,
+        reply.generatedSlots,
         pending.length,
       );
     } finally {
-      codec.close();
       _pending = null;
       _busy = false;
     }
