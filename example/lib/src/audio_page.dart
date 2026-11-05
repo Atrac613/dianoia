@@ -403,12 +403,24 @@ class AudioTranscriptionView extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 if (a.task == AudioTask.photoQuestion) ...[
-                  if ((a.partialReply.isNotEmpty
-                          ? a.partialReply
-                          : a.photoAnswer)
-                      case final String answer when answer.isNotEmpty)
+                  for (final exchange in a.photoExchanges) ...[
+                    Text(
+                      [
+                        if (exchange.spoken) 'Spoken question',
+                        if (exchange.question.isNotEmpty) exchange.question,
+                      ].join(' · '),
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 8),
                     SelectableText(
-                      answer,
+                      exchange.answer,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                  if (a.partialReply.isNotEmpty)
+                    SelectableText(
+                      a.partialReply,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                 ] else if (a.task != AudioTask.conversation &&
@@ -581,14 +593,17 @@ class _PhotoQuestionState extends State<_PhotoQuestion> {
   @override
   Widget build(BuildContext context) {
     final a = widget.controller;
+    // The controller clears an answered question; keep the field in step.
+    if (a.photoQuestion.isEmpty && _text.text.isNotEmpty) _text.clear();
     final thumbnail = a.photo?.thumbnail?.bytes;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Choose a photo, then type a question or record one. The photo is '
-          'reduced to at most 256 image tokens; encoding it takes several '
-          'seconds on the CPU.',
+          'Choose a photo, then type a question or record one. Ask again to '
+          'follow up; earlier answers stay in context until the photo changes. '
+          'The photo is reduced to at most 256 image tokens and encoded once, '
+          'which takes several seconds on the CPU.',
         ),
         const SizedBox(height: 12),
         Row(
@@ -633,9 +648,20 @@ class _PhotoQuestionState extends State<_PhotoQuestion> {
           child: FilledButton.tonalIcon(
             onPressed: widget.enabled && a.photo != null ? a.askTyped : null,
             icon: const Icon(Icons.send),
-            label: const Text('Ask in text'),
+            label: Text(
+              a.photoExchanges.isEmpty ? 'Ask in text' : 'Follow up in text',
+            ),
           ),
         ),
+        if (a.photoExchanges.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: widget.enabled ? a.newPhotoConversation : null,
+              icon: const Icon(Icons.add_comment_outlined),
+              label: const Text('New conversation'),
+            ),
+          ),
       ],
     );
   }

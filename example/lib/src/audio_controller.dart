@@ -38,6 +38,13 @@ enum AudioTask {
   photoQuestion,
 }
 
+/// One answered question about the photo, as shown on screen.
+final class PhotoExchange {
+  const PhotoExchange(this.question, this.answer, {this.spoken = false});
+  final String question, answer;
+  final bool spoken;
+}
+
 final class AudioVoiceTurn {
   const AudioVoiceTurn(this.seconds, this.reply);
   final double seconds;
@@ -93,16 +100,29 @@ final class AudioController extends ChangeNotifier {
   List<AudioVoiceTurn> get voiceTurns => List.unmodifiable(_voiceTurns);
   String partialReply = '';
 
-  /// The photo, question and answer of [AudioTask.photoQuestion].
+  /// The photo, the question being written and the answered questions of
+  /// [AudioTask.photoQuestion]. Further questions follow the earlier ones
+  /// until the photo changes or [newPhotoConversation].
   ImageAttachment? photo;
   String photoQuestion = '';
-  String photoAnswer = '';
+  final _photoExchanges = <PhotoExchange>[];
+  List<PhotoExchange> get photoExchanges => List.unmodifiable(_photoExchanges);
+  String get photoAnswer =>
+      _photoExchanges.isEmpty ? '' : _photoExchanges.last.answer;
   bool speakReply = false;
 
   void setPhoto(ImageAttachment? value) {
     if (active || _closing != null) return;
     photo = value;
-    photoAnswer = '';
+    _photoExchanges.clear();
+    error = null;
+    _notify();
+  }
+
+  /// Keeps the photo but forgets the earlier questions about it.
+  void newPhotoConversation() {
+    if (active || _closing != null) return;
+    _photoExchanges.clear();
     error = null;
     _notify();
   }
@@ -510,15 +530,17 @@ final class AudioController extends ChangeNotifier {
   Future<void> _answerPhoto(int epoch, {required bool spoken}) async {
     if (!_valid(epoch)) return;
     phase = AudioPhase.replying;
-    photoAnswer = '';
     partialReply = '';
     error = null;
     _notify();
+    final question = photoQuestion.trim();
+    final previous = _photoExchanges.length;
     final reply = await _backend.askAboutPhoto(
-      photo!.bytes,
-      text: photoQuestion.trim().isEmpty ? null : photoQuestion.trim(),
+      previous == 0 ? photo!.bytes : null,
+      text: question.isEmpty ? null : question,
       spoken: spoken,
       speak: speakReply,
+      previousTurns: previous,
       onText: (text) {
         if (_valid(epoch)) {
           partialReply = text;
@@ -527,7 +549,10 @@ final class AudioController extends ChangeNotifier {
       },
     );
     if (!_valid(epoch)) return;
-    photoAnswer = reply.text;
+    if (reply.text.isNotEmpty) {
+      _photoExchanges.add(PhotoExchange(question, reply.text, spoken: spoken));
+      photoQuestion = '';
+    }
     partialReply = '';
     if (reply.wav.isNotEmpty) {
       phase = AudioPhase.playing;

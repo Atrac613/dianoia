@@ -38,6 +38,19 @@ void main() {
         expect(typed.text.toLowerCase(), contains('red'));
         expect(typed.wav, isEmpty);
         expect(updates.last, typed.text);
+        expect(typed.turn, 1);
+
+        // The follow-up sends no photo: the worker kept its encoded rows.
+        final followUp = await backend.askAboutPhoto(
+          null,
+          text: 'Which of those colors is the square? Answer with one word.',
+          spoken: false,
+          speak: false,
+          previousTurns: 1,
+          onText: (_) {},
+        );
+        expect(followUp.text.toLowerCase(), contains('yellow'));
+        expect(followUp.turn, 2);
 
         final pcm = _pcm(question!);
         await backend.begin(null, question: true);
@@ -62,6 +75,19 @@ void main() {
           );
         }
         expect((await backend.finish()).toLowerCase(), contains('shapes'));
+
+        // Transcription used the backbone in between; the spoken question
+        // that restarted the conversation is replayed from its cached rows.
+        final recalled = await backend.askAboutPhoto(
+          null,
+          text: 'What did I ask you just now? Answer briefly.',
+          spoken: false,
+          speak: false,
+          previousTurns: 1,
+          onText: (_) {},
+        );
+        expect(recalled.text.toLowerCase(), contains('shape'));
+        expect(recalled.turn, 2);
         await expectLater(
           backend.begin('English', live: true),
           throwsStateError,

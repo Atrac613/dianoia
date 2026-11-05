@@ -91,19 +91,22 @@ class TestAudioBackend implements AudioBackend {
 
   bool liveInput = false, questionInput = false;
   final asks = <(String?, bool, bool)>[];
+  final askContexts = <(Uint8List?, int)>[];
   Uint8List askWav = Uint8List(0);
 
   @override
   Future<AudioVoiceReply> askAboutPhoto(
-    Uint8List image, {
+    Uint8List? image, {
     String? text,
     required bool spoken,
     required bool speak,
+    int previousTurns = 0,
     required void Function(String) onText,
   }) async {
     asks.add((text, spoken, speak));
+    askContexts.add((image, previousTurns));
     onText('A red');
-    return AudioVoiceReply('A red circle.', askWav, 0);
+    return AudioVoiceReply('A red circle.', askWav, previousTurns + 1);
   }
 
   String? inputLanguage;
@@ -257,6 +260,36 @@ void main() {
       expect(omni.phase, AudioPhase.ready);
       expect(player.played, isEmpty);
     });
+
+    test(
+      'follow-ups send only the turn count until the photo changes',
+      () async {
+        omni.setTask(AudioTask.photoQuestion);
+        omni.setPhoto(photo);
+        omni.photoQuestion = 'What is it?';
+        await omni.askTyped();
+        expect(omni.photoQuestion, isEmpty, reason: 'answered questions clear');
+        omni.photoQuestion = 'Which color?';
+        await omni.askTyped();
+        expect(backend.askContexts, [(photo.bytes, 0), (null, 1)]);
+        expect(omni.photoExchanges.map((e) => (e.question, e.answer)), [
+          ('What is it?', 'A red circle.'),
+          ('Which color?', 'A red circle.'),
+        ]);
+        omni.newPhotoConversation();
+        expect(omni.photoExchanges, isEmpty);
+        omni.photoQuestion = 'Again?';
+        await omni.askTyped();
+        omni.setPhoto(ImageAttachment('other.png', Uint8List.fromList([2])));
+        expect(omni.photoAnswer, isEmpty);
+        omni.photoQuestion = 'And this?';
+        await omni.askTyped();
+        expect(backend.askContexts.skip(2).map((c) => (c.$1?.first, c.$2)), [
+          (1, 0),
+          (2, 0),
+        ]);
+      },
+    );
 
     test('spoken question records, then plays a spoken answer', () async {
       omni.setTask(AudioTask.photoQuestion);

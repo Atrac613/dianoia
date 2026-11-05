@@ -9,7 +9,8 @@
   `tool/prepare_omni_q4.dart` and `tool/omni_q4_chat.dart` are the research
   tools. LiveASR stays LFM3-Audio only.
 - The Flutter example adds an Omni preview with an **Ask about a photo** mode,
-  by voice or text, with an optional spoken reply. Its photo picker, shared
+  by voice or text, with an optional spoken reply, and follow-up questions
+  that keep the photo and earlier answers in context. Its photo picker, shared
   with the VL chat, also accepts HEIC and HEIF photos and converts them to
   upright PNG. Speech playback now creates a missing temporary directory.
 - `Lfm3SpeechVariant` carries each checkpoint's prompt conventions, and

@@ -9,6 +9,7 @@ import 'package:dianoia/lab.dart';
 
 import 'audio_backend.dart';
 import 'model_worker_gate.dart';
+import 'photo_conversation.dart';
 import 'speech_model.dart';
 
 /// Request/reply transport. One worker owns the audio and language models.
@@ -200,10 +201,11 @@ final class AudioIsolateBackend implements AudioBackend {
 
   @override
   Future<AudioVoiceReply> askAboutPhoto(
-    Uint8List image, {
+    Uint8List? image, {
     String? text,
     required bool spoken,
     required bool speak,
+    int previousTurns = 0,
     required void Function(String) onText,
   }) async {
     if (_replyText != null) throw StateError('A reply is already generating');
@@ -214,6 +216,7 @@ final class AudioIsolateBackend implements AudioBackend {
             'text': text,
             'spoken': spoken,
             'speak': speak,
+            'previousTurns': previousTurns,
           })
           as AudioVoiceReply;
     } finally {
@@ -298,6 +301,7 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
     SpeechModel.omni => Lfm3OmniQ4Source.mmproj.name,
   };
   Lfm3VisionEncoder? vision;
+  PhotoConversation? photo;
   // Projected rows of a spoken question, kept for the following ask.
   final questionRows = <Float32List>[];
   var recordingQuestion = false;
@@ -623,6 +627,17 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
               final options = request['value'] as Map;
               final spoken = options['spoken'] as bool;
               final text = (options['text'] as String?)?.trim();
+              // A new photo or a restart drops earlier questions; a follow-up
+              // keeps exactly the answers the caller received.
+              final previous = options['previousTurns'] as int;
+              if (previous == 0) photo = null;
+              if (photo == null && options['image'] == null) {
+                throw StateError('Choose a photo first');
+              }
+              if (previous > 0) {
+                (photo ?? (throw StateError('The photo conversation ended')))
+                    .keep(previous);
+              }
               if (spoken) {
                 if (!recordingQuestion ||
                     stream == null ||
@@ -640,61 +655,61 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                 '$directory/${Lfm3OmniQ4Source.config.name}',
                 tokenizer!,
               );
-              vision ??= loadVisionEncoderGguf(
-                '$directory/$mmprojName',
-                config,
-              );
-              final rgb = decodeImageRgb(options['image'] as Uint8List);
-              final image = Lfm3ImageProcessor.load(directory!)
-                  .withMaxImageTokens(_maxPhotoTokens)
-                  .prepareRgb(rgb.pixels, height: rgb.height, width: rgb.width);
-              final imageRows = await vision!.encodeAsync(
-                image,
-                checkCancelled: () => check(version),
-              );
-              final audioRows = Float32List(
-                questionRows.fold(0, (n, r) => n + r.length),
-              );
-              var at = 0;
-              for (final rows in questionRows) {
-                audioRows.setAll(at, rows);
-                at += rows.length;
+              final hidden = model!.config.hiddenSize;
+              if (photo == null) {
+                vision ??= loadVisionEncoderGguf(
+                  '$directory/$mmprojName',
+                  config,
+                );
+                final rgb = decodeImageRgb(options['image'] as Uint8List);
+                final image = Lfm3ImageProcessor.load(directory!)
+                    .withMaxImageTokens(_maxPhotoTokens)
+                    .prepareRgb(
+                      rgb.pixels,
+                      height: rgb.height,
+                      width: rgb.width,
+                    );
+                final imageRows = await vision!.encodeAsync(
+                  image,
+                  checkCancelled: () => check(version),
+                );
+                photo = PhotoConversation(imageRows, image.imageTokens, hidden);
+              }
+              final chat = photo!;
+              Float32List? audioRows;
+              if (spoken) {
+                audioRows = Float32List(
+                  questionRows.fold(0, (n, r) => n + r.length),
+                );
+                var at = 0;
+                for (final rows in questionRows) {
+                  audioRows.setAll(at, rows);
+                  at += rows.length;
+                }
               }
               final speak = options['speak'] as bool;
               final mode = speak ? AudioReplyMode.mixed : AudioReplyMode.text;
-              final hidden = model!.config.hiddenSize;
               final prompt = prepareOmniPrompt(
-                [
-                  {
-                    'role': 'system',
-                    'content': speak
-                        ? audioConversationSystem
-                        : 'Respond in text.',
-                  },
-                  {
-                    'role': 'user',
-                    'content': [
-                      {'type': 'image'},
-                      if (spoken) {'type': 'audio'},
-                      if (text != null && text.isNotEmpty)
-                        {'type': 'text', 'text': text},
-                    ],
-                  },
-                ],
+                chat.messages(speak: speak, text: text, spoken: spoken),
                 tokenizer: tokenizer!,
                 config: config,
-                imageTokenCounts: [image.imageTokens],
-                audioTokenCounts: [if (spoken) audioRows.length ~/ hidden],
+                imageTokenCounts: [chat.imageTokens],
+                audioTokenCounts: chat.audioTokens(audioRows),
                 mode: mode,
               );
               final maxSlots = speak ? 768 : 512;
               if (prompt.ids.length + maxSlots + 1 > model!.maxSeq) {
-                throw StateError('The question is too long for the context');
+                throw StateError(
+                  chat.turns.isEmpty
+                      ? 'The question is too long for the context'
+                      : 'The conversation about this photo is full. '
+                            'Start a new conversation.',
+                );
               }
               await prompt.prefill(
                 model!,
-                images: [imageRows],
-                audio: [if (spoken) audioRows],
+                images: [chat.imageRows],
+                audio: chat.audio(audioRows),
               );
               check(version);
               if (speak) {
@@ -718,6 +733,9 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                 ),
               );
               check(version);
+              if (reply.text.isNotEmpty) {
+                chat.add(text: text, audio: audioRows, answer: reply.text);
+              }
               result = AudioVoiceReply(
                 reply.text,
                 reply.samples.isEmpty
@@ -726,7 +744,7 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                         reply.samples,
                         sampleRate: reply.sampleRate,
                       ),
-                0,
+                chat.turns.length,
               );
               clear();
               questionRows.clear();

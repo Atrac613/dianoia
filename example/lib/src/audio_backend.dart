@@ -37,11 +37,16 @@ abstract interface class AudioBackend {
   /// LFM3-Omni only: answers about an encoded PNG or JPEG [image], asked
   /// with the recorded spoken question (when [spoken]) and/or [text]. With
   /// [speak] the reply is interleaved text and speech, else text only.
+  /// With [previousTurns] > 0 the question follows that many answered
+  /// questions about the previous photo, which is not encoded again, and
+  /// [image] may be null; with 0, [image] starts a new conversation. The
+  /// reply's turn counts the answered questions about the photo.
   Future<AudioVoiceReply> askAboutPhoto(
-    Uint8List image, {
+    Uint8List? image, {
     String? text,
     required bool spoken,
     required bool speak,
+    int previousTurns = 0,
     required void Function(String) onText,
   });
   Future<void> cancel();

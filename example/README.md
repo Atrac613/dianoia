@@ -196,8 +196,14 @@ JPEG or HEIC photo, then either type a question and tap **Ask in text**, or tap
 **Record question**, speak, and **Stop and reply**; a typed question is sent
 along with a recording. With **Spoken reply** on, the answer is interleaved
 text and speech and plays after generation; otherwise it is text. The photo
-is reduced to at most 256 image tokens and encoded on the CPU, which takes a
-few seconds. Each question is answered on its own, without earlier turns.
+is reduced to at most 256 image tokens and encoded on the CPU once, which
+takes a few seconds. Ask again (**Follow up in text** or another recording)
+to continue: every question re-renders the whole conversation with the
+official template, replaying the photo's encoded rows, earlier spoken
+questions and earlier answers as text, so follow-ups skip the image encoder
+and the **Spoken reply** setting may change between them. A new photo or
+**New conversation** starts over; a conversation that no longer fits the
+context asks for a new one.
 
 **Transcription and TTS** and **Voice conversation (English)** behave as in
 the audio preview, with Omni's prompt conventions and sampling. **Live
