@@ -17,10 +17,8 @@ Future<void> main(List<String> args) async {
   }
   final dir = pos[0], out = Directory(pos[1])..createSync(recursive: true);
   NativeKernels.load(null);
-  final generator = Lfm3AudioGenerator.load(
-    '$dir/${Lfm3AudioQ4Source.audio.name}',
-  );
-  final encoder = Lfm3AudioEncoder.load('$dir/${Lfm3AudioQ4Source.audio.name}');
+  final generator = Lfm3AudioGenerator.load(speechMmprojIn(dir));
+  final encoder = Lfm3AudioEncoder.load(speechMmprojIn(dir));
   Lfm3Model? model;
   AudioConversationSession? session;
   try {

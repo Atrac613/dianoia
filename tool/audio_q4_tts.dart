@@ -37,9 +37,7 @@ Future<void> main(List<String> args) async {
   }
   final dir = pos[0];
   NativeKernels.load(null);
-  final generator = Lfm3AudioGenerator.load(
-    '$dir/${Lfm3AudioQ4Source.audio.name}',
-  );
+  final generator = Lfm3AudioGenerator.load(speechMmprojIn(dir));
   Lfm3Model? model;
   StreamSubscription<ProcessSignal>? interrupt;
   try {
@@ -63,7 +61,10 @@ Future<void> main(List<String> args) async {
       voice: options['voice'] ?? 'female',
       seed: int.parse(options['seed'] ?? '0'),
       maxFrames: int.parse(options['max-frames'] ?? '375'),
-      temperature: double.parse(options['temperature'] ?? '1'),
+      temperature: switch (options['temperature']) {
+        final value? => double.parse(value),
+        null => null,
+      },
     );
     final output = File(pos[2]);
     output.parent.createSync(recursive: true);

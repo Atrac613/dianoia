@@ -69,7 +69,8 @@ Future<void> main(List<String> args) async {
     pcm[i] = bytes.getFloat32(i * 4, Endian.little);
   }
   NativeKernels.load(null);
-  final encoder = Lfm3AudioEncoder.load('$dir/${Lfm3AudioQ4Source.audio.name}');
+  final encoder = Lfm3AudioEncoder.load(speechMmprojIn(dir));
+  final omni = encoder.config.variant == Lfm3SpeechVariant.omni;
   final bundle = '$dir/language';
   Lfm3Model? model;
   AudioTranscriptionPrefill? input;
@@ -108,6 +109,7 @@ Future<void> main(List<String> args) async {
         audioTokens: features.encoderTokens,
         hiddenSize: encoder.config.projectionSize,
         language: language,
+        variant: encoder.config.variant,
       );
       if (prompt.ids.length + 128 > model.maxSeq) {
         throw ArgumentError('audio prompt exceeds context');
@@ -129,6 +131,7 @@ Future<void> main(List<String> args) async {
           tokenizer: tokenizer,
           hiddenSize: encoder.config.projectionSize,
           language: language,
+          variant: encoder.config.variant,
         ),
       );
       input = currentInput;
@@ -191,8 +194,10 @@ Future<void> main(List<String> args) async {
   }
   stdout.writeln(
     const JsonEncoder.withIndent('  ').convert({
-      'model': 'LFM3-Audio-2B-Q4_0',
-      'source_revision': Lfm3AudioQ4Source.revision,
+      'model': omni ? 'LFM3-Omni-2B-Q4_0' : 'LFM3-Audio-2B-Q4_0',
+      'source_revision': omni
+          ? Lfm3OmniQ4Source.revision
+          : Lfm3AudioQ4Source.revision,
       'backend': gpu ? 'gpu' : 'cpu',
       'input_mode': chunkMs == null ? 'batch' : 'streaming',
       'audio_seconds': pcm.length / 16000,
