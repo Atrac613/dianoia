@@ -625,7 +625,22 @@ layer.5 (conv)        394ms
 
 - **LiveASR は Omni では使えない。** Audio の GGUF にはライブ書き起こし用のテンプレートがあるが、Omni にはない。研究ツールは Omni では断るようにした。
 - **数値の答え合わせはまだ。** グラフのコードは同一だと確かめたが、Omni の PyTorch 重み（4.3 GB）で中間値を比べる oracle は回していない。
+- **画面は macOS で手で確認した。** インストール、写真への文字の質問、TTS の再生まで通した。実機のマイクで声の質問をする部分は、まだ人の手で試していない。
 - **`tool/lab_parity.sh` は今は動かない。** ディスクを空けるために dart-llm-lab の LFM3-1.7B を消した。テキスト側の計算に触る変更をする前に、取り直す必要がある。
+
+### 手で触って初めて見つかったバグ
+
+テストは全部通っていた。それでも macOS でサンプルアプリを実際に開き、ローカルミラーから Omni を入れ、写真に質問してみた。文字の答えは完璧だった（赤い丸、黄色い四角、「OMNI 2026」の文字まで読めた）。ところが「Spoken reply」をオンにした瞬間、こう言われた。
+
+> Creation of temporary directory failed … Caches/dev.atrac613.dianoiaExample (No such file or directory)
+
+原因は Omni ではなかった。再生用の WAV を置く一時フォルダ（`getTemporaryDirectory()`）は、sandbox のコンテナを作ったばかりだとまだ存在しない。`createTemp()` は親フォルダまでは作ってくれない。テストでは、いつも実在する `Directory.systemTemp` を渡していたので、一度も踏まなかった。Audio の TTS でも同じことが起きていたはずだ。開発機ではキャッシュフォルダが前から残っていて、気づかなかっただけだろう。
+
+直し方は1行で、親を `create(recursive: true)` してから `createTemp` する。テストには「存在しない一時フォルダ」を渡すケースを足した。修正を外すとアプリと同じエラーで落ちることも確かめてある。
+
+ついでに、説明文の取りこぼしも見つかった。Omni の画面に「Live transcription continues until stopped」と出ていた（Omni に LiveASR は無いのに）。進捗の「Downloading the audio model…」もそうだ。どちらもモデルに合わせた文に直した。
+
+教訓: **テストのフェイクは、本物より親切になりがち。** 「必ず存在するフォルダ」を渡すフェイクは、本物の OS が返す「まだ無いかもしれないフォルダ」を再現していない。
 
 ### 優れたエンジニアの思考法
 
