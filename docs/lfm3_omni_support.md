@@ -2,18 +2,19 @@
 
 ## Current scope
 
-Phase 1 is a research path for the official **Q4_0 language GGUF and Q4_0
-mmproj GGUF**. With one prepared directory it covers:
+Experimental support for the official **Q4_0 language GGUF and Q4_0 mmproj
+GGUF**, through `lab.dart`, research tools and the Flutter example:
 
-- image question answering (CPU float32 vision tower, CPU or Metal language);
-- clip and streaming transcription (ASR);
-- speech synthesis (TTS);
-- interleaved English voice conversation.
+- one turn mixing text, images, audio clips and a video with its soundtrack,
+  answered in text, speech or interleaved text and speech
+  (`prepareOmniPrompt`, `decodeSpeechReply`);
+- clip and streaming transcription (ASR), speech synthesis (TTS) and
+  interleaved English voice conversation, through the LFM3-Audio APIs;
+- installation with `ModelStore` (`OmniGgufSpec.lfm3OmniQ4`);
+- an **Ask about a photo** mode in the example's Omni preview.
 
-All of these reuse the LFM3-VL and LFM3-Audio implementations. Not yet
-implemented: prompts that mix images and audio (for example a spoken question
-about a photo), video input, LiveASR, `ModelStore` installation, the Flutter
-example and the app API.
+Not implemented: multi-turn history for mixed media prompts, LiveASR (Omni
+publishes no live template), video in the example app, and a stable app API.
 
 ## What Omni shares with Audio and VL
 
@@ -81,9 +82,46 @@ tensor must be present. `Lfm3VlConfig.fromOmniJson` parses Omni's
 `config.json`. That file does not name the span marker IDs, so
 `loadOmniVisionConfig` takes them from the tokenizer.
 
-The vision tower is still the correctness-first CPU float32 reference. On an
-Apple silicon Mac, a 640×480 image (300 tokens) took about 72 s to encode, so
-this path is research-only until the encoder uses native Q4 matmuls.
+By default Q4_0 linear weights stay native Q4 blocks, multiplied by the native
+kernels with float inputs; `nativeQ4: false` widens everything to float32
+instead. Attention runs per head as batched matrix products. On an Apple
+silicon Mac, a 640×480 image (300 tokens, 1200 patches) now encodes in about
+9.5 s instead of 72 s, and the projected rows differ from the all-float32
+encoder by a relative L2 of 3e-6. The VL vision tower shares the faster
+attention.
+
+## Mixed prompts
+
+`renderOmniChat` renders the official template for content parts
+`{'type': 'image'}`, `{'type': 'audio'}` and `{'type': 'video'}`, and appends
+the reply marker for `AudioReplyMode.text`, `audio` or `mixed`.
+`prepareOmniPrompt` then expands the placeholders as `processing_lfm3_omni.py`
+does:
+
+- an image or audio clip repeats its placeholder once per encoder row inside
+  one `<|vision_start|>`…`<|vision_end|>` span;
+- a video becomes, per frame group, `<t seconds>`, the group's span-wrapped
+  video rows and, when an `OmniVideoLayout` declares a soundtrack, that
+  group's share of the soundtrack's audio rows, all inside one outer span.
+  A soundtrack row is 80 ms; each group's share starts at the row nearest its
+  first frame, as upstream `_video_expansion` computes it. Times use Python's
+  `.1f` formatting, ties to even (`formatOmniSeconds`).
+
+`OmniPrompt.prefill` validates and copies every row set before resetting the
+model, then feeds the prompt in chunks. `decodeSpeechReply` decodes the
+reply: greedy text, sampled speech frames and the six/twelve interleaving
+schedule. It is the same loop `AudioConversationSession` now uses.
+
+## Video
+
+`Lfm3VideoProcessor` follows the LFM3-VL video processor as Omni configures
+it: frames sampled at 2 fps (4 to 384), indices as `numpy.linspace(...).round()`,
+one size for every frame from the whole-clip pixel budget (`smart_resize` with
+factor 32 and temporal factor 2), and frames paired into temporal patches,
+the odd last frame repeated. The vision tower attends within each frame group
+only (upstream `cu_seqlens` per frame), so each group encodes like an image
+whose two temporal slots hold two frames. Decoding the container is the
+caller's job; the research tool uses ffmpeg.
 
 ## Research commands
 
@@ -91,13 +129,23 @@ From the repository root (allow about 2.6 GB of disk space):
 
 ```sh
 dart run tool/prepare_omni_q4.dart build/omni-reference
-# Image question answering:
-dart run tool/omni_q4_image_chat.dart build/omni-reference photo.png "Describe this image." --gpu
-# The audio tools accept an Omni directory; mono 16 kHz f32le PCM input:
+# Images, audio clips (mono 16 kHz f32le), video and text, in one turn:
+dart run tool/omni_q4_chat.dart build/omni-reference --image=photo.png \
+  --text="Describe this image." --gpu
+dart run tool/omni_q4_chat.dart build/omni-reference --image=photo.png \
+  --audio=question.f32 --mode=mixed --out=reply.wav --gpu
+dart run tool/omni_q4_chat.dart build/omni-reference --video=clip.mp4 \
+  --soundtrack --system="Answer questions about the video using what you see and hear." \
+  --text="What happens, and what can you hear?" --gpu
+# The audio tools accept an Omni directory:
 dart run tool/audio_q4_transcribe.dart build/omni-reference speech.f32 Japanese --gpu
 dart run tool/audio_q4_tts.dart build/omni-reference "Hello" out.wav --gpu
 dart run tool/audio_q4_converse.dart build/omni-reference out-dir q1.f32 q2.f32 --gpu
 ```
+
+`--max-image-tokens` and `--max-video-pixels` bound the vision work. An
+installed `OmniGgufSpec` bundle has the same layout and works with the same
+commands.
 
 Preparation verifies the pinned sizes and SHA-256 hashes, validates the audio
 encoder, generator and vision tensors in the mmproj, and only then converts
@@ -117,10 +165,24 @@ These smoke checks ran on Apple silicon with Metal language inference:
   context-aware replies, and their speech transcribes back to the reply text.
 - A synthetic 640×480 image with text and shapes is described correctly,
   including its "OMNI 2026" caption.
+- A spoken question about that image ("What shapes and colors do you see in
+  this picture?") is answered correctly in text, and in interleaved mode
+  with 11.3 s of speech that transcribes back to the reply text.
+- A 4 s synthetic video (a red square sliding across a blue screen, with a
+  spoken narration) is described correctly, and the narration is quoted
+  exactly.
+- `ModelStore` installs the official pair from a local mirror in 31 s into a
+  1.41 GB bundle that passes full verification and transcribes correctly.
+- The example's worker answers typed and spoken photo questions and
+  transcribes, on the real model (`example/test/omni_worker_integration_test.dart`).
+- Refactoring the conversation onto `decodeSpeechReply` reproduces the
+  earlier Omni two-turn replies byte for byte, and LFM3-Audio TTS output is
+  byte-identical to before these changes.
 
-Unit tests cover the prompts against the oracle, Omni config parsing, sampling
-metadata, Q4_0 widening, and equivalence of mmproj vision loading with the
-existing import.
+Unit tests cover the prompts against the oracle, mixed and video expansion,
+Python-compatible time formatting and frame sampling, Omni config parsing,
+sampling metadata, Q4_0 widening, mmproj vision loading, and installation
+with synthetic GGUFs over loopback.
 
 The graph code was compared with the sources as well as the shapes. After
 renaming `Lfm3Omni*` to `Lfm3Audio*` and stripping comments and docstrings,

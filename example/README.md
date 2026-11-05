@@ -184,6 +184,29 @@ flutter run -d macos --dart-define=DIANOIA_MODEL_MIRROR=http://127.0.0.1:8642
 
 Mirrors change only URLs; all published sizes and hashes still apply.
 
+## Omni preview
+
+Select **LFM3-Omni-2B Q4_0** on the root screen. Setup works like the audio
+preview: 1.34 GB from Hugging Face, verified by SHA-256, with the Q4 language
+cache prepared on device (allow 4.2 GB free; about 1.41 GB remains). The
+installed bundle's `omni_bundle.json` pins every payload's hash.
+
+Under **Audio mode**, **Ask about a photo** is Omni's own mode. Choose a PNG
+or JPEG, then either type a question and tap **Ask in text**, or tap
+**Record question**, speak, and **Stop and reply**; a typed question is sent
+along with a recording. With **Spoken reply** on, the answer is interleaved
+text and speech and plays after generation; otherwise it is text. The photo
+is reduced to at most 256 image tokens and encoded on the CPU, which takes a
+few seconds. Each question is answered on its own, without earlier turns.
+
+**Transcription and TTS** and **Voice conversation (English)** behave as in
+the audio preview, with Omni's prompt conventions and sampling. **Live
+transcription** is offered for LFM3-Audio only. A prepared research folder
+from `dart run tool/prepare_omni_q4.dart` can be chosen or sideloaded under
+the `LFM3-Omni-2B-Q4` folder, with the layout `language/`,
+`mmproj-LFM3-Omni-2B-Q4_0.gguf`, `omni_config.json` and
+`processor_config.json`. See the [Omni notes](../docs/lfm3_omni_support.md).
+
 ## Text and image model setup
 
 The text model is not bundled. Without one the app offers to download it,

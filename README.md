@@ -41,9 +41,11 @@ weights are downloaded only after that action and run on the device afterwards.
 | LFM3-1.7B, text and tools | `ModelSpec.lfm3Q4` | 1.07 GB | About 1.14 GB |
 | LFM3-VL-2B, text and images | `VisionGgufSpec.lfm3VlQadQ4` | 1.45 GB | About 1.54 GB |
 | LFM3-Audio-2B, transcription and speech | `AudioGgufSpec.lfm3AudioQ4` | 1.23 GB | About 1.30 GB |
+| LFM3-Omni-2B, photos, speech and video (experimental) | `OmniGgufSpec.lfm3OmniQ4` | 1.34 GB | About 1.41 GB |
 
-Sizes use decimal GB. Allow at least **5 GB free** for VL or **4 GB free** for
-Audio download and setup, including intermediate files. An interrupted download resumes when
+Sizes use decimal GB. Allow at least **5 GB free** for VL, **4 GB free** for
+Audio or **4.2 GB free** for Omni download and setup, including intermediate
+files. An interrupted download resumes when
 **Download** is selected again. No weights are bundled with the package.
 
 For VL, attach one PNG/JPEG and send it with a question or by itself. The app
@@ -78,6 +80,13 @@ budget requires it, the language context restarts while microphone capture and
 the audio encoder continue. Earlier text stays visible; continued text starts
 a new paragraph. **Stop live transcription** flushes the final audio. Capture
 stops with an error if inference cannot keep up with the one-second audio queue.
+
+**LFM3-Omni-2B Q4_0** opens the same preview with an extra **Ask about a
+photo** mode: choose a photo, then type a question or record one, and receive
+text or (with **Spoken reply**) interleaved text and speech. Transcription,
+TTS and voice conversation work as with LFM3-Audio; live transcription is
+LFM3-Audio only. Video input is available through the
+[research tools](docs/lfm3_omni_support.md).
 
 Recording and playback stop when the app is backgrounded or the route is left;
 they never resume automatically. Audio stays on the device. The preview does

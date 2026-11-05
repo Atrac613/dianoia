@@ -1,19 +1,24 @@
 ## Unreleased
 
-- Experimental LFM3-Omni-2B Q4_0 under `package:dianoia/lab.dart`:
-  `Lfm3OmniQ4Source` pins the official GGUF pair, and
-  `tool/prepare_omni_q4.dart` prepares it for research tools.
-  `tool/omni_q4_image_chat.dart` answers questions about images, and the
-  audio tools now also transcribe, synthesize speech and hold voice
-  conversations with Omni. Mixed image and audio prompts, video, LiveASR
-  and installation are not yet supported.
+- Experimental LFM3-Omni-2B Q4_0 under `package:dianoia/lab.dart`. One turn
+  can mix text, images, audio clips and a video with its soundtrack
+  (`prepareOmniPrompt`, `Lfm3VideoProcessor`), answered in text, speech or
+  interleaved text and speech (`decodeSpeechReply`). The LFM3-Audio
+  transcription, speech and conversation APIs also run Omni.
+  `OmniGgufSpec.lfm3OmniQ4` installs the official pair with `ModelStore`;
+  `tool/prepare_omni_q4.dart` and `tool/omni_q4_chat.dart` are the research
+  tools. LiveASR stays LFM3-Audio only.
+- The Flutter example adds an Omni preview with an **Ask about a photo** mode,
+  by voice or text, with an optional spoken reply.
 - `Lfm3SpeechVariant` carries each checkpoint's prompt conventions, and
   `Lfm3SpeechSampling` reads the speech sampling defaults from the mmproj.
   The generator's `sampleFrame` uses those defaults when an option is
   omitted, including Omni's 64-frame repetition window.
 - `loadVisionEncoderGguf` loads the vision tower straight from an mmproj,
-  including Q4_0 weights (`dequantizeQ4_0`), and
-  `Lfm3VlConfig.fromOmniJson` parses Omni's configuration.
+  keeping Q4_0 matrices native, and vision attention runs as batched matrix
+  products: an Omni 640×480 image encodes in about 9.5 s instead of 72 s.
+  The VL tower uses the same attention. `Lfm3VlConfig.fromOmniJson` parses
+  Omni's configuration.
 
 ## 0.2.0
 
