@@ -49,7 +49,11 @@ final class LocalSpeechPlayer implements SpeechPlayer {
     StreamSubscription<PlayerState>? states;
     AudioPlayer? player;
     try {
-      temp = await (await _temporaryDirectory()).createTemp('dianoia-speech-');
+      // A fresh macOS sandbox container has no Caches/<bundle id> yet.
+      final parent = await (await _temporaryDirectory()).create(
+        recursive: true,
+      );
+      temp = await parent.createTemp('dianoia-speech-');
       if (current.stopped) return;
       final file = File('${temp.path}/speech.wav');
       await file.writeAsBytes(wav, flush: true);

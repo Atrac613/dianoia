@@ -62,6 +62,21 @@ void main() {
     temp.deleteSync(recursive: true);
   });
 
+  test('creates a missing temporary directory before writing', () async {
+    final missing = Directory('${temp.path}/Caches/app');
+    final fresh = LocalSpeechPlayer(
+      createPlayer: () => device,
+      temporaryDirectory: () async => missing,
+    );
+    final playing = fresh.play(Uint8List.fromList([1, 2, 3]));
+    await device.called.future;
+    expect(File(device.path!).readAsBytesSync(), [1, 2, 3]);
+    device.completion.add(null);
+    await playing;
+    expect(missing.listSync(), isEmpty);
+    await fresh.dispose();
+  });
+
   test(
     'completion releases its private WAV; interruptions stop without resuming',
     () async {
