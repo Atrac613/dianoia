@@ -30,6 +30,25 @@ final class Lfm3VisionEncoder {
     }
   }
 
+  /// Uses already widened weights, keyed by the checkpoint names of
+  /// [lfm3VisionTensorShapes]; every tensor must be present and finite-sized.
+  factory Lfm3VisionEncoder.fromWeights(
+    Lfm3VlConfig config,
+    Map<String, Float32List> weights,
+  ) {
+    final shapes = lfm3VisionTensorShapes(config);
+    if (weights.length != shapes.length) {
+      throw ArgumentError('expected ${shapes.length} vision tensors');
+    }
+    for (final e in shapes.entries) {
+      final values = weights[e.key];
+      if (values == null || values.length != e.value.fold(1, (a, b) => a * b)) {
+        throw ArgumentError('vision tensor ${e.key} differs from its shape');
+      }
+    }
+    return Lfm3VisionEncoder._(config, Map.unmodifiable(weights));
+  }
+
   final Lfm3VlConfig config;
   final Map<String, Float32List> _weights;
   static const _v = Lfm3VlConfig.visionPrefix;
