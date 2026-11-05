@@ -1,3 +1,34 @@
+## 0.2.0
+
+- Chat about images with LFM3-VL-2B. `LocalVisionModel` loads a VL
+  bundle, and `VisionChatSession` streams replies, reports
+  `VisionProgress` and can be cancelled (`VisionRequestCancelled`).
+  `ChatImage.encoded` and `ChatImage.fromFile` decode PNG and JPEG (new
+  dependency: `image`); `ChatImage.rgb` takes decoded pixels. Images are
+  capped at `LocalVisionModel.defaultMaxImageTokens` (1024) unless
+  `maxImageTokens` says otherwise. The vision encoder and projector run
+  on the CPU; language inference still uses the GPU when it can.
+- `ModelStore.install` takes any `InstallableModel`: `ModelSpec` as
+  before, prebuilt VL bundles (`VisionModelSpec`), the official checkpoint
+  built on device (`VisionCheckpointSpec.lfm3VlQ8`, `.lfm3VlQ4`), the
+  paired official QAD GGUFs (`VisionGgufSpec.lfm3VlQadQ4`) and the
+  LFM3-Audio Q4_0 bundle (`AudioGgufSpec.lfm3AudioQ4`). Downloads are
+  verified before reuse, cancellation is polled while hashing, and a
+  killed build no longer leaves staging behind.
+- Experimental LFM3-Audio-2B Q4_0 under `package:dianoia/lab.dart`:
+  clip and streaming transcription, English LiveASR that keeps recording
+  past 30 seconds, speech synthesis with a streaming codec, and
+  interleaved voice conversation. Audio is not yet part of the app API.
+- LFM3 forward passes accept projected embeddings, and `lab.dart` exports
+  the vision and audio internals, the GGUF readers and the vision
+  benchmark. `GgufFile.close` is idempotent.
+- The Flutter example selects a model, chats about images, and previews
+  transcription, speech synthesis and voice conversation; it downloads
+  the vision and audio models itself.
+- Benchmark vision latency and memory on devices.
+- CI builds and tests the native kernels on macOS and Windows, and the
+  publish workflow runs CI before it publishes.
+
 ## 0.1.1
 
 - The chat template renders LFM3's tool search: tools with
