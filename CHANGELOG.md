@@ -1,3 +1,20 @@
+## Unreleased
+
+- Experimental LFM3-Omni-2B Q4_0 under `package:dianoia/lab.dart`:
+  `Lfm3OmniQ4Source` pins the official GGUF pair, and
+  `tool/prepare_omni_q4.dart` prepares it for research tools.
+  `tool/omni_q4_image_chat.dart` answers questions about images, and the
+  audio tools now also transcribe, synthesize speech and hold voice
+  conversations with Omni. Mixed image and audio prompts, video, LiveASR
+  and installation are not yet supported.
+- `Lfm3SpeechVariant` carries each checkpoint's prompt conventions, and
+  `Lfm3SpeechSampling` reads the speech sampling defaults from the mmproj.
+  The generator's `sampleFrame` uses those defaults when an option is
+  omitted, including Omni's 64-frame repetition window.
+- `loadVisionEncoderGguf` loads the vision tower straight from an mmproj,
+  including Q4_0 weights (`dequantizeQ4_0`), and
+  `Lfm3VlConfig.fromOmniJson` parses Omni's configuration.
+
 ## 0.2.0
 
 - Chat about images with LFM3-VL-2B. `LocalVisionModel` loads a VL

@@ -17,8 +17,10 @@ implementation, even when language inference uses the GPU.
 Experimental [audio inference](docs/lfm3_audio_support.md) is available through
 research tools, `lab.dart` and the Flutter example, with a CPU audio encoder
 and CPU/Metal language inference. Audio model installation is available through
-`ModelStore`; audio inference is not yet part of the app API. General-purpose
-GGUF support is planned.
+`ModelStore`; audio inference is not yet part of the app API. An
+[LFM3-Omni-2B Q4_0 research path](docs/lfm3_omni_support.md) reuses the vision
+and audio implementations for image questions, transcription, speech synthesis
+and voice conversation from one model. General-purpose GGUF support is planned.
 
 ## Try the Flutter example
 
