@@ -98,6 +98,7 @@ Future<void> main(List<String> args) async {
       imageRows.add(vision.encode(input));
       imageTokens.add(input.imageTokens);
     }
+    vision.close();
     lap('vision_encode_seconds');
   }
   final audioRows = <Float32List>[], audioTokens = <int>[];

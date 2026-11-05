@@ -101,10 +101,18 @@ void _checkVisionGguf(GgufFile gguf, Lfm3VlConfig config) {
 Map<String, Float32List> readVisionGgufWeights(
   GgufFile gguf,
   Lfm3VlConfig config,
+) => _readVisionGguf(gguf, config, null);
+
+Map<String, Float32List> _readVisionGguf(
+  GgufFile gguf,
+  Lfm3VlConfig config,
+  Map<String, NativeMatrix>? native,
 ) {
   _checkVisionGguf(gguf, config);
   final expected = lfm3VisionTensorShapes(config);
   final out = <String, Float32List>{};
+  bool seen(String name) =>
+      out.containsKey(name) || (native?.containsKey(name) ?? false);
   for (final tensor in gguf.tensors.values) {
     final source = tensor.name;
     if (source.startsWith('v.patch_embd.weight') ||
@@ -114,10 +122,14 @@ Map<String, Float32List> readVisionGgufWeights(
     }
     final name = _visionName(source);
     final shape = tensor.dims.reversed.toList();
-    if (out.containsKey(name) || expected[name]?.join(',') != shape.join(',')) {
+    if (seen(name) || expected[name]?.join(',') != shape.join(',')) {
       throw FormatException('unsupported vision tensor $source');
     }
     final bytes = gguf.bytes(tensor);
+    if (native != null && tensor.type == GgufType.q4_0 && shape.length == 2) {
+      native[name] = NativeQ4Matrix.fromGgufBlocks(bytes, shape[0], shape[1]);
+      continue;
+    }
     out[name] = switch (tensor.type) {
       GgufType.f32 => Float32List.fromList(
         Float32List.sublistView(Uint8List.fromList(bytes)),
@@ -132,8 +144,8 @@ Map<String, Float32List> readVisionGgufWeights(
     };
   }
   const patchName = 'model.vision_tower.patchifier.weight';
-  if (out.length != expected.length - 1 ||
-      expected.keys.any((n) => n != patchName && !out.containsKey(n))) {
+  if (out.length + (native?.length ?? 0) != expected.length - 1 ||
+      expected.keys.any((n) => n != patchName && !seen(n))) {
     throw const FormatException('incomplete vision GGUF');
   }
   out[patchName] = _patchifier(gguf, config.vision);
@@ -149,15 +161,26 @@ Float32List _widen16(Uint8List bytes, double Function(int bits) convert) {
   return out;
 }
 
-/// Loads the CPU float32 vision encoder straight from an mmproj GGUF,
-/// without writing an intermediate safetensors file.
-Lfm3VisionEncoder loadVisionEncoderGguf(String path, Lfm3VlConfig config) {
+/// Loads the CPU vision encoder straight from an mmproj GGUF, without
+/// writing an intermediate safetensors file. Q4_0 linear weights stay native
+/// Q4 blocks, multiplied with float inputs, unless [nativeQ4] is false; then
+/// every weight is widened to float32 on the Dart heap.
+Lfm3VisionEncoder loadVisionEncoderGguf(
+  String path,
+  Lfm3VlConfig config, {
+  bool nativeQ4 = true,
+}) {
+  if (nativeQ4 && !NativeKernels.isLoaded) NativeKernels.load(null);
   final gguf = GgufFile.open(path);
+  final native = <String, NativeMatrix>{};
   try {
-    return Lfm3VisionEncoder.fromWeights(
-      config,
-      readVisionGgufWeights(gguf, config),
-    );
+    final weights = _readVisionGguf(gguf, config, nativeQ4 ? native : null);
+    return Lfm3VisionEncoder.fromWeights(config, weights, native: native);
+  } catch (_) {
+    for (final m in native.values) {
+      m.free();
+    }
+    rethrow;
   } finally {
     gguf.close();
   }
