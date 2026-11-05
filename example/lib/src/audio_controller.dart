@@ -6,8 +6,10 @@ import 'package:dianoia/dianoia.dart';
 
 import 'audio_backend.dart';
 import 'audio_worker.dart';
+import 'chat_protocol.dart';
 import 'microphone.dart';
 import 'pcm16_stream.dart';
+import 'speech_model.dart';
 import 'speech_player.dart';
 
 enum AudioPhase {
@@ -27,7 +29,14 @@ enum AudioPhase {
   closed,
 }
 
-enum AudioTask { transcription, conversation, liveTranscription }
+enum AudioTask {
+  transcription,
+  conversation,
+  liveTranscription,
+
+  /// LFM3-Omni: a typed or spoken question about a chosen photo.
+  photoQuestion,
+}
 
 final class AudioVoiceTurn {
   const AudioVoiceTurn(this.seconds, this.reply);
@@ -40,12 +49,14 @@ final class AudioVoiceTurn {
 /// to the player, which owns its temporary local source until playback ends.
 final class AudioController extends ChangeNotifier {
   AudioController({
+    this.model = SpeechModel.audio,
     AudioBackend? backend,
     Microphone? microphone,
     SpeechPlayer? player,
-  }) : _backend = backend ?? AudioIsolateBackend(),
+  }) : _backend = backend ?? AudioIsolateBackend(model: model),
        _microphone = microphone ?? RecordMicrophone(),
        _player = player ?? LocalSpeechPlayer();
+  final SpeechModel model;
   final AudioBackend _backend;
   final Microphone _microphone;
   final SpeechPlayer _player;
@@ -81,8 +92,34 @@ final class AudioController extends ChangeNotifier {
   final _voiceTurns = <AudioVoiceTurn>[];
   List<AudioVoiceTurn> get voiceTurns => List.unmodifiable(_voiceTurns);
   String partialReply = '';
+
+  /// The photo, question and answer of [AudioTask.photoQuestion].
+  ImageAttachment? photo;
+  String photoQuestion = '';
+  String photoAnswer = '';
+  bool speakReply = false;
+
+  void setPhoto(ImageAttachment? value) {
+    if (active || _closing != null) return;
+    photo = value;
+    photoAnswer = '';
+    error = null;
+    _notify();
+  }
+
+  void setSpeakReply(bool value) {
+    if (active) return;
+    speakReply = value;
+    _notify();
+  }
+
   void setTask(AudioTask value) {
     if (phase != AudioPhase.ready || _closing != null) return;
+    if ((value == AudioTask.liveTranscription &&
+            !model.supportsLiveTranscription) ||
+        (value == AudioTask.photoQuestion && !model.supportsPhotoQuestions)) {
+      return;
+    }
     if (_task != value) transcript = '';
     _task = value;
     partialReply = '';
@@ -237,8 +274,29 @@ final class AudioController extends ChangeNotifier {
     }
   }
 
+  /// Asks [photoQuestion] about [photo] in text, without recording.
+  Future<void> askTyped() async {
+    if (phase != AudioPhase.ready || _closing != null) return;
+    if (photo == null || photoQuestion.trim().isEmpty) {
+      error = 'Choose a photo and enter a question.';
+      _notify();
+      return;
+    }
+    final epoch = ++_epoch;
+    try {
+      await _answerPhoto(epoch, spoken: false);
+    } catch (e) {
+      if (_valid(epoch)) await cancel(message: 'Question failed: $e');
+    }
+  }
+
   Future<void> record() async {
     if (phase != AudioPhase.ready || _closing != null) return;
+    if (_task == AudioTask.photoQuestion && photo == null) {
+      error = 'Choose a photo first.';
+      _notify();
+      return;
+    }
     final epoch = ++_epoch;
     _recordingTask = _task;
     phase = AudioPhase.requestingPermission;
@@ -263,6 +321,7 @@ final class AudioController extends ChangeNotifier {
         _recordingTask == AudioTask.liveTranscription ? 'English' : language,
         conversation: _recordingTask == AudioTask.conversation,
         live: _recordingTask == AudioTask.liveTranscription,
+        question: _recordingTask == AudioTask.photoQuestion,
         onLiveText: (text) {
           if (_valid(epoch) && _recordingTask == AudioTask.liveTranscription) {
             transcript = text;
@@ -384,6 +443,13 @@ final class AudioController extends ChangeNotifier {
         await _answerVoice(epoch);
         return;
       }
+      if (_recordingTask == AudioTask.photoQuestion) {
+        await _subscription?.cancel();
+        _subscription = null;
+        _packetizer = null;
+        await _answerPhoto(epoch, spoken: true);
+        return;
+      }
       final text = await _backend.finish();
       if (!_valid(epoch)) return;
       transcript = text;
@@ -396,7 +462,11 @@ final class AudioController extends ChangeNotifier {
       if (_valid(epoch)) {
         await cancel(
           message:
-              '${_recordingTask == AudioTask.conversation ? 'Voice conversation' : 'Transcription'} failed: $e',
+              '${switch (_recordingTask) {
+                AudioTask.conversation => 'Voice conversation',
+                AudioTask.photoQuestion => 'Question',
+                _ => 'Transcription',
+              }} failed: $e',
         );
       }
     }
@@ -433,6 +503,39 @@ final class AudioController extends ChangeNotifier {
     if (!_valid(epoch)) return;
     await _player.play(reply.wav);
     if (!_valid(epoch)) return;
+    phase = AudioPhase.ready;
+    _notify();
+  }
+
+  Future<void> _answerPhoto(int epoch, {required bool spoken}) async {
+    if (!_valid(epoch)) return;
+    phase = AudioPhase.replying;
+    photoAnswer = '';
+    partialReply = '';
+    error = null;
+    _notify();
+    final reply = await _backend.askAboutPhoto(
+      photo!.bytes,
+      text: photoQuestion.trim().isEmpty ? null : photoQuestion.trim(),
+      spoken: spoken,
+      speak: speakReply,
+      onText: (text) {
+        if (_valid(epoch)) {
+          partialReply = text;
+          _notify();
+        }
+      },
+    );
+    if (!_valid(epoch)) return;
+    photoAnswer = reply.text;
+    partialReply = '';
+    if (reply.wav.isNotEmpty) {
+      phase = AudioPhase.playing;
+      _notify();
+      if (!_valid(epoch)) return;
+      await _player.play(reply.wav);
+      if (!_valid(epoch)) return;
+    }
     phase = AudioPhase.ready;
     _notify();
   }

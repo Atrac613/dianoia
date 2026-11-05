@@ -16,10 +16,15 @@ abstract interface class AudioBackend {
     void Function(InstallProgress) onProgress,
   );
   Future<String> load(String directory);
+
+  /// Starts audio input: transcription by default, a conversation turn, a
+  /// live transcript, or ([question]) a spoken question kept for
+  /// [askAboutPhoto].
   Future<void> begin(
     String? language, {
     bool conversation = false,
     bool live = false,
+    bool question = false,
     void Function(String)? onLiveText,
   });
   Future<void> addPcm(Float32List samples);
@@ -28,6 +33,17 @@ abstract interface class AudioBackend {
   Future<void> acceptConversationReply();
   Future<void> newConversation();
   Future<Uint8List> synthesize(String text, String language, String voice);
+
+  /// LFM3-Omni only: answers about an encoded PNG or JPEG [image], asked
+  /// with the recorded spoken question (when [spoken]) and/or [text]. With
+  /// [speak] the reply is interleaved text and speech, else text only.
+  Future<AudioVoiceReply> askAboutPhoto(
+    Uint8List image, {
+    String? text,
+    required bool spoken,
+    required bool speak,
+    required void Function(String) onText,
+  });
   Future<void> cancel();
   Future<void> close();
 }
