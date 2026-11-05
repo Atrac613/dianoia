@@ -226,18 +226,125 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+
+    test('expands a video into timestamped groups with its soundtrack', () {
+      final layout = OmniVideoLayout(
+        timestamps: [0.25, 1.0],
+        groupStarts: [0, 0.75],
+        tokensPerGroup: 3,
+        soundtrackTokens: 20,
+      );
+      // round(0.75 s / 80 ms) = 9 rows go with the first group.
+      expect(layout.soundtrackBounds, [0, 9, 20]);
+      final prompt = prepareOmniPrompt(
+        [
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'video'},
+              {'type': 'text', 'text': 'What happens?'},
+            ],
+          },
+        ],
+        tokenizer: tokenizer,
+        config: config,
+        videos: [layout],
+      );
+      const v = '<|vision_start|><|video|><|video|><|video|><|vision_end|>';
       expect(
-        () => renderOmniChat([
+        tokenizer.decode(prompt.ids),
+        '<|startoftext|><|im_start|>user\n<|vision_start|>'
+        '<0.2 seconds>$v${'<|audio|>' * 9}'
+        '<1.0 seconds>$v${'<|audio|>' * 11}'
+        '<|vision_end|>What happens?<|im_end|>\n'
+        '<|im_start|>assistant\n<think></think>',
+      );
+      expect(
+        [for (final s in prompt.spans) (s.kind, s.index, s.count, s.rowOffset)],
+        [
+          (OmniMediaKind.video, 0, 3, 0),
+          (OmniMediaKind.soundtrack, 0, 9, 0),
+          (OmniMediaKind.video, 0, 3, 3),
+          (OmniMediaKind.soundtrack, 0, 11, 9),
+        ],
+      );
+      final silent = prepareOmniPrompt(
+        [
           {
             'role': 'user',
             'content': [
               {'type': 'video'},
             ],
           },
-        ]),
-        throwsUnsupportedError,
+        ],
+        tokenizer: tokenizer,
+        config: config,
+        videos: [
+          OmniVideoLayout(
+            timestamps: [0.25, 1.0],
+            groupStarts: [0, 0.75],
+            tokensPerGroup: 3,
+          ),
+        ],
+      );
+      expect(
+        silent.spans.map((s) => s.kind),
+        everyElement(OmniMediaKind.video),
       );
     });
+
+    test('formats seconds like Python, ties to even', () {
+      for (final (x, text) in [
+        (0.25, '0.2'),
+        (0.75, '0.8'),
+        (1.25, '1.2'),
+        (0.15, '0.1'),
+        (2.05, '2.0'),
+        (0.5, '0.5'),
+        (10.45, '10.4'),
+      ]) {
+        expect(formatOmniSeconds(x), text, reason: '$x');
+      }
+    });
+  });
+
+  test('video frames are sampled like numpy.linspace', () {
+    final p = Lfm3VideoProcessor();
+    expect(p.sampleIndices(300, 30), [
+      0, 16, 31, 47, 63, 79, 94, 110, 126, 142, //
+      157, 173, 189, 205, 220, 236, 252, 268, 283, 299,
+    ]);
+    expect(p.sampleIndices(91, 29.97), [0, 18, 36, 54, 72, 90]);
+    expect(p.sampleIndices(5, 25), [0, 1, 3, 4]);
+    expect(p.sampleIndices(48, 24), [0, 16, 31, 47]);
+    expect(p.sampleIndices(1000, 60).length, 33);
+  });
+
+  test('video frames pair into groups with mean timestamps', () {
+    final p = Lfm3VideoProcessor(maxPixels: 4 * 64 * 64);
+    final frames = [
+      for (var i = 0; i < 3; i++)
+        Uint8List(64 * 64 * 3)..fillRange(0, 64 * 64 * 3, i * 100),
+    ];
+    final video = p.prepareFrames(
+      frames,
+      height: 64,
+      width: 64,
+      frameIndices: [0, 15, 30],
+      sourceFps: 30,
+    );
+    expect(video.groups.length, 2);
+    expect(video.timestamps, [0.25, 1.0]);
+    expect(video.groupStarts, [0.0, 1.0]);
+    final g = video.groups.first;
+    final area = g.patchSize * g.patchSize;
+    // Channel 0 of the first patch: frame 0 slot, then frame 1 slot.
+    expect(g.pixelValues[0], -1.0);
+    expect(g.pixelValues[area], closeTo((100 - 127.5) / 127.5, 1e-6));
+    // The odd last frame is repeated into its pair.
+    final last = video.groups.last;
+    expect(last.pixelValues[0], last.pixelValues[area]);
   });
 
   test('Omni config parses the shared towers with tokenizer span IDs', () {
