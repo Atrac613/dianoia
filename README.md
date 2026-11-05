@@ -48,7 +48,7 @@ Audio or **4.2 GB free** for Omni download and setup, including intermediate
 files. An interrupted download resumes when
 **Download** is selected again. No weights are bundled with the package.
 
-For VL, attach one PNG/JPEG and send it with a question or by itself. The app
+For VL, attach one PNG, JPEG or HEIC photo and send it with a question or by itself. The app
 shows image-analysis stages before the first reply text. Later text questions
 retain visual context; **New chat** clears it. History keeps small thumbnails
 rather than the full attachment bytes.

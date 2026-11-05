@@ -191,8 +191,8 @@ preview: 1.34 GB from Hugging Face, verified by SHA-256, with the Q4 language
 cache prepared on device (allow 4.2 GB free; about 1.41 GB remains). The
 installed bundle's `omni_bundle.json` pins every payload's hash.
 
-Under **Audio mode**, **Ask about a photo** is Omni's own mode. Choose a PNG
-or JPEG, then either type a question and tap **Ask in text**, or tap
+Under **Audio mode**, **Ask about a photo** is Omni's own mode. Choose a PNG,
+JPEG or HEIC photo, then either type a question and tap **Ask in text**, or tap
 **Record question**, speak, and **Stop and reply**; a typed question is sent
 along with a recording. With **Spoken reply** on, the answer is interleaved
 text and speech and plays after generation; otherwise it is text. The photo
@@ -300,7 +300,12 @@ chat shows image reading, encoder-stage progress, and reply preparation. An
 empty model response is reported as an error instead of leaving a spinner.
 
 The VL chat's **Attach image** button opens the native file picker for one
-PNG/JPEG (up to 32 MiB). The draft shows a preview and a remove button. Send it
+PNG, JPEG or HEIC image (up to 32 MiB). HEIC and HEIF photos, the iPhone
+camera default, are decoded by the platform codec with their orientation
+applied and converted to a PNG of at most 2048 pixels on the long side, since
+the worker reads PNG and JPEG only. Where the platform codec cannot read HEIC,
+the picker says so; this was checked on macOS only. The draft shows a
+preview and a remove button. Send it
 with a question or by itself. Sent images appear in the conversation; later
 text questions retain the visual context. New chat clears that context and
 the draft. History retains only a PNG thumbnail of at most 240 by 240 pixels
