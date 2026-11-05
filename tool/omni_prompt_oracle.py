@@ -44,6 +44,17 @@ CASES = {
         {'role': 'system', 'content': 'Respond in text.'},
         {'role': 'user', 'content': [{'type': 'image'}, {'type': 'audio'}]},
     ],
+    # Follow-up questions replay earlier answers as text after the photo.
+    'image_follow_up': [
+        {'role': 'system', 'content': 'Respond in text.'},
+        {'role': 'user', 'content': [
+            {'type': 'image'}, {'type': 'text', 'text': 'What is in the photo?'}]},
+        {'role': 'assistant', 'content': 'A red circle and a yellow square.'},
+        {'role': 'user', 'content': [{'type': 'audio'}]},
+        {'role': 'assistant', 'content': 'The circle is on the left.'},
+        {'role': 'user', 'content': [
+            {'type': 'text', 'text': 'And the background?'}]},
+    ],
 }
 
 

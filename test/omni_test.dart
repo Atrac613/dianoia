@@ -163,6 +163,7 @@ void main() {
         ('asr_english', AudioReplyMode.text, ''),
         ('image_text', AudioReplyMode.text, ''),
         ('image_spoken_question', AudioReplyMode.text, ''),
+        ('image_follow_up', AudioReplyMode.text, ''),
         ('tts', AudioReplyMode.audio, '<|audio_start|>'),
         ('interleaved_audio', AudioReplyMode.mixed, '<|mixed_start|>'),
       ]) {
@@ -199,6 +200,26 @@ void main() {
       expect(
         tokenizer.decode(prompt.ids),
         rendered('image_spoken_question')
+            .replaceFirst('<|image|>', '<|image|>' * 4)
+            .replaceFirst('<|audio|>', '<|audio|>' * 3),
+      );
+    });
+
+    test('a follow-up replays the photo once and earlier answers as text', () {
+      final prompt = prepareOmniPrompt(
+        messages('image_follow_up'),
+        tokenizer: tokenizer,
+        config: config,
+        imageTokenCounts: [4],
+        audioTokenCounts: [3],
+      );
+      expect(prompt.spans.map((s) => (s.kind, s.count)), [
+        (OmniMediaKind.image, 4),
+        (OmniMediaKind.audio, 3),
+      ]);
+      expect(
+        tokenizer.decode(prompt.ids),
+        rendered('image_follow_up')
             .replaceFirst('<|image|>', '<|image|>' * 4)
             .replaceFirst('<|audio|>', '<|audio|>' * 3),
       );

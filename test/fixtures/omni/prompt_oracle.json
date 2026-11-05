@@ -293,6 +293,130 @@
         124901,
         124902
       ]
+    },
+    {
+      "name": "image_follow_up",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Respond in text."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "image"
+            },
+            {
+              "type": "text",
+              "text": "What is in the photo?"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "A red circle and a yellow square."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "audio"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "The circle is on the left."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "And the background?"
+            }
+          ]
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>system\nRespond in text.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image|><|vision_end|>What is in the photo?<|im_end|>\n<|im_start|>assistant\n<think></think>A red circle and a yellow square.<|im_end|>\n<|im_start|>user\n<|vision_start|><|audio|><|vision_end|><|im_end|>\n<|im_start|>assistant\n<think></think>The circle is on the left.<|im_end|>\n<|im_start|>user\nAnd the background?<|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        23630,
+        207,
+        89056,
+        296,
+        2803,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125030,
+        125010,
+        2992,
+        355,
+        296,
+        278,
+        11196,
+        39,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902,
+        41,
+        2959,
+        13060,
+        309,
+        267,
+        9396,
+        8553,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125031,
+        125010,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902,
+        597,
+        13060,
+        355,
+        383,
+        278,
+        2690,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        3982,
+        278,
+        6424,
+        39,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
     }
   ]
 }
