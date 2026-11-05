@@ -70,7 +70,7 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
 
   Future<void> _choose() async {
     try {
-      final path = await getDirectoryPath(confirmButtonText: 'Use audio model');
+      final path = await getDirectoryPath(confirmButtonText: 'Use this model');
       if (path != null && mounted) await _audio.load(path);
     } catch (e) {
       if (mounted) setState(() => _pathError = '$e');
@@ -146,11 +146,11 @@ class AudioTranscriptionView extends StatelessWidget {
       final status = switch (a.phase) {
         AudioPhase.needsModel =>
           'Download ${a.model.name} or choose a prepared model.',
-        AudioPhase.loading => 'Checking and loading the audio model…',
+        AudioPhase.loading => 'Checking and loading the model…',
         AudioPhase.installing =>
           a.installProgress?.stage == InstallStage.building
               ? 'Preparing the model on this device…'
-              : 'Downloading the audio model…',
+              : 'Downloading the model…',
         AudioPhase.ready => 'Ready · ${a.backendName ?? ''}',
         AudioPhase.requestingPermission => 'Requesting microphone access…',
         AudioPhase.recording =>
@@ -169,7 +169,7 @@ class AudioTranscriptionView extends StatelessWidget {
         AudioPhase.synthesizing => 'Generating speech…',
         AudioPhase.playing => 'Playing speech…',
         AudioPhase.cancelling => 'Stopping…',
-        AudioPhase.failed => 'The audio model could not be loaded.',
+        AudioPhase.failed => 'The model could not be loaded.',
         AudioPhase.closed => 'Closed',
       };
       return SafeArea(
@@ -184,9 +184,13 @@ class AudioTranscriptionView extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Experimental · Live transcription continues until stopped. Other recording modes allow up to 30 seconds. '
-                  'Or enter text to generate speech. Audio stays on this device. '
+                Text(
+                  'Experimental · '
+                  '${a.model.supportsLiveTranscription ? 'Live transcription continues until stopped. Other recording modes allow' : 'Recordings allow'} '
+                  'up to 30 seconds. '
+                  '${a.model.supportsPhotoQuestions ? 'Ask about a photo by voice or text, or enter' : 'Or enter'} '
+                  'text to generate speech. '
+                  '${a.model.supportsPhotoQuestions ? 'Audio and photos stay' : 'Audio stays'} on this device. '
                   'Recordings are not saved; generated speech uses a temporary playback file.',
                 ),
                 const SizedBox(height: 24),
