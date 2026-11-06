@@ -13,6 +13,10 @@
   that keep the photo and earlier answers in context. Its photo picker, shared
   with the VL chat, also accepts HEIC and HEIF photos and converts them to
   upright PNG. Speech playback now creates a missing temporary directory.
+  **LFM3-Omni-2B Q4_0 · Chat** opens the same bundle in the text chat, with
+  images on any message.
+- `Lfm3Tokenizer.addedTokenIn` finds control tokens spelled out in text that
+  must stay plain.
 - `Lfm3SpeechVariant` carries each checkpoint's prompt conventions, and
   `Lfm3SpeechSampling` reads the speech sampling defaults from the mmproj.
   The generator's `sampleFrame` uses those defaults when an option is

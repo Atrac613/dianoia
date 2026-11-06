@@ -205,6 +205,15 @@ and the **Spoken reply** setting may change between them. A new photo or
 **New conversation** starts over; a conversation that no longer fits the
 context asks for a new one.
 
+**LFM3-Omni-2B Q4_0 · Chat** opens the same bundle in the text chat used by
+the other language models: type messages, attach a PNG, JPEG or HEIC image to
+any of them, stop a reply, or start a new chat. Replies are text only. Like
+photo questions, every message re-renders the whole conversation, replaying
+earlier images from their encoded rows, so an image is encoded once. The chat
+and the preview share one installed bundle and one sideload folder. A typed
+message or question that spells a control token such as `<|im_end|>` is
+refused rather than tokenized as one.
+
 **Transcription and TTS** and **Voice conversation (English)** behave as in
 the audio preview, with Omni's prompt conventions and sampling. **Live
 transcription** is offered for LFM3-Audio only. A prepared research folder
