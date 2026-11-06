@@ -552,6 +552,9 @@ final class AudioController extends ChangeNotifier {
     if (reply.text.isNotEmpty) {
       _photoExchanges.add(PhotoExchange(question, reply.text, spoken: spoken));
       photoQuestion = '';
+    } else {
+      // Nothing to show or follow up on; the worker kept no turn either.
+      error = 'The model gave no answer. Try asking again.';
     }
     partialReply = '';
     if (reply.wav.isNotEmpty) {

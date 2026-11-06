@@ -93,6 +93,7 @@ class TestAudioBackend implements AudioBackend {
   final asks = <(String?, bool, bool)>[];
   final askContexts = <(Uint8List?, int)>[];
   Uint8List askWav = Uint8List(0);
+  String askAnswer = 'A red circle.';
 
   @override
   Future<AudioVoiceReply> askAboutPhoto(
@@ -106,7 +107,11 @@ class TestAudioBackend implements AudioBackend {
     asks.add((text, spoken, speak));
     askContexts.add((image, previousTurns));
     onText('A red');
-    return AudioVoiceReply('A red circle.', askWav, previousTurns + 1);
+    return AudioVoiceReply(
+      askAnswer,
+      askWav,
+      previousTurns + (askAnswer.isEmpty ? 0 : 1),
+    );
   }
 
   String? inputLanguage;
@@ -290,6 +295,22 @@ void main() {
         ]);
       },
     );
+
+    test('an empty answer is reported and keeps the question', () async {
+      omni.setTask(AudioTask.photoQuestion);
+      omni.setPhoto(photo);
+      omni.photoQuestion = 'What is it?';
+      backend.askAnswer = '';
+      await omni.askTyped();
+      expect(omni.error, isNotNull);
+      expect(omni.photoExchanges, isEmpty);
+      expect(omni.photoQuestion, 'What is it?');
+      expect(omni.phase, AudioPhase.ready);
+      backend.askAnswer = 'A red circle.';
+      await omni.askTyped();
+      expect(omni.error, isNull);
+      expect(backend.askContexts.map((c) => c.$2), [0, 0]);
+    });
 
     test('spoken question records, then plays a spoken answer', () async {
       omni.setTask(AudioTask.photoQuestion);
