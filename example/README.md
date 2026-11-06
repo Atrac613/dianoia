@@ -205,8 +205,10 @@ and the **Spoken reply** setting may change between them. A new photo or
 **New conversation** starts over; a conversation that no longer fits the
 context asks for a new one.
 
-**LFM3-Omni-2B Q4_0 · Chat** opens the same bundle in the text chat used by
-the other language models: type messages, attach a PNG, JPEG or HEIC image to
+**Text chat** in the title bar opens the same bundle in the text chat used
+by the other language models. Model workers run one at a time, so the
+preview's worker closes first and loads the model again when you come back.
+In the chat, type messages, attach a PNG, JPEG or HEIC image to
 any of them, stop a reply, or start a new chat. Replies are text only. Like
 photo questions, every message re-renders the whole conversation, replaying
 earlier images from their encoded rows, so an image is encoded once. The chat

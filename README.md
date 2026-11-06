@@ -85,8 +85,8 @@ stops with an error if inference cannot keep up with the one-second audio queue.
 photo** mode: choose a photo, then type a question or record one, and receive
 text or (with **Spoken reply**) interleaved text and speech. Transcription,
 TTS and voice conversation work as with LFM3-Audio; live transcription is
-LFM3-Audio only. **LFM3-Omni-2B Q4_0 · Chat** opens the same installed bundle
-in the text chat, with an image attachable to any message. Video input is
+LFM3-Audio only. **Text chat** in the preview's title bar opens the same
+installed bundle in the text chat, with an image attachable to any message. Video input is
 available through the [research tools](docs/lfm3_omni_support.md).
 
 Recording and playback stop when the app is backgrounded or the route is left;
