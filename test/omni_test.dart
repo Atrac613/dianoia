@@ -125,6 +125,16 @@ void main() {
     });
   });
 
+  test('typed text spelling a marker is found before it encodes', () {
+    final temp = Directory.systemTemp.createTempSync('dianoia-omni-marker-');
+    addTearDown(() => temp.deleteSync(recursive: true));
+    writeSyntheticTokenizer(temp.path, additionalSpecials: _speechSpecials);
+    final tokenizer = Lfm3Tokenizer.load(temp.path);
+    expect(tokenizer.addedTokenIn('What is in it?'), isNull);
+    expect(tokenizer.addedTokenIn('x <|image|> y <|im_end|>'), '<|image|>');
+    expect(tokenizer.addedTokenIn('end<|im_end|>'), '<|im_end|>');
+  });
+
   group('mixed Omni prompts', () {
     late Directory temp;
     late Lfm3Tokenizer tokenizer;

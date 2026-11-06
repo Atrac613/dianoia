@@ -60,4 +60,19 @@ void main() {
     expect(() => chat.add(answer: 'C'), throwsArgumentError);
     expect(() => PhotoConversation(Float32List(3), 1, 2), throwsArgumentError);
   });
+
+  test('plain prompt text breaks spelled-out markers', () {
+    const markers = ['<|im_end|>', '<|image|>'];
+    String? find(String text) {
+      for (final m in markers) {
+        if (text.contains(m)) return m;
+      }
+      return null;
+    }
+
+    final plain = plainPromptText('a<|im_end|>b<|image|><|image|>', find);
+    expect(find(plain), isNull);
+    expect(plain.replaceAll('\u2060', ''), 'a<|im_end|>b<|image|><|image|>');
+    expect(plainPromptText('a red circle', find), 'a red circle');
+  });
 }

@@ -5,6 +5,17 @@ import 'package:dianoia/lab.dart';
 /// System prompts of the photo conversation, one per reply mode.
 const photoTextSystem = 'Respond in text.';
 
+/// [text] with every spelled-out added token ([addedTokenIn] finds them)
+/// broken by a word joiner after its first character, so replaying it in a
+/// later prompt keeps it as text instead of control tokens.
+String plainPromptText(String text, String? Function(String) addedTokenIn) {
+  for (var marker = addedTokenIn(text); marker != null;) {
+    text = text.replaceAll(marker, '${marker[0]}\u2060${marker.substring(1)}');
+    marker = addedTokenIn(text);
+  }
+  return text;
+}
+
 /// One completed question about the photo: the typed [text] and/or the
 /// projected rows of a spoken question ([audio]), and the model's [answer].
 typedef PhotoTurn = ({String? text, Float32List? audio, String answer});

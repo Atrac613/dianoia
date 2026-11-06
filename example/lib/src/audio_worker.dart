@@ -651,6 +651,13 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
               } else if (text == null || text.isEmpty) {
                 throw ArgumentError('Ask a question by voice or text');
               }
+              if (text != null) {
+                if (tokenizer!.addedTokenIn(text) case final marker?) {
+                  throw ArgumentError(
+                    'Questions cannot contain the control text $marker',
+                  );
+                }
+              }
               final config = loadOmniVisionConfig(
                 '$directory/${Lfm3OmniQ4Source.config.name}',
                 tokenizer!,
@@ -734,7 +741,13 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
               );
               check(version);
               if (reply.text.isNotEmpty) {
-                chat.add(text: text, audio: audioRows, answer: reply.text);
+                // An answer may spell a marker with ordinary tokens; replay
+                // it as text so later follow-ups still render.
+                chat.add(
+                  text: text,
+                  audio: audioRows,
+                  answer: plainPromptText(reply.text, tokenizer!.addedTokenIn),
+                );
               }
               result = AudioVoiceReply(
                 reply.text,
