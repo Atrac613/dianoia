@@ -527,7 +527,12 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                 }
                 questionRows.clear();
               }
-              if (liveInput && recordingConversation) {
+              if ([
+                    liveInput,
+                    recordingConversation,
+                    recordingQuestion,
+                  ].where((on) => on).length >
+                  1) {
                 throw ArgumentError('Choose one audio input mode');
               }
               if (liveInput && !kind.supportsLiveTranscription) {
