@@ -37,7 +37,7 @@ class ModelSelectionPage extends StatelessWidget {
                   clipBehavior: Clip.antiAlias,
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(16),
-                    title: Text(model.name),
+                    title: Text(model.title),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(

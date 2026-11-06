@@ -28,6 +28,10 @@ void main() {
   testWidgets('launch shows model choices before starting a chat', (
     tester,
   ) async {
+    // Tall enough for every model card, built lazily by the list.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(const DianoiaExampleApp());
     expect(find.text('Choose a model'), findsOneWidget);
     expect(find.text(ModelSpec.lfm3Q4.name), findsOneWidget);
@@ -40,8 +44,11 @@ void main() {
     expect(vl.id, isNot(VisionCheckpointSpec.lfm3VlQ8.id));
     expect(ExampleModel.lfm3Vl.directoryName, 'LFM3-VL-2B-QAD-Q4');
     expect(find.textContaining('1.07 GB download'), findsOneWidget);
-    expect(find.textContaining(ModelSpec.lfm3Q4.license), findsNWidgets(3));
+    expect(find.textContaining(ModelSpec.lfm3Q4.license), findsNWidgets(5));
     expect(find.text(AudioGgufSpec.lfm3AudioQ4.name), findsOneWidget);
+    // Omni opens as a chat and, under its own name, as the audio page.
+    expect(find.text(ExampleModel.omni.title), findsOneWidget);
+    expect(find.text(OmniGgufSpec.lfm3OmniQ4.name), findsOneWidget);
     expect(find.textContaining('1.23 GB download'), findsOneWidget);
     expect(find.byType(ChatPage), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -61,7 +68,7 @@ void main() {
       });
 
       await tester.pumpWidget(const DianoiaExampleApp());
-      await tester.tap(find.text(model.name));
+      await tester.tap(find.text(model.title));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
       expect(

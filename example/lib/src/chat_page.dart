@@ -170,7 +170,7 @@ class _ChatPageState extends State<ChatPage> {
           ),
         Row(
           children: [
-            if (_chat.model.isVision)
+            if (_chat.model.acceptsImages)
               IconButton(
                 tooltip: 'Attach image',
                 onPressed: _chat.ready && !_chat.replying && !_picking

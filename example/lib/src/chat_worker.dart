@@ -7,9 +7,11 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:dianoia/dianoia.dart';
+import 'package:dianoia/lab.dart' show Lfm3Model, Lfm3Tokenizer;
 
 import 'chat_protocol.dart';
 import 'example_model.dart';
+import 'omni_conversation.dart';
 
 const _system =
     'You are a helpful assistant running entirely on this device. '
@@ -34,6 +36,10 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   LocalModel? model;
   LocalVisionModel? visionModel;
   VisionChatSession? visionSession;
+  // LFM3-Omni has no public chat API yet; the example drives the lab one.
+  Lfm3Model? omniModel;
+  OmniResponder? omni;
+  OmniConversation? omniChat;
   Future<void>? loading, replying, cancelling;
   var closing = false;
   StreamSubscription<InstallProgress>? install;
@@ -43,6 +49,24 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   Future<void> open(String dir, {void Function()? onFailed}) async {
     out.send(const WorkerProgress('Loading the model…'));
     try {
+      if (selected == ExampleModel.omni) {
+        await verifyOmniBundle(dir, () {
+          if (closing) throw StateError('The chat was closed');
+        });
+        final tokenizer = Lfm3Tokenizer.load('$dir/language');
+        final (loaded, gpu) = await loadOmniLanguageModel(dir);
+        omniModel = loaded;
+        if (closing) return;
+        omni = OmniResponder(
+          loaded,
+          tokenizer,
+          dir,
+          maxImageTokens: ExampleModel.maxImageTokens,
+        );
+        omniChat = OmniConversation(loaded.config.hiddenSize, system: _system);
+        out.send(WorkerReady(gpu ? 'GPU' : 'CPU'));
+        return;
+      }
       InferenceBackend backend;
       if (selected.isVision) {
         final loaded = await LocalVisionModel.loadBundle(
@@ -80,6 +104,8 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
       await replying;
       await model?.close();
       await visionModel?.close();
+      omni?.close();
+      await omniModel?.close();
     } finally {
       commands.close();
       Isolate.exit();
@@ -99,19 +125,30 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
       case SendMessage(:final text, :final image):
         stopRequested = false;
         replyStarted = false;
-        replying = _reply(
-          session,
-          visionSession,
-          text,
-          image,
-          out,
-          () => stopRequested,
-          () => replyStarted = true,
-        );
+        final responder = omni, chat = omniChat;
+        replying = responder != null && chat != null
+            ? _omniReply(
+                responder,
+                chat,
+                text,
+                image,
+                out,
+                () => stopRequested || closing,
+              )
+            : _reply(
+                session,
+                visionSession,
+                text,
+                image,
+                out,
+                () => stopRequested,
+                () => replyStarted = true,
+              );
       case StopReply():
         stopRequested = true;
         if (!replyStarted) visionSession?.cancel();
       case NewChat():
+        omniChat?.clear();
         session?.clear();
         visionSession?.clear();
       case InstallModel():
@@ -138,7 +175,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   });
 
   try {
-    final sideLoaded = _sideLoaded(location, out, vision: selected.isVision);
+    final sideLoaded = _sideLoaded(location, out, selected);
     if (sideLoaded != null) {
       await (loading = open(
         sideLoaded,
@@ -161,11 +198,17 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
 /// or null.
 String? _sideLoaded(
   ModelLocation location,
-  SendPort out, {
-  required bool vision,
-}) {
-  final cache = vision ? 'vl_bundle.json' : 'lfm3-q4.cache';
-  if (!File('${location.dropDir}/$cache').existsSync()) return null;
+  SendPort out,
+  ExampleModel selected,
+) {
+  final vision = selected.isVision;
+  // An Omni folder is the one the audio page loads: prepared or installed.
+  final marker = switch (selected) {
+    ExampleModel.lfm3 => 'lfm3-q4.cache',
+    ExampleModel.lfm3Vl => 'vl_bundle.json',
+    ExampleModel.omni => 'language/omni_source.json',
+  };
+  if (!File('${location.dropDir}/$marker').existsSync()) return null;
   if (location.copyDir != location.dropDir) {
     out.send(const WorkerProgress('Copying the model to app storage…'));
     if (vision) {
@@ -247,6 +290,86 @@ Future<void> _reply(
   } catch (e) {
     out.send(ReplyFailed('$e'));
   }
+}
+
+/// One Omni chat reply. A reply with text joins [chat]; a stopped or failed
+/// one leaves it as it was.
+Future<void> _omniReply(
+  OmniResponder responder,
+  OmniConversation chat,
+  String text,
+  ImageAttachment? image,
+  SendPort out,
+  bool Function() stopRequested,
+) async {
+  void check() {
+    if (stopRequested()) throw const _ReplyStopped();
+  }
+
+  try {
+    final images = <OmniImage>[];
+    if (image != null) {
+      out.send(const ReplyProgress('Reading image…'));
+      images.add(
+        await responder.encodeImage(
+          image.bytes,
+          check: check,
+          onProgress: (completed, total) =>
+              out.send(ReplyProgress('Analyzing image… $completed/$total')),
+        ),
+      );
+    }
+    out.send(const ReplyProgress('Preparing reply…'));
+    final clock = Stopwatch()..start();
+    var prefillMs = 0;
+    final reply = await responder.reply(
+      chat,
+      text: text.isEmpty ? null : text,
+      images: images,
+      check: check,
+      onPrefilled: () {
+        prefillMs = clock.elapsedMilliseconds;
+        out.send(const ReplyProgress('Generating reply…'));
+      },
+      onText: (partial) => out.send(ReplyText(partial)),
+    );
+    if (reply.text.trim().isEmpty) {
+      out.send(
+        const ReplyFailed(
+          'The model returned no text. Try a different question or start a new chat.',
+        ),
+      );
+      return;
+    }
+    final decodeMs = clock.elapsedMilliseconds - prefillMs;
+    out.send(
+      ReplyDone(
+        text: reply.text,
+        tokens: reply.generatedSlots,
+        firstTokenMs: prefillMs,
+        tokensPerSecond: decodeMs > 0
+            ? reply.generatedSlots * 1000 / decodeMs
+            : 0,
+      ),
+    );
+  } on _ReplyStopped {
+    out.send(const ReplyFailed('Reply stopped.'));
+  } on OmniContextFull catch (e) {
+    out.send(
+      ReplyFailed(
+        e.firstTurn
+            ? 'The message is too long for the model\'s context.'
+            : 'The conversation no longer fits the model\'s context. '
+                  'Start a new chat.',
+      ),
+    );
+  } catch (e) {
+    out.send(ReplyFailed('$e'));
+  }
+}
+
+final class _ReplyStopped implements Exception {
+  const _ReplyStopped();
 }
 
 /// Copies nested bundle files into app storage for mapping, skipping files
