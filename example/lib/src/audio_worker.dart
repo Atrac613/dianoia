@@ -9,7 +9,7 @@ import 'package:dianoia/lab.dart';
 
 import 'audio_backend.dart';
 import 'model_worker_gate.dart';
-import 'photo_conversation.dart';
+import 'omni_conversation.dart';
 import 'speech_model.dart';
 
 /// Request/reply transport. One worker owns the audio and language models.
@@ -300,8 +300,8 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
     SpeechModel.audio => Lfm3AudioQ4Source.audio.name,
     SpeechModel.omni => Lfm3OmniQ4Source.mmproj.name,
   };
-  Lfm3VisionEncoder? vision;
-  PhotoConversation? photo;
+  OmniResponder? responder;
+  OmniConversation? photo;
   // Projected rows of a spoken question, kept for the following ask.
   final questionRows = <Float32List>[];
   var recordingQuestion = false;
@@ -404,7 +404,7 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
           conversation?.close();
           generator?.close();
           encoder?.close();
-          vision?.close();
+          responder?.close();
           await model?.close();
         } else {
           check(version);
@@ -458,10 +458,7 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
               NativeKernels.load(null);
               await switch (kind) {
                 SpeechModel.audio => _verifyBundle(dir, () => check(version)),
-                SpeechModel.omni => _verifyOmniBundle(
-                  dir,
-                  () => check(version),
-                ),
+                SpeechModel.omni => verifyOmniBundle(dir, () => check(version)),
               };
               encoder = Lfm3AudioEncoder.load('$dir/$mmprojName');
               tokenizer = Lfm3Tokenizer.load('$dir/language');
@@ -635,11 +632,11 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
               // A new photo or a restart drops earlier questions; a follow-up
               // keeps exactly the answers the caller received.
               final previous = options['previousTurns'] as int;
-              if (previous == 0) photo = null;
-              if (photo == null && options['image'] == null) {
-                throw StateError('Choose a photo first');
-              }
-              if (previous > 0) {
+              final image = options['image'] as Uint8List?;
+              if (previous == 0) {
+                if (image == null) throw StateError('Choose a photo first');
+                photo = OmniConversation(model!.config.hiddenSize);
+              } else {
                 (photo ?? (throw StateError('The photo conversation ended')))
                     .keep(previous);
               }
@@ -656,38 +653,18 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
               } else if (text == null || text.isEmpty) {
                 throw ArgumentError('Ask a question by voice or text');
               }
-              if (text != null) {
-                if (tokenizer!.addedTokenIn(text) case final marker?) {
-                  throw ArgumentError(
-                    'Questions cannot contain the control text $marker',
-                  );
-                }
-              }
-              final config = loadOmniVisionConfig(
-                '$directory/${Lfm3OmniQ4Source.config.name}',
+              final omni = responder ??= OmniResponder(
+                model!,
                 tokenizer!,
+                directory!,
+                maxImageTokens: _maxPhotoTokens,
               );
-              final hidden = model!.config.hiddenSize;
-              if (photo == null) {
-                vision ??= loadVisionEncoderGguf(
-                  '$directory/$mmprojName',
-                  config,
-                );
-                final rgb = decodeImageRgb(options['image'] as Uint8List);
-                final image = Lfm3ImageProcessor.load(directory!)
-                    .withMaxImageTokens(_maxPhotoTokens)
-                    .prepareRgb(
-                      rgb.pixels,
-                      height: rgb.height,
-                      width: rgb.width,
-                    );
-                final imageRows = await vision!.encodeAsync(
-                  image,
-                  checkCancelled: () => check(version),
-                );
-                photo = PhotoConversation(imageRows, image.imageTokens, hidden);
-              }
-              final chat = photo!;
+              // The photo is encoded for the first question only; later
+              // ones replay its rows from the conversation.
+              final images = [
+                if (previous == 0)
+                  await omni.encodeImage(image!, check: () => check(version)),
+              ];
               Float32List? audioRows;
               if (spoken) {
                 audioRows = Float32List(
@@ -699,59 +676,29 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                   at += rows.length;
                 }
               }
-              final speak = options['speak'] as bool;
-              final mode = speak ? AudioReplyMode.mixed : AudioReplyMode.text;
-              final prompt = prepareOmniPrompt(
-                chat.messages(speak: speak, text: text, spoken: spoken),
-                tokenizer: tokenizer!,
-                config: config,
-                imageTokenCounts: [chat.imageTokens],
-                audioTokenCounts: chat.audioTokens(audioRows),
-                mode: mode,
-              );
-              final maxSlots = speak ? 768 : 512;
-              if (prompt.ids.length + maxSlots + 1 > model!.maxSeq) {
+              if (options['speak'] as bool) {
+                generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
+              }
+              final chat = photo!;
+              final SpeechReply reply;
+              try {
+                reply = await omni.reply(
+                  chat,
+                  text: text,
+                  images: images,
+                  audio: audioRows,
+                  generator: options['speak'] as bool ? generator : null,
+                  check: () => check(version),
+                  onText: (text) {
+                    out.send({'textUpdate': true, 'text': text});
+                  },
+                );
+              } on OmniContextFull catch (e) {
                 throw StateError(
-                  chat.turns.isEmpty
+                  e.firstTurn
                       ? 'The question is too long for the context'
                       : 'The conversation about this photo is full. '
                             'Start a new conversation.',
-                );
-              }
-              await prompt.prefill(
-                model!,
-                images: [chat.imageRows],
-                audio: chat.audio(audioRows),
-              );
-              check(version);
-              if (speak) {
-                generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
-              }
-              final reply = await decodeSpeechReply(
-                model: model!,
-                tokenizer: tokenizer!,
-                generator: speak ? generator : null,
-                variant: Lfm3SpeechVariant.omni,
-                mode: mode,
-                maxSlots: maxSlots,
-                check: () => check(version),
-                onText: (text) {
-                  out.send({'textUpdate': true, 'text': text});
-                },
-                feed: (id, embedding, {required logits}) => model!.forward(
-                  [id],
-                  computeLogits: logits,
-                  embeddingOverrides: {0: ?embedding},
-                ),
-              );
-              check(version);
-              if (reply.text.isNotEmpty) {
-                // An answer may spell a marker with ordinary tokens; replay
-                // it as text so later follow-ups still render.
-                chat.add(
-                  text: text,
-                  audio: audioRows,
-                  answer: plainPromptText(reply.text, tokenizer!.addedTokenIn),
                 );
               }
               result = AudioVoiceReply(
@@ -818,8 +765,8 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
         if (op == 'load') {
           encoder?.close();
           encoder = null;
-          vision?.close();
-          vision = null;
+          responder?.close();
+          responder = null;
           await model?.close();
           model = null;
         }
@@ -908,72 +855,6 @@ Future<void> _verifyBundle(String dir, void Function() check) async {
   if (cache == null) {
     throw const FormatException(
       'Prepared audio language cache is missing or stale',
-    );
-  }
-  cache.close();
-  check();
-}
-
-/// Omni bundle provenance: an installed bundle is fully hashed against its
-/// manifest; a prepared research folder must carry the pinned receipt and
-/// the original mmproj and metadata.
-Future<void> _verifyOmniBundle(String dir, void Function() check) async {
-  final installed = File('$dir/omni_bundle.json').existsSync();
-  if (installed) {
-    await validateOmniBundle(
-      dir,
-      OmniGgufSpec.lfm3OmniQ4.files,
-      Lfm3OmniQ4Source.mmproj.name,
-      check: check,
-    );
-  }
-  final receipt =
-      jsonDecode(await File('$dir/language/omni_source.json').readAsString())
-          as Map;
-  if (receipt['repository'] != Lfm3OmniQ4Source.repository ||
-      receipt['revision'] != Lfm3OmniQ4Source.revision ||
-      receipt['metadata_revision'] != Lfm3OmniQ4Source.metadataRevision) {
-    throw const FormatException(
-      'Choose a prepared official LFM3-Omni Q4_0 model',
-    );
-  }
-  for (final f in [
-    ...Lfm3OmniQ4Source.files,
-    ...Lfm3OmniQ4Source.metadataFiles,
-  ]) {
-    final entry = (receipt['files'] as Map)[f.name] as Map?;
-    if (entry?['size'] != f.size || entry?['sha256'] != f.sha256) {
-      throw const FormatException('Omni source receipt differs');
-    }
-  }
-  for (final (file, spec) in [
-    if (!installed) ...[
-      (File('$dir/${Lfm3OmniQ4Source.mmproj.name}'), Lfm3OmniQ4Source.mmproj),
-      (File('$dir/language/tokenizer.json'), Lfm3OmniQ4Source.tokenizer),
-      (File('$dir/omni_config.json'), Lfm3OmniQ4Source.config),
-      (File('$dir/processor_config.json'), Lfm3OmniQ4Source.processorConfig),
-    ],
-  ]) {
-    check();
-    if (await file.length() != spec.size) {
-      throw FormatException('${spec.name} has the wrong size');
-    }
-    final chunks = file.openRead().map((chunk) {
-      check();
-      return chunk;
-    });
-    if ((await sha256.bind(chunks).first).toString() != spec.sha256) {
-      throw FormatException('${spec.name} has the wrong hash');
-    }
-  }
-  check();
-  final cache = Q8Cache.open(
-    '$dir/language/lfm3-q4.cache',
-    Q8Cache.keyFor('$dir/language', weights: 'q4'),
-  );
-  if (cache == null) {
-    throw const FormatException(
-      'Prepared Omni language cache is missing or stale',
     );
   }
   cache.close();
