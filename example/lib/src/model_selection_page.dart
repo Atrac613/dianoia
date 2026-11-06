@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'chat_controller.dart';
 import 'chat_page.dart';
 import 'example_model.dart';
 import 'audio_page.dart';
@@ -10,7 +9,11 @@ import 'speech_model.dart';
 class ModelSelectionPage extends StatelessWidget {
   const ModelSelectionPage({super.key});
 
-  static const models = ExampleModel.values;
+  /// LFM3-Omni's chat opens from its own screen, not from this list.
+  static final models = [
+    for (final model in ExampleModel.values)
+      if (model != ExampleModel.omni) model,
+  ];
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -37,7 +40,7 @@ class ModelSelectionPage extends StatelessWidget {
                   clipBehavior: Clip.antiAlias,
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(16),
-                    title: Text(model.title),
+                    title: Text(model.name),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
@@ -79,33 +82,4 @@ class ModelSelectionPage extends StatelessWidget {
       ),
     ),
   );
-}
-
-/// Owns the worker for one visit to a model's chat.
-class ModelChatPage extends StatefulWidget {
-  const ModelChatPage({super.key, required this.model});
-
-  final ExampleModel model;
-
-  @override
-  State<ModelChatPage> createState() => _ModelChatPageState();
-}
-
-class _ModelChatPageState extends State<ModelChatPage> {
-  late final _chat = ChatController(model: widget.model);
-
-  @override
-  void initState() {
-    super.initState();
-    _chat.start();
-  }
-
-  @override
-  void dispose() {
-    _chat.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => ChatPage(controller: _chat);
 }

@@ -7,7 +7,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:dianoia/dianoia.dart';
 
 import 'audio_controller.dart';
+import 'chat_page.dart';
 import 'image_attachment.dart';
+import 'example_model.dart';
 import 'speech_model.dart';
 
 /// A local-model preview, separate from text/image chat and its download UI.
@@ -28,7 +30,8 @@ class AudioTranscriptionPage extends StatefulWidget {
 
 class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
     with WidgetsBindingObserver {
-  late final _audio = widget.controller ?? AudioController(model: widget.model);
+  late AudioController _audio =
+      widget.controller ?? AudioController(model: widget.model);
   String? _defaultDirectory, _pathError;
   @override
   void initState() {
@@ -77,6 +80,26 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
     }
   }
 
+  /// The chat runs its own worker, and model workers run one at a time: this
+  /// screen's worker closes before the chat's starts, and a new one loads
+  /// the model again on return.
+  Future<void> _openChat(ExampleModel chat) async {
+    final closed = _audio.close();
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => ModelChatPage(model: chat)));
+    await closed;
+    // A supplied controller belongs to the caller and stays closed.
+    if (!mounted || widget.controller != null) return;
+    final previous = _audio;
+    setState(() {
+      _audio = AudioController(model: widget.model);
+      _pathError = null;
+    });
+    previous.dispose();
+    await _findModel();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final leaving =
@@ -109,6 +132,23 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
       title: Text(
         _audio.model == SpeechModel.omni ? 'Omni preview' : 'Audio preview',
       ),
+      actions: [
+        if (_audio.model.chatModel case final chat?)
+          ListenableBuilder(
+            listenable: _audio,
+            builder: (context, _) => TextButton.icon(
+              // Not while it records, replies or installs.
+              onPressed: switch (_audio.phase) {
+                AudioPhase.ready ||
+                AudioPhase.needsModel ||
+                AudioPhase.failed => () => _openChat(chat),
+                _ => null,
+              },
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text('Text chat'),
+            ),
+          ),
+      ],
     ),
     body: AudioTranscriptionView(
       controller: _audio,

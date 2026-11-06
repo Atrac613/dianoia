@@ -6,8 +6,8 @@ enum ExampleModel {
   lfm3,
   lfm3Vl,
 
-  /// LFM3-Omni as a text chat with images; its speech features live on the
-  /// audio page, which shares the installed bundle.
+  /// LFM3-Omni as a text chat with images, opened from its own screen,
+  /// which shares the installed bundle.
   omni;
 
   /// A mobile CPU encoder budget; the library's default remains 1024.
@@ -21,8 +21,6 @@ enum ExampleModel {
   String get id => downloadSpec.id;
   String get name => downloadSpec.name;
 
-  /// The model list shows Omni twice: here, and as the audio page.
-  String get title => this == omni ? '$name · Chat' : name;
   String get directoryName => switch (this) {
     lfm3 => 'LFM3-1.7B-QAD-Q4',
     lfm3Vl => 'LFM3-VL-2B-QAD-Q4',

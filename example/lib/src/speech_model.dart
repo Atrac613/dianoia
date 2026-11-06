@@ -1,5 +1,6 @@
 import 'package:dianoia/dianoia.dart';
 
+import 'example_model.dart';
 import 'model_size.dart';
 
 /// The speech-capable models the audio preview can run. Both share the
@@ -28,6 +29,9 @@ enum SpeechModel {
 
   bool get supportsLiveTranscription => this == audio;
   bool get supportsPhotoQuestions => this == omni;
+
+  /// The same model in the text chat, opened from this model's screen.
+  ExampleModel? get chatModel => this == omni ? ExampleModel.omni : null;
 
   String get summary => switch (this) {
     audio => 'Voice conversation, transcription and TTS',

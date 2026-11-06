@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'chat_controller.dart';
 import 'chat_protocol.dart';
+import 'example_model.dart';
 import 'image_attachment.dart';
 import 'message_bubble.dart';
 import 'model_setup.dart';
@@ -215,4 +216,33 @@ class _ChatPageState extends State<ChatPage> {
       ],
     ),
   );
+}
+
+/// Owns the worker for one visit to a model's chat.
+class ModelChatPage extends StatefulWidget {
+  const ModelChatPage({super.key, required this.model});
+
+  final ExampleModel model;
+
+  @override
+  State<ModelChatPage> createState() => _ModelChatPageState();
+}
+
+class _ModelChatPageState extends State<ModelChatPage> {
+  late final _chat = ChatController(model: widget.model);
+
+  @override
+  void initState() {
+    super.initState();
+    _chat.start();
+  }
+
+  @override
+  void dispose() {
+    _chat.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ChatPage(controller: _chat);
 }

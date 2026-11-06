@@ -1,12 +1,15 @@
 import 'package:dianoia_example/src/audio_controller.dart';
 import 'package:dianoia_example/src/audio_backend.dart';
 import 'package:dianoia_example/src/audio_page.dart';
+import 'package:dianoia_example/src/chat_page.dart';
+import 'package:dianoia_example/src/example_model.dart';
+import 'package:dianoia_example/src/speech_model.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dianoia/dianoia.dart';
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'audio_controller_test.dart'
     show TestAudioBackend, TestMicrophone, TestSpeechPlayer;
@@ -380,4 +383,58 @@ void main() {
       expect(mic.stops, greaterThanOrEqualTo(2));
     },
   );
+
+  testWidgets('the Omni screen closes its worker, then opens the chat', (
+    tester,
+  ) async {
+    // The chat's model lookup completes only after leaving the chat, so no
+    // chat worker starts and its controller stops listening.
+    final directory = Completer<String>();
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (_) => directory.future);
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final omni = AudioController(
+      model: SpeechModel.omni,
+      backend: TestAudioBackend(),
+      microphone: TestMicrophone(),
+      player: TestSpeechPlayer(),
+    );
+    addTearDown(omni.dispose);
+    await omni.load('/prepared');
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: omni)),
+    );
+    await tester.tap(find.text('Text chat'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(omni.phase, AudioPhase.closed);
+    expect(
+      tester.widget<ModelChatPage>(find.byType(ModelChatPage)).model,
+      ExampleModel.omni,
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(ModelChatPage), findsNothing);
+    directory.complete('/unused-omni-chat-test');
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the LFM3-Audio screen offers no text chat', (tester) async {
+    final speech = AudioController(
+      backend: TestAudioBackend(),
+      microphone: TestMicrophone(),
+      player: TestSpeechPlayer(),
+    );
+    addTearDown(speech.dispose);
+    await speech.load('/prepared');
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: speech)),
+    );
+    expect(find.text('Text chat'), findsNothing);
+  });
 }
