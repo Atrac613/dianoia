@@ -121,6 +121,33 @@ streaming states. Text already shown is retained, with continued text in a new
 paragraph. The one-second queue/backpressure limit remains in effect. No full
 microphone recording is saved or retained.
 
+For live translation, select **Live translation (English)**, choose a target
+language under **Translate into** (Japanese, Chinese, Korean, French, Spanish
+or German) and tap **Start live translation**. LiveASR runs exactly as in live
+transcription; each English sentence it finishes is translated as text and
+shown under its source, while the sentence still being spoken appears in
+italics. A sentence is final once its end mark is followed by another word or
+by a context rollover; a long stretch without punctuation is cut at a word
+after 200 characters. **Stop live translation** translates the last sentence.
+Translations follow about a sentence behind the speech and may still arrive
+after stop. **Cancel recording**, backgrounding during capture or route exit
+discards the transcript and its translations.
+
+The translator is a second, text-only copy of the bundle's own language
+backbone (`language/`), loaded through `LocalModel` in its own isolate when
+the mode is chosen; there is nothing extra to download. It runs on the CPU
+kernels with a 512-token context, beside the GPU recognition: LiveASR owns the
+first copy's state, and the GPU backend serves one isolate at a time. The
+weights are memory-mapped, so the copy shares their pages. Each sentence is
+translated on its own with greedy decoding, without earlier sentences as
+context. Speech recognition stays English only.
+
+On an Apple silicon Mac a 13-second, five-sentence clip streamed in real time
+kept LiveASR at real time (GPU or CPU) while the first translation appeared
+6.2 seconds in and the last 1.3 seconds after the clip ended. See the
+[live translation validation](../docs/validation/lfm3-audio-live-translation-2026-11-07.md).
+Translation speed on phones has not been measured.
+
 In **Transcription and TTS** mode, choose Japanese, English or automatic language detection. **Record** requests
 microphone permission only when pressed; **Stop and transcribe** flushes the
 final PCM and displays text. **Cancel recording**, route exit or backgrounding

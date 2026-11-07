@@ -15,6 +15,10 @@
   upright PNG. Speech playback now creates a missing temporary directory.
   Its **Text chat** button opens the same bundle in the text chat, with
   images on any message.
+- The audio preview adds **Live translation (English)**: each sentence LiveASR
+  finishes is translated as text (Japanese, Chinese, Korean, French, Spanish
+  or German) by a text-only copy of the bundle's language backbone, running
+  on the CPU in its own isolate beside the GPU recognition.
 - `Lfm3Tokenizer.addedTokenIn` finds control tokens spelled out in text that
   must stay plain.
 - `Lfm3SpeechVariant` carries each checkpoint's prompt conventions, and

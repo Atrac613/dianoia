@@ -11,6 +11,8 @@ import 'package:dianoia_example/src/speech_player.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dianoia/dianoia.dart';
 
+import 'fake_translation.dart';
+
 class TestMicrophone implements Microphone {
   bool allowed = true;
   Completer<bool>? permission;
@@ -378,6 +380,101 @@ void main() {
       expect(backend.replies, 0);
     },
   );
+
+  group('live translation', () {
+    late FakeTranslation translation;
+    late AudioController live;
+    setUp(() async {
+      translation = FakeTranslation();
+      live = AudioController(
+        backend: backend,
+        microphone: mic,
+        player: player,
+        translation: translation,
+      );
+      await live.load('/prepared');
+    });
+    tearDown(() async {
+      await live.close();
+      live.dispose();
+    });
+
+    test('is offered only for LFM3-Audio', () async {
+      final omni = AudioController(
+        model: SpeechModel.omni,
+        backend: backend,
+        microphone: mic,
+        player: player,
+        translation: translation,
+      );
+      await omni.load('/prepared');
+      omni.setTask(AudioTask.liveTranslation);
+      expect(omni.task, AudioTask.transcription);
+      await omni.close();
+      omni.dispose();
+    });
+
+    test(
+      'translates finished sentences while recording and the rest on stop',
+      () async {
+        live.setTask(AudioTask.liveTranslation);
+        await events();
+        expect(translation.loads, ['/prepared/language']);
+        await live.record();
+        expect(backend.liveInput, isTrue);
+        expect(backend.inputLanguage, 'English');
+        backend.liveText!('Hello there. How');
+        await events();
+        expect(live.translator.segments.single.source, 'Hello there.');
+        expect(live.translator.unfinished(live.transcript), 'How');
+        mic.source!.add(Uint8List(32));
+        await events();
+        backend.finishing = Completer<String>()
+          ..complete('Hello there. How are you');
+        await live.stop();
+        while (live.translator.busy) {
+          await events();
+        }
+        expect(live.phase, AudioPhase.ready);
+        expect(live.translator.segments.map((s) => s.translation), [
+          '[Japanese] Hello there.',
+          '[Japanese] How are you',
+        ]);
+        expect(translation.loads, ['/prepared/language']);
+        expect(player.played, isEmpty);
+      },
+    );
+
+    test(
+      'a failed translator load stops the recording before it starts',
+      () async {
+        translation.failure = StateError('no model');
+        live.setTask(AudioTask.liveTranslation);
+        await events();
+        await live.record();
+        expect(live.phase, AudioPhase.ready);
+        expect(live.error, contains('no model'));
+        expect(mic.starts, 0);
+      },
+    );
+
+    test('cancel discards the transcript and its translations', () async {
+      live.setTask(AudioTask.liveTranslation);
+      await live.record();
+      backend.liveText!('One. Two');
+      await events();
+      expect(live.translator.segments, isNotEmpty);
+      await live.cancel();
+      await events();
+      expect(live.transcript, isEmpty);
+      expect(live.translator.segments, isEmpty);
+    });
+
+    test('closing the controller closes the translator', () async {
+      await live.close();
+      expect(translation.closes, greaterThan(0));
+    });
+  });
 
   test(
     'cancel live transcription discards partial text and ignores late updates',
