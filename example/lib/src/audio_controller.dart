@@ -7,16 +7,21 @@ import 'package:dianoia/dianoia.dart';
 import 'audio_backend.dart';
 import 'audio_worker.dart';
 import 'chat_protocol.dart';
+import 'live_translation.dart';
 import 'microphone.dart';
 import 'pcm16_stream.dart';
 import 'speech_model.dart';
 import 'speech_player.dart';
+import 'translation_worker.dart';
 
 enum AudioPhase {
   needsModel,
   loading,
   installing,
   ready,
+
+  /// Loading the text-only translation model before live translation.
+  preparingTranslator,
   requestingPermission,
   recording,
   finishing,
@@ -33,6 +38,9 @@ enum AudioTask {
   transcription,
   conversation,
   liveTranscription,
+
+  /// LiveASR whose finished English sentences are translated as text.
+  liveTranslation,
 
   /// LFM3-Omni: a typed or spoken question about a chosen photo.
   photoQuestion,
@@ -60,13 +68,19 @@ final class AudioController extends ChangeNotifier {
     AudioBackend? backend,
     Microphone? microphone,
     SpeechPlayer? player,
+    TranslationBackend? translation,
   }) : _backend = backend ?? AudioIsolateBackend(model: model),
        _microphone = microphone ?? RecordMicrophone(),
-       _player = player ?? LocalSpeechPlayer();
+       _player = player ?? LocalSpeechPlayer(),
+       translator = LiveTranslator(translation ?? TranslationIsolateBackend());
   final SpeechModel model;
   final AudioBackend _backend;
   final Microphone _microphone;
   final SpeechPlayer _player;
+
+  /// The translations of [AudioTask.liveTranslation]. Its model, a text-only
+  /// copy of this model's language backbone, loads on first use.
+  final LiveTranslator translator;
 
   /// Clip ASR and voice chat only; LiveASR has no cumulative duration cap.
   static const maxSamples = 30 * 16000;
@@ -75,9 +89,10 @@ final class AudioController extends ChangeNotifier {
   /// LiveASR decodes text after every ~0.96 s block, so input queues while a
   /// block decodes; sustained lag beyond this still fails closed.
   static const maxLiveQueuedSamples = 5 * 16000;
-  int get _queueLimit => _recordingTask == AudioTask.liveTranscription
-      ? maxLiveQueuedSamples
-      : maxQueuedSamples;
+  int get _queueLimit => _live ? maxLiveQueuedSamples : maxQueuedSamples;
+  bool get _live =>
+      _recordingTask == AudioTask.liveTranscription ||
+      _recordingTask == AudioTask.liveTranslation;
   final _queue = ListQueue<Float32List>();
   Pcm16Packetizer? _packetizer;
   StreamSubscription<Uint8List>? _subscription;
@@ -135,13 +150,21 @@ final class AudioController extends ChangeNotifier {
 
   void setTask(AudioTask value) {
     if (phase != AudioPhase.ready || _closing != null) return;
-    if ((value == AudioTask.liveTranscription &&
+    if (((value == AudioTask.liveTranscription ||
+                value == AudioTask.liveTranslation) &&
             !model.supportsLiveTranscription) ||
         (value == AudioTask.photoQuestion && !model.supportsPhotoQuestions)) {
       return;
     }
-    if (_task != value) transcript = '';
+    if (_task != value) {
+      transcript = '';
+      if (_task == AudioTask.liveTranslation) unawaited(translator.reset());
+    }
     _task = value;
+    // Loads the translator while the user gets ready to speak.
+    if (value == AudioTask.liveTranslation && directory != null) {
+      translator.prepare(_languageDirectory).ignore();
+    }
     partialReply = '';
     error = null;
     _notify();
@@ -166,9 +189,12 @@ final class AudioController extends ChangeNotifier {
     _notify();
   }
 
+  String get _languageDirectory => '$directory/language';
+
   double get recordedSeconds => _bytes / 2 / 16000;
   int get queuedSamples => _queuedSamples;
   bool get active => switch (phase) {
+    AudioPhase.preparingTranslator ||
     AudioPhase.requestingPermission ||
     AudioPhase.installing ||
     AudioPhase.recording ||
@@ -319,7 +345,10 @@ final class AudioController extends ChangeNotifier {
     }
     final epoch = ++_epoch;
     _recordingTask = _task;
-    phase = AudioPhase.requestingPermission;
+    final translating = _recordingTask == AudioTask.liveTranslation;
+    phase = translating
+        ? AudioPhase.preparingTranslator
+        : AudioPhase.requestingPermission;
     error = null;
     transcript = '';
     _bytes = 0;
@@ -328,6 +357,14 @@ final class AudioController extends ChangeNotifier {
     _packetizer = Pcm16Packetizer();
     _notify();
     try {
+      if (translating) {
+        await translator.prepare(_languageDirectory);
+        if (!_valid(epoch)) return;
+        await translator.reset();
+        if (!_valid(epoch)) return;
+        phase = AudioPhase.requestingPermission;
+        _notify();
+      }
       final allowed = await _microphone.requestPermission();
       if (!_valid(epoch)) return;
       if (!allowed) {
@@ -338,13 +375,14 @@ final class AudioController extends ChangeNotifier {
         return;
       }
       await _backend.begin(
-        _recordingTask == AudioTask.liveTranscription ? 'English' : language,
+        _live ? 'English' : language,
         conversation: _recordingTask == AudioTask.conversation,
-        live: _recordingTask == AudioTask.liveTranscription,
+        live: _live,
         question: _recordingTask == AudioTask.photoQuestion,
         onLiveText: (text) {
-          if (_valid(epoch) && _recordingTask == AudioTask.liveTranscription) {
+          if (_valid(epoch) && _live) {
             transcript = text;
+            if (translating) translator.update(text);
             _notify();
           }
         },
@@ -368,7 +406,7 @@ final class AudioController extends ChangeNotifier {
           if (_valid(epoch) && phase == AudioPhase.recording) unawaited(stop());
         },
       );
-      _limit = _recordingTask == AudioTask.liveTranscription
+      _limit = _live
           ? null
           : Timer(const Duration(seconds: 30), () => unawaited(stop()));
       _notify();
@@ -382,7 +420,7 @@ final class AudioController extends ChangeNotifier {
         (phase != AudioPhase.recording && phase != AudioPhase.finishing)) {
       return;
     }
-    final live = _recordingTask == AudioTask.liveTranscription;
+    final live = _live;
     final remaining = live ? bytes.length : maxSamples * 2 - _bytes;
     if (remaining <= 0) return;
     final accepted = bytes.length <= remaining
@@ -473,6 +511,10 @@ final class AudioController extends ChangeNotifier {
       final text = await _backend.finish();
       if (!_valid(epoch)) return;
       transcript = text;
+      if (_recordingTask == AudioTask.liveTranslation) {
+        // The last sentence is final once the recording stopped.
+        translator.update(text, flush: true);
+      }
       phase = AudioPhase.ready;
       await _subscription?.cancel();
       _subscription = null;
@@ -590,6 +632,9 @@ final class AudioController extends ChangeNotifier {
     // Interrupt the worker immediately, without waiting for an outstanding ACK.
     final cancelled = _quiet(_backend.cancel());
     final stopped = _quiet(_player.stop());
+    if (_recordingTask == AudioTask.liveTranslation) {
+      unawaited(_quiet(translator.reset()));
+    }
     try {
       await _microphone.stop();
     } catch (e) {
@@ -618,6 +663,7 @@ final class AudioController extends ChangeNotifier {
     final cancelled = _quiet(_backend.cancel());
     final workerClosed = _quiet(_backend.close());
     final playerClosed = _quiet(_player.dispose());
+    final translatorClosed = _quiet(translator.close());
     await _quiet(_microphone.stop());
     await _subscription?.cancel();
     _subscription = null;
@@ -625,6 +671,7 @@ final class AudioController extends ChangeNotifier {
     await _pumping;
     await workerClosed;
     await playerClosed;
+    await translatorClosed;
     await _quiet(_microphone.dispose());
   }
 
@@ -640,6 +687,7 @@ final class AudioController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     unawaited(close());
+    translator.dispose();
     super.dispose();
   }
 }

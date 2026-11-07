@@ -9,6 +9,7 @@ import 'package:dianoia/dianoia.dart';
 import 'audio_controller.dart';
 import 'chat_page.dart';
 import 'image_attachment.dart';
+import 'live_translation_view.dart';
 import 'example_model.dart';
 import 'speech_model.dart';
 
@@ -192,9 +193,12 @@ class AudioTranscriptionView extends StatelessWidget {
               ? 'Preparing the model on this device…'
               : 'Downloading the model…',
         AudioPhase.ready => 'Ready · ${a.backendName ?? ''}',
+        AudioPhase.preparingTranslator => 'Loading the translator…',
         AudioPhase.requestingPermission => 'Requesting microphone access…',
         AudioPhase.recording =>
-          a.task == AudioTask.liveTranscription
+          a.task == AudioTask.liveTranslation
+              ? 'Translating live · ${a.recordedSeconds.toStringAsFixed(1)} seconds'
+              : a.task == AudioTask.liveTranscription
               ? 'Transcribing live · ${a.recordedSeconds.toStringAsFixed(1)} seconds'
               : 'Recording · ${a.recordedSeconds.toStringAsFixed(1)} / 30 seconds',
         AudioPhase.finishing =>
@@ -236,6 +240,7 @@ class AudioTranscriptionView extends StatelessWidget {
                 const SizedBox(height: 24),
                 Text(status),
                 if (a.phase == AudioPhase.loading ||
+                    a.phase == AudioPhase.preparingTranslator ||
                     a.phase == AudioPhase.finishing ||
                     a.phase == AudioPhase.replying ||
                     a.phase == AudioPhase.synthesizing ||
@@ -334,6 +339,11 @@ class AudioTranscriptionView extends StatelessWidget {
                         value: AudioTask.liveTranscription,
                         child: Text('Live transcription (English)'),
                       ),
+                    if (a.model.supportsLiveTranscription)
+                      const DropdownMenuItem(
+                        value: AudioTask.liveTranslation,
+                        child: Text('Live translation (English)'),
+                      ),
                   ],
                   onChanged: ready ? (value) => a.setTask(value!) : null,
                 ),
@@ -355,6 +365,8 @@ class AudioTranscriptionView extends StatelessWidget {
                   ),
                 ] else if (a.task == AudioTask.photoQuestion) ...[
                   _PhotoQuestion(controller: a, enabled: ready),
+                ] else if (a.task == AudioTask.liveTranslation) ...[
+                  LiveTranslationSettings(controller: a, enabled: ready),
                 ] else if (a.task == AudioTask.liveTranscription) ...[
                   const Text(
                     'English LiveASR · Continues until you stop. Words appear about once per second of audio, plus processing time. '
@@ -401,6 +413,8 @@ class AudioTranscriptionView extends StatelessWidget {
                               ? 'Stop and reply'
                               : a.task == AudioTask.liveTranscription
                               ? 'Stop live transcription'
+                              : a.task == AudioTask.liveTranslation
+                              ? 'Stop live translation'
                               : 'Stop and transcribe',
                         ),
                       )
@@ -414,6 +428,8 @@ class AudioTranscriptionView extends StatelessWidget {
                               ? 'Record question'
                               : a.task == AudioTask.liveTranscription
                               ? 'Start live transcription'
+                              : a.task == AudioTask.liveTranslation
+                              ? 'Start live translation'
                               : 'Record',
                         ),
                       ),
@@ -463,7 +479,9 @@ class AudioTranscriptionView extends StatelessWidget {
                       a.partialReply,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
-                ] else if (a.task != AudioTask.conversation &&
+                ] else if (a.task == AudioTask.liveTranslation)
+                  LiveTranslationTranscript(controller: a)
+                else if (a.task != AudioTask.conversation &&
                     a.transcript.isNotEmpty)
                   SelectableText(
                     a.transcript,
