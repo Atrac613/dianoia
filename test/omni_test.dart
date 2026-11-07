@@ -466,7 +466,8 @@ void main() {
       );
       expect(() => Lfm3SpeechSampling.fromGguf(broken), throwsFormatException);
     });
-  });
+    // GgufFile maps files through the native kernels.
+  }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');
 
   test('Q4_0 blocks widen exactly, low nibbles first', () {
     final block = Uint8List(18)

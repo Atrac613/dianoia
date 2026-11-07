@@ -66,21 +66,29 @@ void main() {
     },
   );
 
-  test('HEIC photos are converted to upright PNG at pick time', () async {
-    // 64x48 pixels tagged with EXIF orientation 6 (rotate 90 degrees).
-    final heic = File('test/fixtures/rotated_shapes.heic').readAsBytesSync();
-    expect(isHeif(heic), isTrue);
-    final picked = await pickChatImage(
-      chooseFile: () async => XFile.fromData(heic, name: 'IMG_0001.HEIC'),
-    );
-    expect(picked!.bytes.sublist(1, 4), 'PNG'.codeUnits);
-    final buffer = await ui.ImmutableBuffer.fromUint8List(picked.bytes);
-    final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    expect((descriptor.width, descriptor.height), (48, 64));
-    descriptor.dispose();
-    buffer.dispose();
-    expect(picked.thumbnail!.bytes!.sublist(1, 4), 'PNG'.codeUnits);
+  test(
+    'HEIC photos are converted to upright PNG at pick time',
+    () async {
+      // 64x48 pixels tagged with EXIF orientation 6 (rotate 90 degrees).
+      final heic = File('test/fixtures/rotated_shapes.heic').readAsBytesSync();
+      expect(isHeif(heic), isTrue);
+      final picked = await pickChatImage(
+        chooseFile: () async => XFile.fromData(heic, name: 'IMG_0001.HEIC'),
+      );
+      expect(picked!.bytes.sublist(1, 4), 'PNG'.codeUnits);
+      final buffer = await ui.ImmutableBuffer.fromUint8List(picked.bytes);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      expect((descriptor.width, descriptor.height), (48, 64));
+      descriptor.dispose();
+      buffer.dispose();
+      expect(picked.thumbnail!.bytes!.sublist(1, 4), 'PNG'.codeUnits);
+    },
+    // Flutter decodes HEIC with the platform's codecs, which the Linux and
+    // Windows test hosts lack.
+    skip: Platform.isMacOS ? false : 'HEIC decoding needs macOS codecs',
+  );
 
+  test('unreadable HEIC photos are rejected with a clear message', () async {
     final broken = Uint8List.fromList([
       0, 0, 0, 24, ...'ftypheic'.codeUnits, ...List.filled(12, 0), //
     ]);
