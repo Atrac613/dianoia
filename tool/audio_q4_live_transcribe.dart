@@ -20,7 +20,12 @@ Future<void> main(List<String> args) async {
     throw ArgumentError('expected nonempty mono 16 kHz f32le PCM');
   }
   NativeKernels.load(null);
-  final encoder = Lfm3AudioEncoder.load('$dir/${Lfm3AudioQ4Source.audio.name}');
+  final encoder = Lfm3AudioEncoder.load(speechMmprojIn(dir));
+  if (encoder.config.variant != Lfm3SpeechVariant.audio) {
+    encoder.close();
+    // Omni's GGUF publishes no live-ASR template, unlike LFM3-Audio's.
+    throw UnsupportedError('LiveASR is defined for LFM3-Audio only');
+  }
   RandomAccessFile? reader;
   Lfm3Model? model;
   Lfm3LiveTranscriber? live;

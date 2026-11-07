@@ -1,0 +1,422 @@
+{
+  "source": "https://huggingface.co/LiquidAI/LFM3-Omni-2B/resolve/21d75123f86c1f7ffb4bef1ea202710c4e7ebe67/",
+  "source_sha256": {
+    "chat_template.jinja": "ea74cc1d14319ed436dc0f37632893004d436913113e7605267f2b01694d65e4",
+    "tokenizer.json": "41927bd314d17d7d7fadb44e10cd0919f7b71528d7741596d8cbd15c6945ec44"
+  },
+  "markers": {
+    "<|vision_start|>": 125009,
+    "<|vision_end|>": 125010,
+    "<|image|>": 125030,
+    "<|video|>": 125029,
+    "<|audio|>": 125031,
+    "<|audio_out|>": 125032,
+    "<|audio_start|>": 125012,
+    "<|mixed_start|>": 125015,
+    "<|text_end|>": 125014,
+    "<|im_start|>": 124899,
+    "<|im_end|>": 124900,
+    "<|startoftext|>": 124894,
+    "<think>": 124901,
+    "</think>": 124902
+  },
+  "cases": [
+    {
+      "name": "asr_english",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Perform ASR in English."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "audio"
+            }
+          ]
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>system\nPerform ASR in English.<|im_end|>\n<|im_start|>user\n<|vision_start|><|audio|><|vision_end|><|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        23630,
+        207,
+        116068,
+        11365,
+        58,
+        296,
+        3478,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125031,
+        125010,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
+    },
+    {
+      "name": "asr_auto",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Perform ASR."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "audio"
+            }
+          ]
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>system\nPerform ASR.<|im_end|>\n<|im_start|>user\n<|vision_start|><|audio|><|vision_end|><|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        23630,
+        207,
+        116068,
+        11365,
+        58,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125031,
+        125010,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
+    },
+    {
+      "name": "tts",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Perform TTS in American English using a female voice."
+        },
+        {
+          "role": "user",
+          "content": "The quick brown fox jumps over the lazy dog"
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>system\nPerform TTS in American English using a female voice.<|im_end|>\n<|im_start|>user\nThe quick brown fox jumps over the lazy dog<|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        23630,
+        207,
+        116068,
+        336,
+        9754,
+        296,
+        1972,
+        3478,
+        1492,
+        267,
+        6672,
+        7902,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        597,
+        4104,
+        10299,
+        35886,
+        56085,
+        890,
+        278,
+        45698,
+        4448,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
+    },
+    {
+      "name": "interleaved_audio",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Respond with interleaved text and audio."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "audio"
+            }
+          ]
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>system\nRespond with interleaved text and audio.<|im_end|>\n<|im_start|>user\n<|vision_start|><|audio|><|vision_end|><|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        23630,
+        207,
+        89056,
+        415,
+        117727,
+        2803,
+        309,
+        13551,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125031,
+        125010,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
+    },
+    {
+      "name": "image_text",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "image"
+            },
+            {
+              "type": "text",
+              "text": "Describe this image."
+            }
+          ]
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>user\n<|vision_start|><|image|><|vision_end|>Describe this image.<|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        5922,
+        207,
+        125009,
+        125030,
+        125010,
+        90869,
+        532,
+        4145,
+        22,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
+    },
+    {
+      "name": "image_spoken_question",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Respond in text."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "image"
+            },
+            {
+              "type": "audio"
+            }
+          ]
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>system\nRespond in text.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image|><|vision_end|><|vision_start|><|audio|><|vision_end|><|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        23630,
+        207,
+        89056,
+        296,
+        2803,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125030,
+        125010,
+        125009,
+        125031,
+        125010,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
+    },
+    {
+      "name": "image_follow_up",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Respond in text."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "image"
+            },
+            {
+              "type": "text",
+              "text": "What is in the photo?"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "A red circle and a yellow square."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "audio"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "The circle is on the left."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "And the background?"
+            }
+          ]
+        }
+      ],
+      "text": "<|startoftext|><|im_start|>system\nRespond in text.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image|><|vision_end|>What is in the photo?<|im_end|>\n<|im_start|>assistant\n<think></think>A red circle and a yellow square.<|im_end|>\n<|im_start|>user\n<|vision_start|><|audio|><|vision_end|><|im_end|>\n<|im_start|>assistant\n<think></think>The circle is on the left.<|im_end|>\n<|im_start|>user\nAnd the background?<|im_end|>\n<|im_start|>assistant\n<think></think>",
+      "ids": [
+        124894,
+        124899,
+        23630,
+        207,
+        89056,
+        296,
+        2803,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125030,
+        125010,
+        2992,
+        355,
+        296,
+        278,
+        11196,
+        39,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902,
+        41,
+        2959,
+        13060,
+        309,
+        267,
+        9396,
+        8553,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        125009,
+        125031,
+        125010,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902,
+        597,
+        13060,
+        355,
+        383,
+        278,
+        2690,
+        22,
+        124900,
+        207,
+        124899,
+        5922,
+        207,
+        3982,
+        278,
+        6424,
+        39,
+        124900,
+        207,
+        124899,
+        63514,
+        207,
+        124901,
+        124902
+      ]
+    }
+  ]
+}

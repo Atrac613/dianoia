@@ -7,10 +7,20 @@ import 'package:path_provider/path_provider.dart';
 import 'package:dianoia/dianoia.dart';
 
 import 'audio_controller.dart';
+import 'chat_page.dart';
+import 'image_attachment.dart';
+import 'example_model.dart';
+import 'speech_model.dart';
 
 /// A local-model preview, separate from text/image chat and its download UI.
 class AudioTranscriptionPage extends StatefulWidget {
-  const AudioTranscriptionPage({super.key, this.controller});
+  const AudioTranscriptionPage({
+    super.key,
+    this.model = SpeechModel.audio,
+    this.controller,
+  });
+
+  final SpeechModel model;
 
   /// An already configured controller; the route closes it when leaving.
   final AudioController? controller;
@@ -20,7 +30,8 @@ class AudioTranscriptionPage extends StatefulWidget {
 
 class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
     with WidgetsBindingObserver {
-  late final _audio = widget.controller ?? AudioController();
+  late AudioController _audio =
+      widget.controller ?? AudioController(model: widget.model);
   String? _defaultDirectory, _pathError;
   @override
   void initState() {
@@ -43,10 +54,13 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
       if (!mounted) return;
       final store = '${storeParent.path}/models';
       _audio.storeDirectory = store;
-      final path = parent == null ? null : '${parent.path}/LFM3-Audio-2B-Q4';
+      final model = _audio.model;
+      final path = parent == null
+          ? null
+          : '${parent.path}/${model.directoryName}';
       setState(() => _defaultDirectory = path);
       if (path != null &&
-          await File('$path/language/audio_source.json').exists() &&
+          await File('$path/language/${model.receiptName}').exists() &&
           mounted) {
         await _audio.load(path);
       } else if (mounted) {
@@ -59,11 +73,31 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
 
   Future<void> _choose() async {
     try {
-      final path = await getDirectoryPath(confirmButtonText: 'Use audio model');
+      final path = await getDirectoryPath(confirmButtonText: 'Use this model');
       if (path != null && mounted) await _audio.load(path);
     } catch (e) {
       if (mounted) setState(() => _pathError = '$e');
     }
+  }
+
+  /// The chat runs its own worker, and model workers run one at a time: this
+  /// screen's worker closes before the chat's starts, and a new one loads
+  /// the model again on return.
+  Future<void> _openChat(ExampleModel chat) async {
+    final closed = _audio.close();
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => ModelChatPage(model: chat)));
+    await closed;
+    // A supplied controller belongs to the caller and stays closed.
+    if (!mounted || widget.controller != null) return;
+    final previous = _audio;
+    setState(() {
+      _audio = AudioController(model: widget.model);
+      _pathError = null;
+    });
+    previous.dispose();
+    await _findModel();
   }
 
   @override
@@ -94,7 +128,28 @@ class _AudioTranscriptionPageState extends State<AudioTranscriptionPage>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Audio preview')),
+    appBar: AppBar(
+      title: Text(
+        _audio.model == SpeechModel.omni ? 'Omni preview' : 'Audio preview',
+      ),
+      actions: [
+        if (_audio.model.chatModel case final chat?)
+          ListenableBuilder(
+            listenable: _audio,
+            builder: (context, _) => TextButton.icon(
+              // Not while it records, replies or installs.
+              onPressed: switch (_audio.phase) {
+                AudioPhase.ready ||
+                AudioPhase.needsModel ||
+                AudioPhase.failed => () => _openChat(chat),
+                _ => null,
+              },
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text('Text chat'),
+            ),
+          ),
+      ],
+    ),
     body: AudioTranscriptionView(
       controller: _audio,
       directory: _defaultDirectory,
@@ -130,12 +185,12 @@ class AudioTranscriptionView extends StatelessWidget {
           a.phase == AudioPhase.needsModel || a.phase == AudioPhase.failed;
       final status = switch (a.phase) {
         AudioPhase.needsModel =>
-          'Download LFM3-Audio-2B Q4_0 or choose a prepared model.',
-        AudioPhase.loading => 'Checking and loading the audio model…',
+          'Download ${a.model.name} or choose a prepared model.',
+        AudioPhase.loading => 'Checking and loading the model…',
         AudioPhase.installing =>
           a.installProgress?.stage == InstallStage.building
               ? 'Preparing the model on this device…'
-              : 'Downloading the audio model…',
+              : 'Downloading the model…',
         AudioPhase.ready => 'Ready · ${a.backendName ?? ''}',
         AudioPhase.requestingPermission => 'Requesting microphone access…',
         AudioPhase.recording =>
@@ -146,12 +201,15 @@ class AudioTranscriptionView extends StatelessWidget {
           a.task == AudioTask.conversation
               ? 'Finishing the voice message…'
               : 'Finishing transcription…',
-        AudioPhase.replying => 'Generating a spoken reply…',
+        AudioPhase.replying =>
+          a.task == AudioTask.photoQuestion
+              ? 'Looking at the photo and answering…'
+              : 'Generating a spoken reply…',
         AudioPhase.resettingConversation => 'Starting a new conversation…',
         AudioPhase.synthesizing => 'Generating speech…',
         AudioPhase.playing => 'Playing speech…',
         AudioPhase.cancelling => 'Stopping…',
-        AudioPhase.failed => 'The audio model could not be loaded.',
+        AudioPhase.failed => 'The model could not be loaded.',
         AudioPhase.closed => 'Closed',
       };
       return SafeArea(
@@ -162,13 +220,17 @@ class AudioTranscriptionView extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               children: [
                 Text(
-                  'LFM3-Audio-2B Q4_0',
+                  a.model.name,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Experimental · Live transcription continues until stopped. Other recording modes allow up to 30 seconds. '
-                  'Or enter text to generate speech. Audio stays on this device. '
+                Text(
+                  'Experimental · '
+                  '${a.model.supportsLiveTranscription ? 'Live transcription continues until stopped. Other recording modes allow' : 'Recordings allow'} '
+                  'up to 30 seconds. '
+                  '${a.model.supportsPhotoQuestions ? 'Ask about a photo by voice or text, or enter' : 'Or enter'} '
+                  'text to generate speech. '
+                  '${a.model.supportsPhotoQuestions ? 'Audio and photos stay' : 'Audio stays'} on this device. '
                   'Recordings are not saved; generated speech uses a temporary playback file.',
                 ),
                 const SizedBox(height: 24),
@@ -183,12 +245,10 @@ class AudioTranscriptionView extends StatelessWidget {
                 ],
                 if (needsModel && a.storeDirectory != null) ...[
                   const SizedBox(height: 16),
-                  const Text(
-                    '1.23 GB to download from Hugging Face. Allow at least 4 GB of free storage during setup; about 1.30 GB remains installed.',
-                  ),
+                  Text(a.model.setupLabel),
                   const SizedBox(height: 8),
-                  const Text('License: LFM Open License v1.0'),
-                  SelectableText(AudioGgufSpec.lfm3AudioQ4.licenseUrl),
+                  Text('License: ${a.model.spec.license}'),
+                  SelectableText(a.model.spec.licenseUrl),
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: a.downloadModel,
@@ -255,19 +315,25 @@ class AudioTranscriptionView extends StatelessWidget {
                 DropdownButtonFormField<AudioTask>(
                   initialValue: a.task,
                   decoration: const InputDecoration(labelText: 'Audio mode'),
-                  items: const [
-                    DropdownMenuItem(
+                  items: [
+                    if (a.model.supportsPhotoQuestions)
+                      const DropdownMenuItem(
+                        value: AudioTask.photoQuestion,
+                        child: Text('Ask about a photo'),
+                      ),
+                    const DropdownMenuItem(
                       value: AudioTask.transcription,
                       child: Text('Transcription and TTS'),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: AudioTask.conversation,
                       child: Text('Voice conversation (English)'),
                     ),
-                    DropdownMenuItem(
-                      value: AudioTask.liveTranscription,
-                      child: Text('Live transcription (English)'),
-                    ),
+                    if (a.model.supportsLiveTranscription)
+                      const DropdownMenuItem(
+                        value: AudioTask.liveTranscription,
+                        child: Text('Live transcription (English)'),
+                      ),
                   ],
                   onChanged: ready ? (value) => a.setTask(value!) : null,
                 ),
@@ -287,6 +353,8 @@ class AudioTranscriptionView extends StatelessWidget {
                       label: const Text('New conversation'),
                     ),
                   ),
+                ] else if (a.task == AudioTask.photoQuestion) ...[
+                  _PhotoQuestion(controller: a, enabled: ready),
                 ] else if (a.task == AudioTask.liveTranscription) ...[
                   const Text(
                     'English LiveASR · Continues until you stop. Words appear about once per second of audio, plus processing time. '
@@ -328,7 +396,8 @@ class AudioTranscriptionView extends StatelessWidget {
                         onPressed: a.stop,
                         icon: const Icon(Icons.stop),
                         label: Text(
-                          a.task == AudioTask.conversation
+                          a.task == AudioTask.conversation ||
+                                  a.task == AudioTask.photoQuestion
                               ? 'Stop and reply'
                               : a.task == AudioTask.liveTranscription
                               ? 'Stop live transcription'
@@ -340,7 +409,8 @@ class AudioTranscriptionView extends StatelessWidget {
                         onPressed: ready ? a.record : null,
                         icon: const Icon(Icons.mic),
                         label: Text(
-                          a.task == AudioTask.conversation
+                          a.task == AudioTask.conversation ||
+                                  a.task == AudioTask.photoQuestion
                               ? 'Record question'
                               : a.task == AudioTask.liveTranscription
                               ? 'Start live transcription'
@@ -363,7 +433,8 @@ class AudioTranscriptionView extends StatelessWidget {
                       ),
                     if (a.phase == AudioPhase.replying ||
                         (a.phase == AudioPhase.playing &&
-                            a.task == AudioTask.conversation))
+                            (a.task == AudioTask.conversation ||
+                                a.task == AudioTask.photoQuestion)))
                       TextButton(
                         onPressed: a.cancel,
                         child: const Text('Stop reply'),
@@ -371,7 +442,29 @@ class AudioTranscriptionView extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 24),
-                if (a.task != AudioTask.conversation && a.transcript.isNotEmpty)
+                if (a.task == AudioTask.photoQuestion) ...[
+                  for (final exchange in a.photoExchanges) ...[
+                    Text(
+                      [
+                        if (exchange.spoken) 'Spoken question',
+                        if (exchange.question.isNotEmpty) exchange.question,
+                      ].join(' · '),
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      exchange.answer,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                  if (a.partialReply.isNotEmpty)
+                    SelectableText(
+                      a.partialReply,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                ] else if (a.task != AudioTask.conversation &&
+                    a.transcript.isNotEmpty)
                   SelectableText(
                     a.transcript,
                     style: Theme.of(context).textTheme.bodyLarge,
@@ -503,4 +596,113 @@ class _SpeechComposerState extends State<_SpeechComposer> {
       ),
     ],
   );
+}
+
+class _PhotoQuestion extends StatefulWidget {
+  const _PhotoQuestion({required this.controller, required this.enabled});
+  final AudioController controller;
+  final bool enabled;
+  @override
+  State<_PhotoQuestion> createState() => _PhotoQuestionState();
+}
+
+class _PhotoQuestionState extends State<_PhotoQuestion> {
+  late final _text = TextEditingController(
+    text: widget.controller.photoQuestion,
+  );
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick() async {
+    try {
+      final image = await pickChatImage();
+      if (image != null) widget.controller.setPhoto(image);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.controller;
+    // The controller clears an answered question; keep the field in step.
+    if (a.photoQuestion.isEmpty && _text.text.isNotEmpty) _text.clear();
+    final thumbnail = a.photo?.thumbnail?.bytes;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Choose a photo, then type a question or record one. Ask again to '
+          'follow up; earlier answers stay in context until the photo changes. '
+          'The photo is reduced to at most 256 image tokens and encoded once, '
+          'which takes several seconds on the CPU.',
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            if (thumbnail != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(thumbnail, height: 96),
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: widget.enabled ? _pick : null,
+              icon: const Icon(Icons.photo_outlined),
+              label: Text(a.photo == null ? 'Choose photo' : 'Change photo'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _text,
+          enabled: widget.enabled,
+          minLines: 1,
+          maxLines: 3,
+          maxLength: 500,
+          onChanged: (value) => a.photoQuestion = value,
+          decoration: const InputDecoration(
+            labelText: 'Question (optional with a recording)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Spoken reply'),
+          subtitle: const Text('Answer with interleaved text and speech'),
+          value: a.speakReply,
+          onChanged: widget.enabled ? a.setSpeakReply : null,
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonalIcon(
+            onPressed: widget.enabled && a.photo != null ? a.askTyped : null,
+            icon: const Icon(Icons.send),
+            label: Text(
+              a.photoExchanges.isEmpty ? 'Ask in text' : 'Follow up in text',
+            ),
+          ),
+        ),
+        if (a.photoExchanges.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: widget.enabled ? a.newPhotoConversation : null,
+              icon: const Icon(Icons.add_comment_outlined),
+              label: const Text('New conversation'),
+            ),
+          ),
+      ],
+    );
+  }
 }

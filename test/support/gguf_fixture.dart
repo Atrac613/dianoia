@@ -204,3 +204,12 @@ void writeVisionGgufFixture(String model, String language, String projector) {
     'clip.vision.projector_type': 'lfm3vl',
   }, vision);
 }
+
+/// LFM3-Audio's published speech sampling metadata, which every official
+/// mmproj carries and the generator requires.
+const lfm3AudioSamplingMetadata = <String, Object>{
+  'clip.gen.audio.sampling.temp': 1.0,
+  'clip.gen.audio.sampling.top_k': 128,
+  'clip.gen.audio.sampling.penalty_repeat': 1.1,
+  'clip.gen.audio.sampling.penalty_last_n': 4096,
+};

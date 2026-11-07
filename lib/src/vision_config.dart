@@ -31,6 +31,27 @@ final class Lfm3VlConfig {
   factory Lfm3VlConfig.fromJson(Map<String, Object?> json) {
     final fields = _Fields(json, 'config.json');
     fields.requireValue('model_type', 'lfm3_vl');
+    return Lfm3VlConfig._parse(
+      fields,
+      fields.get<int>('vision_start_token_id'),
+      fields.get<int>('vision_end_token_id'),
+    );
+  }
+
+  /// LFM3-Omni's config.json carries the same text, vision and projector
+  /// sections, but not the span marker IDs: the tokenizer defines those.
+  /// Audio sections are validated by the audio loaders, not here.
+  factory Lfm3VlConfig.fromOmniJson(
+    Map<String, Object?> json, {
+    required int visionStartTokenId,
+    required int visionEndTokenId,
+  }) {
+    final fields = _Fields(json, 'config.json');
+    fields.requireValue('model_type', 'lfm3_omni');
+    return Lfm3VlConfig._parse(fields, visionStartTokenId, visionEndTokenId);
+  }
+
+  factory Lfm3VlConfig._parse(_Fields fields, int start, int end) {
     fields.requireValue('tie_word_embeddings', true);
     fields.requireValue('projector_bias', true);
     fields.requireValue('projector_hidden_act', 'gelu');
@@ -41,13 +62,10 @@ final class Lfm3VlConfig {
       throw const FormatException('projector and vision spatial merge differ');
     }
     final tokenIds = [
-      for (final key in [
-        'image_token_id',
-        'video_token_id',
-        'vision_start_token_id',
-        'vision_end_token_id',
-      ])
-        fields.get<int>(key),
+      fields.get<int>('image_token_id'),
+      fields.get<int>('video_token_id'),
+      start,
+      end,
     ];
     if (tokenIds.toSet().length != tokenIds.length ||
         tokenIds.any((id) => id < 0 || id >= text.vocabSize)) {

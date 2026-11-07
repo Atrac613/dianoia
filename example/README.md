@@ -184,6 +184,46 @@ flutter run -d macos --dart-define=DIANOIA_MODEL_MIRROR=http://127.0.0.1:8642
 
 Mirrors change only URLs; all published sizes and hashes still apply.
 
+## Omni preview
+
+Select **LFM3-Omni-2B Q4_0** on the root screen. Setup works like the audio
+preview: 1.34 GB from Hugging Face, verified by SHA-256, with the Q4 language
+cache prepared on device (allow 4.2 GB free; about 1.41 GB remains). The
+installed bundle's `omni_bundle.json` pins every payload's hash.
+
+Under **Audio mode**, **Ask about a photo** is Omni's own mode. Choose a PNG,
+JPEG or HEIC photo, then either type a question and tap **Ask in text**, or tap
+**Record question**, speak, and **Stop and reply**; a typed question is sent
+along with a recording. With **Spoken reply** on, the answer is interleaved
+text and speech and plays after generation; otherwise it is text. The photo
+is reduced to at most 256 image tokens and encoded on the CPU once, which
+takes a few seconds. Ask again (**Follow up in text** or another recording)
+to continue: every question re-renders the whole conversation with the
+official template, replaying the photo's encoded rows, earlier spoken
+questions and earlier answers as text, so follow-ups skip the image encoder
+and the **Spoken reply** setting may change between them. A new photo or
+**New conversation** starts over; a conversation that no longer fits the
+context asks for a new one.
+
+**Text chat** in the title bar opens the same bundle in the text chat used
+by the other language models. Model workers run one at a time, so the
+preview's worker closes first and loads the model again when you come back.
+In the chat, type messages, attach a PNG, JPEG or HEIC image to
+any of them, stop a reply, or start a new chat. Replies are text only. Like
+photo questions, every message re-renders the whole conversation, replaying
+earlier images from their encoded rows, so an image is encoded once. The chat
+and the preview share one installed bundle and one sideload folder. A typed
+message or question that spells a control token such as `<|im_end|>` is
+refused rather than tokenized as one.
+
+**Transcription and TTS** and **Voice conversation (English)** behave as in
+the audio preview, with Omni's prompt conventions and sampling. **Live
+transcription** is offered for LFM3-Audio only. A prepared research folder
+from `dart run tool/prepare_omni_q4.dart` can be chosen or sideloaded under
+the `LFM3-Omni-2B-Q4` folder, with the layout `language/`,
+`mmproj-LFM3-Omni-2B-Q4_0.gguf`, `omni_config.json` and
+`processor_config.json`. See the [Omni notes](../docs/lfm3_omni_support.md).
+
 ## Text and image model setup
 
 The text model is not bundled. Without one the app offers to download it,
@@ -277,7 +317,12 @@ chat shows image reading, encoder-stage progress, and reply preparation. An
 empty model response is reported as an error instead of leaving a spinner.
 
 The VL chat's **Attach image** button opens the native file picker for one
-PNG/JPEG (up to 32 MiB). The draft shows a preview and a remove button. Send it
+PNG, JPEG or HEIC image (up to 32 MiB). HEIC and HEIF photos, the iPhone
+camera default, are decoded by the platform codec with their orientation
+applied and converted to a PNG of at most 2048 pixels on the long side, since
+the worker reads PNG and JPEG only. Where the platform codec cannot read HEIC,
+the picker says so; this was checked on macOS only. The draft shows a
+preview and a remove button. Send it
 with a question or by itself. Sent images appear in the conversation; later
 text questions retain the visual context. New chat clears that context and
 the draft. History retains only a PNG thumbnail of at most 240 by 240 pixels

@@ -1,3 +1,32 @@
+## Unreleased
+
+- Experimental LFM3-Omni-2B Q4_0 under `package:dianoia/lab.dart`. One turn
+  can mix text, images, audio clips and a video with its soundtrack
+  (`prepareOmniPrompt`, `Lfm3VideoProcessor`), answered in text, speech or
+  interleaved text and speech (`decodeSpeechReply`). The LFM3-Audio
+  transcription, speech and conversation APIs also run Omni.
+  `OmniGgufSpec.lfm3OmniQ4` installs the official pair with `ModelStore`;
+  `tool/prepare_omni_q4.dart` and `tool/omni_q4_chat.dart` are the research
+  tools. LiveASR stays LFM3-Audio only.
+- The Flutter example adds an Omni preview with an **Ask about a photo** mode,
+  by voice or text, with an optional spoken reply, and follow-up questions
+  that keep the photo and earlier answers in context. Its photo picker, shared
+  with the VL chat, also accepts HEIC and HEIF photos and converts them to
+  upright PNG. Speech playback now creates a missing temporary directory.
+  Its **Text chat** button opens the same bundle in the text chat, with
+  images on any message.
+- `Lfm3Tokenizer.addedTokenIn` finds control tokens spelled out in text that
+  must stay plain.
+- `Lfm3SpeechVariant` carries each checkpoint's prompt conventions, and
+  `Lfm3SpeechSampling` reads the speech sampling defaults from the mmproj.
+  The generator's `sampleFrame` uses those defaults when an option is
+  omitted, including Omni's 64-frame repetition window.
+- `loadVisionEncoderGguf` loads the vision tower straight from an mmproj,
+  keeping Q4_0 matrices native, and vision attention runs as batched matrix
+  products: an Omni 640×480 image encodes in about 9.5 s instead of 72 s.
+  The VL tower uses the same attention. `Lfm3VlConfig.fromOmniJson` parses
+  Omni's configuration.
+
 ## 0.2.0
 
 - Chat about images with LFM3-VL-2B. `LocalVisionModel` loads a VL

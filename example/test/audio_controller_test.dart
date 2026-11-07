@@ -3,8 +3,10 @@ import 'dart:typed_data';
 
 import 'package:dianoia_example/src/audio_backend.dart';
 import 'package:dianoia_example/src/audio_controller.dart';
+import 'package:dianoia_example/src/chat_protocol.dart';
 import 'package:dianoia_example/src/microphone.dart';
 import 'package:dianoia_example/src/pcm16_stream.dart';
+import 'package:dianoia_example/src/speech_model.dart';
 import 'package:dianoia_example/src/speech_player.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dianoia/dianoia.dart';
@@ -76,16 +78,42 @@ class TestAudioBackend implements AudioBackend {
     String? language, {
     bool conversation = false,
     bool live = false,
+    bool question = false,
     void Function(String)? onLiveText,
   }) async {
     begins++;
+    questionInput = question;
     conversationInput = conversation;
     liveInput = live;
     liveText = onLiveText;
     inputLanguage = language;
   }
 
-  bool liveInput = false;
+  bool liveInput = false, questionInput = false;
+  final asks = <(String?, bool, bool)>[];
+  final askContexts = <(Uint8List?, int)>[];
+  Uint8List askWav = Uint8List(0);
+  String askAnswer = 'A red circle.';
+
+  @override
+  Future<AudioVoiceReply> askAboutPhoto(
+    Uint8List? image, {
+    String? text,
+    required bool spoken,
+    required bool speak,
+    int previousTurns = 0,
+    required void Function(String) onText,
+  }) async {
+    asks.add((text, spoken, speak));
+    askContexts.add((image, previousTurns));
+    onText('A red');
+    return AudioVoiceReply(
+      askAnswer,
+      askWav,
+      previousTurns + (askAnswer.isEmpty ? 0 : 1),
+    );
+  }
+
   String? inputLanguage;
   void Function(String)? liveText;
 
@@ -206,6 +234,109 @@ void main() {
     await audio.close();
     audio.dispose();
   });
+  group('LFM3-Omni photo questions', () {
+    late AudioController omni;
+    final photo = ImageAttachment('photo.png', Uint8List.fromList([1]));
+    setUp(() async {
+      omni = AudioController(
+        model: SpeechModel.omni,
+        backend: backend,
+        microphone: mic,
+        player: player,
+      );
+      await omni.load('/prepared');
+    });
+    tearDown(() async {
+      await omni.close();
+      omni.dispose();
+    });
+
+    test('typed question answers in text without playback', () async {
+      omni.setTask(AudioTask.photoQuestion);
+      expect(omni.task, AudioTask.photoQuestion);
+      await omni.askTyped();
+      expect(omni.error, isNotNull);
+      expect(backend.asks, isEmpty);
+      omni.setPhoto(photo);
+      omni.photoQuestion = '  What is it? ';
+      await omni.askTyped();
+      expect(backend.asks, [('What is it?', false, false)]);
+      expect(omni.photoAnswer, 'A red circle.');
+      expect(omni.phase, AudioPhase.ready);
+      expect(player.played, isEmpty);
+    });
+
+    test(
+      'follow-ups send only the turn count until the photo changes',
+      () async {
+        omni.setTask(AudioTask.photoQuestion);
+        omni.setPhoto(photo);
+        omni.photoQuestion = 'What is it?';
+        await omni.askTyped();
+        expect(omni.photoQuestion, isEmpty, reason: 'answered questions clear');
+        omni.photoQuestion = 'Which color?';
+        await omni.askTyped();
+        expect(backend.askContexts, [(photo.bytes, 0), (null, 1)]);
+        expect(omni.photoExchanges.map((e) => (e.question, e.answer)), [
+          ('What is it?', 'A red circle.'),
+          ('Which color?', 'A red circle.'),
+        ]);
+        omni.newPhotoConversation();
+        expect(omni.photoExchanges, isEmpty);
+        omni.photoQuestion = 'Again?';
+        await omni.askTyped();
+        omni.setPhoto(ImageAttachment('other.png', Uint8List.fromList([2])));
+        expect(omni.photoAnswer, isEmpty);
+        omni.photoQuestion = 'And this?';
+        await omni.askTyped();
+        expect(backend.askContexts.skip(2).map((c) => (c.$1?.first, c.$2)), [
+          (1, 0),
+          (2, 0),
+        ]);
+      },
+    );
+
+    test('an empty answer is reported and keeps the question', () async {
+      omni.setTask(AudioTask.photoQuestion);
+      omni.setPhoto(photo);
+      omni.photoQuestion = 'What is it?';
+      backend.askAnswer = '';
+      await omni.askTyped();
+      expect(omni.error, isNotNull);
+      expect(omni.photoExchanges, isEmpty);
+      expect(omni.photoQuestion, 'What is it?');
+      expect(omni.phase, AudioPhase.ready);
+      backend.askAnswer = 'A red circle.';
+      await omni.askTyped();
+      expect(omni.error, isNull);
+      expect(backend.askContexts.map((c) => c.$2), [0, 0]);
+    });
+
+    test('spoken question records, then plays a spoken answer', () async {
+      omni.setTask(AudioTask.photoQuestion);
+      await omni.record();
+      expect(omni.phase, AudioPhase.ready, reason: 'needs a photo first');
+      omni.setPhoto(photo);
+      omni.setSpeakReply(true);
+      backend.askWav = Uint8List.fromList([9]);
+      await omni.record();
+      expect(backend.questionInput, isTrue);
+      mic.source!.add(Uint8List(3200));
+      await events();
+      await omni.stop();
+      expect(backend.asks, [(null, true, true)]);
+      expect(player.played.single, [9]);
+      expect(omni.phase, AudioPhase.ready);
+    });
+
+    test('live transcription is offered only for LFM3-Audio', () {
+      omni.setTask(AudioTask.liveTranscription);
+      expect(omni.task, AudioTask.transcription);
+      audio.setTask(AudioTask.photoQuestion);
+      expect(audio.task, AudioTask.transcription);
+    });
+  });
+
   test(
     'live recording accepts more than 30 seconds of samples without auto-stop',
     () async {

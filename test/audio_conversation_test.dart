@@ -65,7 +65,10 @@ void main() {
               as Map;
       writeTestGguf(
         '${root.path}/audio.gguf',
-        (g['metadata'] as Map).cast<String, Object>(),
+        {
+          ...((g['metadata'] as Map).cast<String, Object>()),
+          ...lfm3AudioSamplingMetadata,
+        },
         [
           for (final t in g['tensors'] as List)
             (

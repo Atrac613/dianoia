@@ -15,6 +15,8 @@ import 'audio_bundle.dart';
 import 'audio_gguf.dart';
 import 'gguf.dart';
 import 'native.dart';
+import 'omni_bundle.dart';
+import 'omni_gguf.dart';
 import 'quant.dart';
 import 'vision_backbone.dart';
 import 'vision_bundle.dart';
@@ -143,6 +145,72 @@ final class AudioGgufSpec extends InstallableModel {
     licenseFile: Lfm3AudioQ4Source.license,
     installedBytes: 1301000000,
     setupBytes: 4000000000,
+  );
+}
+
+/// Official paired LFM3-Omni Q4_0 sources, prepared on device. The bundle
+/// holds `language/`, the original mmproj, `omni_config.json` and
+/// `processor_config.json`; the experimental Omni lab APIs consume it.
+final class OmniGgufSpec extends InstallableModel {
+  const OmniGgufSpec({
+    required this.id,
+    required this.name,
+    required this.language,
+    required this.mmproj,
+    required this.config,
+    required this.processor,
+    required this.tokenizer,
+    required this.licenseFile,
+    this.license = 'LFM Open License v1.0',
+    this.licenseUrl =
+        'https://huggingface.co/LiquidAI/LFM3-Omni-2B/blob/21d75123f86c1f7ffb4bef1ea202710c4e7ebe67/LICENSE',
+    this.installedBytes,
+    this.setupBytes,
+  });
+  @override
+  final String id, name, license, licenseUrl;
+  @override
+  final int? installedBytes, setupBytes;
+  final RemoteFile language, mmproj, config, processor, tokenizer, licenseFile;
+  @override
+  List<RemoteFile> get files => [
+    config,
+    processor,
+    tokenizer,
+    licenseFile,
+    language,
+    mmproj,
+  ];
+  @override
+  OmniGgufSpec fromMirror(String baseUrl) {
+    final at = _mirrorFiles(baseUrl);
+    return OmniGgufSpec(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
+      language: at(language),
+      mmproj: at(mmproj),
+      config: at(config),
+      processor: at(processor),
+      tokenizer: at(tokenizer),
+      licenseFile: at(licenseFile),
+    );
+  }
+
+  static const lfm3OmniQ4 = OmniGgufSpec(
+    id: 'lfm3-omni-2b-q4',
+    name: 'LFM3-Omni-2B Q4_0',
+    language: Lfm3OmniQ4Source.language,
+    mmproj: Lfm3OmniQ4Source.mmproj,
+    config: Lfm3OmniQ4Source.config,
+    processor: Lfm3OmniQ4Source.processorConfig,
+    tokenizer: Lfm3OmniQ4Source.tokenizer,
+    licenseFile: Lfm3OmniQ4Source.license,
+    installedBytes: 1411000000,
+    setupBytes: 4200000000,
   );
 }
 
@@ -586,6 +654,9 @@ final class ModelStore {
     if (model is AudioGgufSpec) {
       return audioBundleIsInstalled(bundle, model.files, model.audio.name);
     }
+    if (model is OmniGgufSpec) {
+      return omniBundleIsInstalled(bundle, model.files, model.mmproj.name);
+    }
     if (model is VisionModelSpec) {
       final manifest = File('$bundle/vl_bundle.json');
       final pinned = model.files.first;
@@ -628,6 +699,7 @@ final class ModelStore {
   /// imports prequantized QAD files with about 5 GB peak setup storage.
   /// [AudioGgufSpec] imports paired Q4 audio files with about 4 GB setup storage;
   /// cancellation waits for conversion and keeps downloads for a retry.
+  /// [OmniGgufSpec] does the same for the Omni pair, with about 4.2 GB.
   Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
     _checkId(model.id);
     if (model is AudioGgufSpec &&
@@ -640,6 +712,19 @@ final class ModelStore {
             ))) {
       throw ArgumentError(
         'Audio GGUF files need five distinct safe names and canonical metadata',
+      );
+    }
+    if (model is OmniGgufSpec &&
+        (model.config.name != 'omni_config.json' ||
+            model.processor.name != 'processor_config.json' ||
+            model.tokenizer.name != 'tokenizer.json' ||
+            model.licenseFile.name != 'LICENSE' ||
+            model.files.map((f) => f.name).toSet().length != 6 ||
+            model.files.any(
+              (f) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(f.name),
+            ))) {
+      throw ArgumentError(
+        'Omni GGUF files need six distinct safe names and canonical metadata',
       );
     }
     if (model is VisionCheckpointSpec) {
@@ -693,13 +778,14 @@ final class ModelStore {
         if (!isInstalled(model)) {
           if ((model is VisionModelSpec ||
                   model is VisionGgufSpec ||
-                  model is AudioGgufSpec) &&
+                  model is AudioGgufSpec ||
+                  model is OmniGgufSpec) &&
               Directory(bundlePath(model)).existsSync()) {
             throw StateError(
               'installed model manifest differs; remove ${model.id} before replacing it',
             );
           }
-          if (model is AudioGgufSpec) {
+          if (model is AudioGgufSpec || model is OmniGgufSpec) {
             final stale = Directory('${bundlePath(model)}.partial');
             if (stale.existsSync()) stale.deleteSync(recursive: true);
           }
@@ -745,11 +831,19 @@ final class ModelStore {
             await _verifyVision(downloads.path);
             if (cancelled) return;
             downloads.renameSync(bundlePath(model));
-          } else if (model is AudioGgufSpec) {
+          } else if (model is AudioGgufSpec || model is OmniGgufSpec) {
             final partial = Directory('${bundlePath(model)}.partial');
             try {
               if (partial.existsSync()) partial.deleteSync(recursive: true);
-              await _buildAudio(model, downloads.path, partial.path);
+              if (model is OmniGgufSpec) {
+                await _buildOmni(model, downloads.path, partial.path);
+              } else {
+                await _buildAudio(
+                  model as AudioGgufSpec,
+                  downloads.path,
+                  partial.path,
+                );
+              }
               if (cancelled) return;
               partial.renameSync(bundlePath(model));
               await downloads.delete(recursive: true);
@@ -839,6 +933,20 @@ final class ModelStore {
       downloads,
       model.language.name,
       model.audio.name,
+      model.files,
+      bundle,
+    ),
+  );
+
+  static Future<void> _buildOmni(
+    OmniGgufSpec model,
+    String downloads,
+    String bundle,
+  ) => Isolate.run(
+    () => buildOmniGgufBundle(
+      downloads,
+      model.language.name,
+      model.mmproj.name,
       model.files,
       bundle,
     ),

@@ -125,7 +125,7 @@ class ChatController extends ChangeNotifier {
         replying ||
         (text.trim().isEmpty && image == null) ||
         (image != null &&
-            (!model.isVision ||
+            (!model.acceptsImages ||
                 image.bytes.length > ImageAttachment.maxBytes))) {
       return false;
     }

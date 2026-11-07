@@ -397,6 +397,25 @@ List<String> importGguf(String ggufPath, String hfDir, String outDir) {
   }
 }
 
+/// Widens [values] weights of raw GGUF Q4_0 blocks (half scale, then 16
+/// nibble bytes, low nibbles first) to float32, as ggml's dequantize_row_q4_0.
+Float32List dequantizeQ4_0(Uint8List blocks, int values) {
+  if (values % 32 != 0 || blocks.length != values ~/ 32 * 18) {
+    throw ArgumentError('Q4_0 data does not hold $values values');
+  }
+  final out = Float32List(values);
+  for (var b = 0; b < values ~/ 32; b++) {
+    final at = 18 * b;
+    final d = halfToDouble(blocks[at] | blocks[at + 1] << 8);
+    for (var k = 0; k < 16; k++) {
+      final byte = blocks[at + 2 + k];
+      out[32 * b + k] = d * ((byte & 15) - 8);
+      out[32 * b + k + 16] = d * ((byte >> 4) - 8);
+    }
+  }
+  return out;
+}
+
 Float32List _dequantizeQ4(CachedMatrix m) {
   final out = Float32List(m.rows * m.cols);
   final q = m.qsBytes, s = m.scaleBytes;

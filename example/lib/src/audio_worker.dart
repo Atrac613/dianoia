@@ -9,13 +9,17 @@ import 'package:dianoia/lab.dart';
 
 import 'audio_backend.dart';
 import 'model_worker_gate.dart';
+import 'omni_conversation.dart';
+import 'speech_model.dart';
 
 /// Request/reply transport. One worker owns the audio and language models.
 final class AudioIsolateBackend implements AudioBackend {
   AudioIsolateBackend({
+    this.model = SpeechModel.audio,
     this.useGpu = true,
     this.mirror = const String.fromEnvironment('DIANOIA_MODEL_MIRROR'),
   });
+  final SpeechModel model;
   final bool useGpu;
   final String mirror;
   void Function(InstallProgress)? _progress;
@@ -90,7 +94,7 @@ final class AudioIsolateBackend implements AudioBackend {
       if (_closed) throw StateError('Audio worker was closed');
       await Isolate.spawn(
         _runAudioWorker,
-        (events.sendPort, useGpu, mirror),
+        (events.sendPort, model, useGpu, mirror),
         onError: errors.sendPort,
         onExit: exit.sendPort,
         errorsAreFatal: true,
@@ -160,9 +164,10 @@ final class AudioIsolateBackend implements AudioBackend {
     String? language, {
     bool conversation = false,
     bool live = false,
+    bool question = false,
     void Function(String)? onLiveText,
   }) async {
-    if (conversation && live) {
+    if ([conversation, live, question].where((v) => v).length > 1) {
       throw ArgumentError('Choose one audio input mode');
     }
     _liveText = live ? onLiveText : null;
@@ -171,6 +176,7 @@ final class AudioIsolateBackend implements AudioBackend {
         'language': language,
         'conversation': conversation,
         'live': live,
+        'question': question,
       });
     } catch (_) {
       _liveText = null;
@@ -188,6 +194,31 @@ final class AudioIsolateBackend implements AudioBackend {
     _replyText = onText;
     try {
       return await _request('finishConversation') as AudioVoiceReply;
+    } finally {
+      _replyText = null;
+    }
+  }
+
+  @override
+  Future<AudioVoiceReply> askAboutPhoto(
+    Uint8List? image, {
+    String? text,
+    required bool spoken,
+    required bool speak,
+    int previousTurns = 0,
+    required void Function(String) onText,
+  }) async {
+    if (_replyText != null) throw StateError('A reply is already generating');
+    _replyText = onText;
+    try {
+      return await _request('ask', {
+            'image': image,
+            'text': text,
+            'spoken': spoken,
+            'speak': speak,
+            'previousTurns': previousTurns,
+          })
+          as AudioVoiceReply;
     } finally {
       _replyText = null;
     }
@@ -259,11 +290,21 @@ final class AudioIsolateBackend implements AudioBackend {
 /// Reaching it fails instead of returning a silently truncated transcript.
 const _maxTranscriptTokens = 256;
 
-Future<void> _runAudioWorker((SendPort, bool, String) args) async {
-  final (out, useGpu, mirror) = args;
-  final spec = mirror.isEmpty
-      ? AudioGgufSpec.lfm3AudioQ4
-      : AudioGgufSpec.lfm3AudioQ4.fromMirror(mirror);
+/// Image budget for questions about photos, as for the VL example chat.
+const _maxPhotoTokens = 256;
+
+Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
+  final (out, kind, useGpu, mirror) = args;
+  final spec = mirror.isEmpty ? kind.spec : kind.spec.fromMirror(mirror);
+  final mmprojName = switch (kind) {
+    SpeechModel.audio => Lfm3AudioQ4Source.audio.name,
+    SpeechModel.omni => Lfm3OmniQ4Source.mmproj.name,
+  };
+  OmniResponder? responder;
+  OmniConversation? photo;
+  // Projected rows of a spoken question, kept for the following ask.
+  final questionRows = <Float32List>[];
+  var recordingQuestion = false;
   final commands = ReceivePort();
   out.send(commands.sendPort);
   Lfm3Model? model;
@@ -306,10 +347,13 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
     features = null;
     samples = 0;
     recordingConversation = false;
+    recordingQuestion = false;
   }
 
   Future<void> addProjected(Float32List rows) async {
-    if (recordingConversation) {
+    if (recordingQuestion) {
+      if (rows.isNotEmpty) questionRows.add(rows);
+    } else if (recordingConversation) {
       await conversation!.addProjected(rows);
     } else {
       await input!.addProjected(rows);
@@ -360,6 +404,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
           conversation?.close();
           generator?.close();
           encoder?.close();
+          responder?.close();
           await model?.close();
         } else {
           check(version);
@@ -411,10 +456,11 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                 );
               }
               NativeKernels.load(null);
-              await _verifyBundle(dir, () => check(version));
-              encoder = Lfm3AudioEncoder.load(
-                '$dir/${Lfm3AudioQ4Source.audio.name}',
-              );
+              await switch (kind) {
+                SpeechModel.audio => _verifyBundle(dir, () => check(version)),
+                SpeechModel.omni => verifyOmniBundle(dir, () => check(version)),
+              };
+              encoder = Lfm3AudioEncoder.load('$dir/$mmprojName');
               tokenizer = Lfm3Tokenizer.load('$dir/language');
               Future<Lfm3Model> open(bool gpu) => Lfm3Model.load(
                 '$dir/language',
@@ -440,9 +486,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
               }
               if (input != null) throw StateError('Recording is active');
               final options = request['value'] as Map;
-              generator ??= Lfm3AudioGenerator.load(
-                '$directory/${Lfm3AudioQ4Source.audio.name}',
-              );
+              generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
               final current = synthesizer = AudioSynthesizer(
                 model!,
                 tokenizer!,
@@ -472,11 +516,28 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
               conversation?.cancel();
               final options = request['value'] as Map;
               recordingConversation = options['conversation'] as bool;
+              recordingQuestion = options['question'] == true;
               final liveInput = options['live'] == true;
-              if (liveInput && recordingConversation) {
+              if (recordingQuestion) {
+                if (!kind.supportsPhotoQuestions) {
+                  throw UnsupportedError('Photo questions need LFM3-Omni');
+                }
+                questionRows.clear();
+              }
+              if ([
+                    liveInput,
+                    recordingConversation,
+                    recordingQuestion,
+                  ].where((on) => on).length >
+                  1) {
                 throw ArgumentError('Choose one audio input mode');
               }
-              if (liveInput) {
+              if (liveInput && !kind.supportsLiveTranscription) {
+                throw UnsupportedError('LiveASR needs LFM3-Audio');
+              }
+              if (recordingQuestion) {
+                // Rows are kept until the question is asked.
+              } else if (liveInput) {
                 if (options['language'] != null &&
                     options['language'] != 'English') {
                   throw ArgumentError('LiveASR supports English only');
@@ -490,9 +551,7 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                   },
                 );
               } else if (recordingConversation) {
-                generator ??= Lfm3AudioGenerator.load(
-                  '$directory/${Lfm3AudioQ4Source.audio.name}',
-                );
+                generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
                 conversation ??= AudioConversationSession(
                   model!,
                   tokenizer!,
@@ -515,7 +574,9 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
               }
             case 'pcm':
               if (live == null &&
-                  ((!recordingConversation && input == null) ||
+                  ((!recordingConversation &&
+                          !recordingQuestion &&
+                          input == null) ||
                       features == null ||
                       stream == null)) {
                 throw StateError('Recording is not active');
@@ -558,6 +619,100 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
                 conversation!.turns + 1,
               );
               clear();
+            case 'ask':
+              if (model == null || tokenizer == null || directory == null) {
+                throw StateError('Model is not loaded');
+              }
+              if (!kind.supportsPhotoQuestions) {
+                throw UnsupportedError('Photo questions need LFM3-Omni');
+              }
+              final options = request['value'] as Map;
+              final spoken = options['spoken'] as bool;
+              final text = (options['text'] as String?)?.trim();
+              // A new photo or a restart drops earlier questions; a follow-up
+              // keeps exactly the answers the caller received.
+              final previous = options['previousTurns'] as int;
+              final image = options['image'] as Uint8List?;
+              if (previous == 0) {
+                if (image == null) throw StateError('Choose a photo first');
+                photo = OmniConversation(model!.config.hiddenSize);
+              } else {
+                (photo ?? (throw StateError('The photo conversation ended')))
+                    .keep(previous);
+              }
+              if (spoken) {
+                if (!recordingQuestion ||
+                    stream == null ||
+                    features == null ||
+                    samples == 0) {
+                  throw StateError('No spoken question recorded');
+                }
+                await addProjected(stream!.add(features!.finish()));
+                await addProjected(stream!.finish());
+                check(version);
+              } else if (text == null || text.isEmpty) {
+                throw ArgumentError('Ask a question by voice or text');
+              }
+              final omni = responder ??= OmniResponder(
+                model!,
+                tokenizer!,
+                directory!,
+                maxImageTokens: _maxPhotoTokens,
+              );
+              // The photo is encoded for the first question only; later
+              // ones replay its rows from the conversation.
+              final images = [
+                if (previous == 0)
+                  await omni.encodeImage(image!, check: () => check(version)),
+              ];
+              Float32List? audioRows;
+              if (spoken) {
+                audioRows = Float32List(
+                  questionRows.fold(0, (n, r) => n + r.length),
+                );
+                var at = 0;
+                for (final rows in questionRows) {
+                  audioRows.setAll(at, rows);
+                  at += rows.length;
+                }
+              }
+              if (options['speak'] as bool) {
+                generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
+              }
+              final chat = photo!;
+              final SpeechReply reply;
+              try {
+                reply = await omni.reply(
+                  chat,
+                  text: text,
+                  images: images,
+                  audio: audioRows,
+                  generator: options['speak'] as bool ? generator : null,
+                  check: () => check(version),
+                  onText: (text) {
+                    out.send({'textUpdate': true, 'text': text});
+                  },
+                );
+              } on OmniContextFull catch (e) {
+                throw StateError(
+                  e.firstTurn
+                      ? 'The question is too long for the context'
+                      : 'The conversation about this photo is full. '
+                            'Start a new conversation.',
+                );
+              }
+              result = AudioVoiceReply(
+                reply.text,
+                reply.samples.isEmpty
+                    ? Uint8List(0)
+                    : encodeSpeechWav(
+                        reply.samples,
+                        sampleRate: reply.sampleRate,
+                      ),
+                chat.turns.length,
+              );
+              clear();
+              questionRows.clear();
             case 'finish':
               if (live != null) {
                 result = await live!.finish();
@@ -610,6 +765,8 @@ Future<void> _runAudioWorker((SendPort, bool, String) args) async {
         if (op == 'load') {
           encoder?.close();
           encoder = null;
+          responder?.close();
+          responder = null;
           await model?.close();
           model = null;
         }

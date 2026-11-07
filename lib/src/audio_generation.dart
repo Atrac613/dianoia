@@ -4,6 +4,7 @@ library;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'audio_gguf.dart';
 import 'config.dart';
 import 'gguf.dart';
 import 'matmul.dart';
@@ -112,6 +113,8 @@ final class Lfm3AudioGenerator {
     this._floats,
     this._matrices,
     this._heads,
+    this.variant,
+    this.sampling,
   );
 
   factory Lfm3AudioGenerator.load(String mmproj) {
@@ -124,6 +127,8 @@ final class Lfm3AudioGenerator {
       if (file.metadata['clip.gen.audio.projector_type'] != 'lfm3a_gen') {
         throw const FormatException('not an LFM3 audio generator');
       }
+      final variant = Lfm3SpeechVariant.of(file);
+      final sampling = Lfm3SpeechSampling.fromGguf(file);
       List<int> dims(String name) =>
           file.tensors[name]?.dims.reversed.toList() ??
           (throw FormatException('missing $name'));
@@ -283,6 +288,8 @@ final class Lfm3AudioGenerator {
         floats,
         matrices,
         heads,
+        variant,
+        sampling,
       );
     } catch (_) {
       for (final m in [...matrices.values, ...heads]) {
@@ -296,6 +303,12 @@ final class Lfm3AudioGenerator {
 
   final _Graph _depth, _codec;
   final int codebooks, vocabSize, hiddenSize, _quantDim, fftSize;
+
+  /// Which checkpoint's prompt conventions the generated speech expects.
+  final Lfm3SpeechVariant variant;
+
+  /// The checkpoint's published speech sampling defaults.
+  final Lfm3SpeechSampling sampling;
   int get eosCode => vocabSize - 1;
   int get sampleRate => 24000;
   int get frameSamples => fftSize ~/ 4 * 6;
@@ -536,16 +549,45 @@ final class Lfm3AudioGenerator {
     return out;
   }
 
-  /// Three passes reveal four randomly ordered codebooks each. Histories are
-  /// per codebook, bounded by the caller. Random seeds are Dart-specific.
+  /// Three passes reveal four randomly ordered codebooks each. The penalty
+  /// covers the codes of the last [repetitionWindow] frames of [history].
+  /// Omitted options use [sampling]; a null top-k there samples every code.
+  /// Random seeds are Dart-specific.
   List<int> sampleFrame(
     Float32List hidden,
     math.Random random, {
-    double temperature = 1,
-    int topK = 128,
-    double repetitionPenalty = 1.1,
+    double? temperature,
+    int? topK,
+    double? repetitionPenalty,
+    int? repetitionWindow,
     List<List<int>> history = const [],
   }) {
+    return _sampleFrame(
+      hidden,
+      random,
+      temperature ?? sampling.temperature,
+      topK ?? sampling.topK ?? vocabSize,
+      repetitionPenalty ?? sampling.repetitionPenalty,
+      repetitionWindow ?? sampling.repetitionWindow,
+      history,
+    );
+  }
+
+  List<int> _sampleFrame(
+    Float32List hidden,
+    math.Random random,
+    double temperature,
+    int topK,
+    double repetitionPenalty,
+    int repetitionWindow,
+    List<List<int>> history,
+  ) {
+    if (repetitionWindow < 0) {
+      throw ArgumentError('invalid audio sampling options');
+    }
+    if (history.length > repetitionWindow) {
+      history = history.sublist(history.length - repetitionWindow);
+    }
     if (history.any(
           (frame) =>
               frame.length != codebooks ||

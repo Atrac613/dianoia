@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
-import 'chat_controller.dart';
 import 'chat_page.dart';
 import 'example_model.dart';
 import 'audio_page.dart';
+import 'speech_model.dart';
 
 /// The models supported by the example, before any worker is started.
 class ModelSelectionPage extends StatelessWidget {
   const ModelSelectionPage({super.key});
 
-  static const models = ExampleModel.values;
+  /// LFM3-Omni's chat opens from its own screen, not from this list.
+  static final models = [
+    for (final model in ExampleModel.values)
+      if (model != ExampleModel.omni) model,
+  ];
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -52,54 +56,30 @@ class ModelSelectionPage extends StatelessWidget {
                     ),
                   ),
                 ),
-              Card(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  title: const Text('LFM3-Audio-2B Q4_0'),
-                  subtitle: const Text(
-                    'Voice conversation, transcription and TTS\n1.23 GB download · LFM Open License v1.0',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const AudioTranscriptionPage(),
+              for (final speech in SpeechModel.values)
+                Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    title: Text(speech.name),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '${speech.summary}\n${speech.sizeLabel}\n'
+                        'License: ${speech.spec.license}',
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AudioTranscriptionPage(model: speech),
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
       ),
     ),
   );
-}
-
-/// Owns the worker for one visit to a model's chat.
-class ModelChatPage extends StatefulWidget {
-  const ModelChatPage({super.key, required this.model});
-
-  final ExampleModel model;
-
-  @override
-  State<ModelChatPage> createState() => _ModelChatPageState();
-}
-
-class _ModelChatPageState extends State<ModelChatPage> {
-  late final _chat = ChatController(model: widget.model);
-
-  @override
-  void initState() {
-    super.initState();
-    _chat.start();
-  }
-
-  @override
-  void dispose() {
-    _chat.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => ChatPage(controller: _chat);
 }

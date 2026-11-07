@@ -48,18 +48,151 @@ String _visionName(String name) {
   return 'model.vision_tower.layers.${match![1]}.$suffix.weight';
 }
 
+/// The two F16 temporal patch slices, interleaved per channel into the
+/// checkpoint's [hidden, 3 * 2 * patch * patch] float32 patchifier.
+Float32List _patchifier(GgufFile gguf, Lfm3VisionConfig c) {
+  final slices = [
+    for (final name in ['v.patch_embd.weight', 'v.patch_embd.weight.1'])
+      ByteData.sublistView(
+        gguf.bytes(
+          gguf.tensor(name, GgufType.f16, [
+            c.patchSize,
+            c.patchSize,
+            3,
+            c.hiddenSize,
+          ]),
+        ),
+      ),
+  ];
+  final area = c.patchSize * c.patchSize;
+  final patch = Float32List(c.hiddenSize * 3 * 2 * area);
+  var at = 0;
+  for (var row = 0; row < c.hiddenSize; row++) {
+    for (var channel = 0; channel < 3; channel++) {
+      for (final slice in slices) {
+        for (var i = 0; i < area; i++) {
+          patch[at++] = halfToDouble(
+            slice.getUint16(
+              ((row * 3 + channel) * area + i) * 2,
+              Endian.little,
+            ),
+          );
+        }
+      }
+    }
+  }
+  return patch;
+}
+
+void _checkVisionGguf(GgufFile gguf, Lfm3VlConfig config) {
+  if (gguf.metadata['clip.vision.projector_type'] != 'lfm3vl') {
+    throw const FormatException('expected an LFM3-VL projector GGUF');
+  }
+  final c = config.vision;
+  if (c.temporalPatchSize != 2 || c.inChannels != 3) {
+    throw const FormatException('unsupported VL patchifier layout');
+  }
+}
+
+/// Vision and projector weights of an LFM3-VL or LFM3-Omni mmproj, widened
+/// to float32 under checkpoint names for [Lfm3VisionEncoder.fromWeights].
+/// F32, F16, BF16 and Q4_0 payloads convert exactly; audio tensors in an
+/// Omni mmproj are ignored, and every vision tensor must be present.
+Map<String, Float32List> readVisionGgufWeights(
+  GgufFile gguf,
+  Lfm3VlConfig config,
+) => _readVisionGguf(gguf, config, null);
+
+Map<String, Float32List> _readVisionGguf(
+  GgufFile gguf,
+  Lfm3VlConfig config,
+  Map<String, NativeMatrix>? native,
+) {
+  _checkVisionGguf(gguf, config);
+  final expected = lfm3VisionTensorShapes(config);
+  final out = <String, Float32List>{};
+  bool seen(String name) =>
+      out.containsKey(name) || (native?.containsKey(name) ?? false);
+  for (final tensor in gguf.tensors.values) {
+    final source = tensor.name;
+    if (source.startsWith('v.patch_embd.weight') ||
+        !(source.startsWith('v.') || source.startsWith('mm.')) ||
+        source.startsWith('mm.a.')) {
+      continue;
+    }
+    final name = _visionName(source);
+    final shape = tensor.dims.reversed.toList();
+    if (seen(name) || expected[name]?.join(',') != shape.join(',')) {
+      throw FormatException('unsupported vision tensor $source');
+    }
+    final bytes = gguf.bytes(tensor);
+    if (native != null && tensor.type == GgufType.q4_0 && shape.length == 2) {
+      native[name] = NativeQ4Matrix.fromGgufBlocks(bytes, shape[0], shape[1]);
+      continue;
+    }
+    out[name] = switch (tensor.type) {
+      GgufType.f32 => Float32List.fromList(
+        Float32List.sublistView(Uint8List.fromList(bytes)),
+      ),
+      GgufType.f16 => _widen16(bytes, halfToDouble),
+      GgufType.bf16 => _widen16(
+        bytes,
+        (bits) => (ByteData(4)..setUint32(0, bits << 16)).getFloat32(0),
+      ),
+      GgufType.q4_0 => dequantizeQ4_0(bytes, tensor.values),
+      _ => throw FormatException('unsupported vision tensor type $source'),
+    };
+  }
+  const patchName = 'model.vision_tower.patchifier.weight';
+  if (out.length + (native?.length ?? 0) != expected.length - 1 ||
+      expected.keys.any((n) => n != patchName && !seen(n))) {
+    throw const FormatException('incomplete vision GGUF');
+  }
+  out[patchName] = _patchifier(gguf, config.vision);
+  return out;
+}
+
+Float32List _widen16(Uint8List bytes, double Function(int bits) convert) {
+  final data = ByteData.sublistView(bytes);
+  final out = Float32List(bytes.length ~/ 2);
+  for (var i = 0; i < out.length; i++) {
+    out[i] = convert(data.getUint16(i * 2, Endian.little));
+  }
+  return out;
+}
+
+/// Loads the CPU vision encoder straight from an mmproj GGUF, without
+/// writing an intermediate safetensors file. Q4_0 linear weights stay native
+/// Q4 blocks, multiplied with float inputs, unless [nativeQ4] is false; then
+/// every weight is widened to float32 on the Dart heap.
+Lfm3VisionEncoder loadVisionEncoderGguf(
+  String path,
+  Lfm3VlConfig config, {
+  bool nativeQ4 = true,
+}) {
+  if (nativeQ4 && !NativeKernels.isLoaded) NativeKernels.load(null);
+  final gguf = GgufFile.open(path);
+  final native = <String, NativeMatrix>{};
+  try {
+    final weights = _readVisionGguf(gguf, config, nativeQ4 ? native : null);
+    return Lfm3VisionEncoder.fromWeights(config, weights, native: native);
+  } catch (_) {
+    for (final m in native.values) {
+      m.free();
+    }
+    rethrow;
+  } finally {
+    gguf.close();
+  }
+}
+
 /// Writes only the paired mmproj's vision/projector tensors to [output].
 /// BF16/F32 payloads are unchanged; split F16 temporal patches widen exactly.
 void importVlVisionGguf(String path, Lfm3VlConfig config, String output) {
   final gguf = GgufFile.open(path);
   try {
-    if (gguf.metadata['clip.vision.projector_type'] != 'lfm3vl') {
-      throw const FormatException('expected an LFM3-VL projector GGUF');
-    }
+    _checkVisionGguf(gguf, config);
     final c = config.vision;
-    if (c.temporalPatchSize != 2 || c.inChannels != 3) {
-      throw const FormatException('unsupported VL patchifier layout');
-    }
     final expected = lfm3VisionTensorShapes(config);
     final entries = <String, (GgufTensor, List<int>)>{};
     for (final tensor in gguf.tensors.values) {
@@ -78,36 +211,7 @@ void importVlVisionGguf(String path, Lfm3VlConfig config, String output) {
         expected.keys.any((n) => n != patchName && !entries.containsKey(n))) {
       throw const FormatException('incomplete vision GGUF');
     }
-    final slices = [
-      for (final name in ['v.patch_embd.weight', 'v.patch_embd.weight.1'])
-        ByteData.sublistView(
-          gguf.bytes(
-            gguf.tensor(name, GgufType.f16, [
-              c.patchSize,
-              c.patchSize,
-              3,
-              c.hiddenSize,
-            ]),
-          ),
-        ),
-    ];
-    final area = c.patchSize * c.patchSize;
-    final patch = Float32List(c.hiddenSize * 3 * 2 * area);
-    var at = 0;
-    for (var row = 0; row < c.hiddenSize; row++) {
-      for (var channel = 0; channel < 3; channel++) {
-        for (final slice in slices) {
-          for (var i = 0; i < area; i++) {
-            patch[at++] = halfToDouble(
-              slice.getUint16(
-                ((row * 3 + channel) * area + i) * 2,
-                Endian.little,
-              ),
-            );
-          }
-        }
-      }
-    }
+    final patch = _patchifier(gguf, c);
     final header = <String, Object?>{};
     var offset = 0;
     for (final e in entries.entries) {

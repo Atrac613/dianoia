@@ -95,6 +95,16 @@ final class Lfm3Tokenizer {
   /// Id of an added token such as `<|im_end|>`, or null.
   int? addedTokenId(String content) => _added[content];
 
+  /// The first added token spelled out in [text], or null. [encode] turns
+  /// such spellings into control tokens, so text that must stay plain (a
+  /// typed question, a replayed answer) is checked with this first.
+  String? addedTokenIn(String text) {
+    for (var i = 0; i < text.length; i++) {
+      if (_addedAt(text, i) case final match?) return match;
+    }
+    return null;
+  }
+
   List<int> encode(String text) {
     final ids = <int>[];
     var plainStart = 0;

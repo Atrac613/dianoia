@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'audio_generation.dart';
+import 'audio_gguf.dart';
 import 'model.dart';
 import 'tokenizer.dart';
 
@@ -37,6 +38,7 @@ String renderAudioTtsPrompt(
   String text, {
   String language = 'en',
   String voice = 'female',
+  Lfm3SpeechVariant variant = Lfm3SpeechVariant.audio,
 }) {
   if (text.trim().isEmpty ||
       text.length > 16000 ||
@@ -47,7 +49,8 @@ String renderAudioTtsPrompt(
   }
   final name = _languages[language.toLowerCase()] ?? language;
   return '<|startoftext|><|im_start|>system\nPerform TTS in $name using a $voice voice.<|im_end|>\n'
-      '<|im_start|>user\n$text<|im_end|>\n<|im_start|>assistant\n<|audio_start|>';
+      '<|im_start|>user\n$text<|im_end|>\n<|im_start|>assistant\n'
+      '${variant.assistantOpen}<|audio_start|>';
 }
 
 final class AudioSynthesisCancelled implements Exception {
@@ -93,15 +96,20 @@ final class AudioSynthesizer {
     String voice = 'female',
     int maxFrames = 375,
     int seed = 0,
-    double temperature = 1,
-    int topK = 128,
-    double repetitionPenalty = 1.1,
+    double? temperature,
+    int? topK,
+    double? repetitionPenalty,
     void Function(Float32List samples)? onAudio,
     void Function(List<int> codes)? onCodes,
   }) async {
     if (_busy) throw StateError('Synthesis is already running');
     final prompt = tokenizer.encode(
-      renderAudioTtsPrompt(text, language: language, voice: voice),
+      renderAudioTtsPrompt(
+        text,
+        language: language,
+        voice: voice,
+        variant: generator.variant,
+      ),
     );
     final start = tokenizer.addedTokenId('<|audio_start|>'),
         output = tokenizer.addedTokenId('<|audio_out|>');
@@ -114,11 +122,10 @@ final class AudioSynthesizer {
         maxFrames < 1 ||
         maxFrames > 750 ||
         prompt.length + maxFrames > model.maxSeq ||
-        !temperature.isFinite ||
-        temperature < 0 ||
-        topK < 1 ||
-        !repetitionPenalty.isFinite ||
-        repetitionPenalty < 1) {
+        (temperature != null && (!temperature.isFinite || temperature < 0)) ||
+        (topK != null && topK < 1) ||
+        (repetitionPenalty != null &&
+            (!repetitionPenalty.isFinite || repetitionPenalty < 1))) {
       throw ArgumentError(
         'TTS model, tokenizer, context or sampling options differ',
       );

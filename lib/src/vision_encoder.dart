@@ -6,16 +6,23 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'matmul.dart';
+import 'native.dart';
 import 'ops.dart';
 import 'safetensors.dart';
 import 'vision_config.dart';
 import 'vision_image.dart';
 
 /// Correctness-first, synchronous CPU inference. Weights are widened to f32
-/// on the Dart heap; this is a lab API, not the optimized on-device path.
-/// Images are encoded independently; no cross-image attention or video state.
+/// on the Dart heap, except matrices given as native Q4/Q8 blocks, whose
+/// products run in the native kernels with float inputs. This is a lab API,
+/// not the optimized on-device path. Images are encoded independently; no
+/// cross-image attention or video state. [close] frees native matrices.
 final class Lfm3VisionEncoder {
-  Lfm3VisionEncoder._(this.config, this._weights);
+  Lfm3VisionEncoder._(
+    this.config,
+    this._weights, [
+    Map<String, NativeMatrix> native = const {},
+  ]) : _native = Map.of(native);
 
   factory Lfm3VisionEncoder.load(String modelDir) {
     final c = Lfm3VlConfig.load(modelDir);
@@ -28,6 +35,48 @@ final class Lfm3VisionEncoder {
     } finally {
       st.close();
     }
+  }
+
+  /// Uses already widened weights, keyed by the checkpoint names of
+  /// [lfm3VisionTensorShapes]. Every tensor must be in exactly one of
+  /// [weights] and [native]; [native] holds only 2D linear weights, and the
+  /// encoder takes ownership of them.
+  factory Lfm3VisionEncoder.fromWeights(
+    Lfm3VlConfig config,
+    Map<String, Float32List> weights, {
+    Map<String, NativeMatrix> native = const {},
+  }) {
+    final shapes = lfm3VisionTensorShapes(config);
+    if (weights.length + native.length != shapes.length) {
+      throw ArgumentError('expected ${shapes.length} vision tensors');
+    }
+    for (final e in shapes.entries) {
+      final values = weights[e.key], matrix = native[e.key];
+      final ok = values != null
+          ? matrix == null && values.length == e.value.fold(1, (a, b) => a * b)
+          : matrix != null &&
+                e.value.length == 2 &&
+                !e.key.endsWith('patchifier.weight') &&
+                matrix.rows == e.value[0] &&
+                matrix.cols == e.value[1];
+      if (!ok) {
+        throw ArgumentError('vision tensor ${e.key} differs from its shape');
+      }
+    }
+    return Lfm3VisionEncoder._(config, Map.unmodifiable(weights), native);
+  }
+
+  final Map<String, NativeMatrix> _native;
+  bool _closed = false;
+
+  /// Frees native matrices. The encoder cannot be used afterwards.
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    for (final m in _native.values) {
+      m.free();
+    }
+    _native.clear();
   }
 
   final Lfm3VlConfig config;
@@ -170,9 +219,15 @@ final class Lfm3VisionEncoder {
     int n, {
     bool bias = false,
   }) {
+    if (_closed) throw StateError('vision encoder is closed');
     final result = Float32List(n * rows);
-    final w = _weights['$name.weight']!;
-    if (cols % 4 == 0) {
+    final matrix = _native['$name.weight'];
+    final w = _weights['$name.weight'];
+    if (matrix != null) {
+      matrix.apply(x, result, n, int8Inputs: false);
+    } else if (w == null) {
+      throw StateError('missing vision weight $name');
+    } else if (cols % 4 == 0) {
       gemm(w, x, result, rows, cols, n);
     } else {
       for (var t = 0; t < n; t++) {
@@ -258,36 +313,57 @@ final class Lfm3VisionEncoder {
     k = _norm(k, '${p}k_layernorm.weight', d, c.normEps);
     _rotate(q, c.numHeads, positions);
     _rotate(k, c.numKvHeads, positions);
+    // Per head, scores = K q and output = V^T p as batched matrix products
+    // over all n patches; each key/value head is gathered once per group.
     final output = Float32List(n * h);
-    final scores = Float32List(n);
+    final qh = Float32List(n * d), kh = Float32List(n * d);
+    final vt = Float32List(d * n), oh = Float32List(n * d);
+    final scores = Float32List(n * n);
     final scale = 1 / math.sqrt(d);
-    for (var head = 0; head < c.numHeads; head++) {
-      final kvHead = head ~/ (c.numHeads ~/ c.numKvHeads);
-      for (var t = 0; t < n; t++) {
-        var maximum = double.negativeInfinity;
-        for (var s = 0; s < n; s++) {
-          var dot = 0.0;
-          for (var j = 0; j < d; j++) {
-            dot += q[t * h + head * d + j] * k[s * kv + kvHead * d + j];
-          }
-          scores[s] = dot;
-          scores[s] *= scale;
-          maximum = math.max(maximum, scores[s]);
-        }
-        var total = 0.0;
-        for (var s = 0; s < n; s++) {
-          scores[s] = math.exp(scores[s] - maximum);
-          total += scores[s];
-        }
-        for (var s = 0; s < n; s++) {
-          scores[s] /= total;
-        }
+    final group = c.numHeads ~/ c.numKvHeads;
+    for (var kvHead = 0; kvHead < c.numKvHeads; kvHead++) {
+      for (var s = 0; s < n; s++) {
         for (var j = 0; j < d; j++) {
-          var sum = 0.0;
+          kh[s * d + j] = k[s * kv + kvHead * d + j];
+          vt[j * n + s] = v[s * kv + kvHead * d + j];
+        }
+      }
+      for (var head = kvHead * group; head < (kvHead + 1) * group; head++) {
+        for (var t = 0; t < n; t++) {
+          qh.setRange(t * d, (t + 1) * d, q, t * h + head * d);
+        }
+        gemm(kh, qh, scores, n, d, n);
+        for (var t = 0; t < n; t++) {
+          final row = t * n;
+          var maximum = double.negativeInfinity;
           for (var s = 0; s < n; s++) {
-            sum += scores[s] * v[s * kv + kvHead * d + j];
+            scores[row + s] *= scale;
+            maximum = math.max(maximum, scores[row + s]);
           }
-          output[t * h + head * d + j] = sum;
+          var total = 0.0;
+          for (var s = 0; s < n; s++) {
+            scores[row + s] = math.exp(scores[row + s] - maximum);
+            total += scores[row + s];
+          }
+          for (var s = 0; s < n; s++) {
+            scores[row + s] /= total;
+          }
+        }
+        if (n % 4 == 0) {
+          gemm(vt, scores, oh, d, n, n);
+        } else {
+          for (var t = 0; t < n; t++) {
+            for (var j = 0; j < d; j++) {
+              var sum = 0.0;
+              for (var s = 0; s < n; s++) {
+                sum += scores[t * n + s] * vt[j * n + s];
+              }
+              oh[t * d + j] = sum;
+            }
+          }
+        }
+        for (var t = 0; t < n; t++) {
+          output.setRange(t * h + head * d, t * h + (head + 1) * d, oh, t * d);
         }
       }
     }
