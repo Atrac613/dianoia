@@ -9,6 +9,7 @@ import 'package:dianoia/dianoia.dart';
 import 'audio_controller.dart';
 import 'chat_page.dart';
 import 'image_attachment.dart';
+import 'live_translation_view.dart';
 import 'example_model.dart';
 import 'speech_model.dart';
 
@@ -192,9 +193,12 @@ class AudioTranscriptionView extends StatelessWidget {
               ? 'Preparing the model on this device…'
               : 'Downloading the model…',
         AudioPhase.ready => 'Ready · ${a.backendName ?? ''}',
+        AudioPhase.preparingTranslator => 'Loading the translator…',
         AudioPhase.requestingPermission => 'Requesting microphone access…',
         AudioPhase.recording =>
-          a.task == AudioTask.liveTranscription
+          a.task == AudioTask.liveTranslation
+              ? 'Translating live · ${a.recordedSeconds.toStringAsFixed(1)} seconds'
+              : a.task == AudioTask.liveTranscription
               ? 'Transcribing live · ${a.recordedSeconds.toStringAsFixed(1)} seconds'
               : 'Recording · ${a.recordedSeconds.toStringAsFixed(1)} / 30 seconds',
         AudioPhase.finishing =>
@@ -216,277 +220,297 @@ class AudioTranscriptionView extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 640),
-            child: ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                Text(
-                  a.model.name,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Experimental · '
-                  '${a.model.supportsLiveTranscription ? 'Live transcription continues until stopped. Other recording modes allow' : 'Recordings allow'} '
-                  'up to 30 seconds. '
-                  '${a.model.supportsPhotoQuestions ? 'Ask about a photo by voice or text, or enter' : 'Or enter'} '
-                  'text to generate speech. '
-                  '${a.model.supportsPhotoQuestions ? 'Audio and photos stay' : 'Audio stays'} on this device. '
-                  'Recordings are not saved; generated speech uses a temporary playback file.',
-                ),
-                const SizedBox(height: 24),
-                Text(status),
-                if (a.phase == AudioPhase.loading ||
-                    a.phase == AudioPhase.finishing ||
-                    a.phase == AudioPhase.replying ||
-                    a.phase == AudioPhase.synthesizing ||
-                    a.phase == AudioPhase.cancelling) ...[
-                  const SizedBox(height: 12),
-                  const LinearProgressIndicator(),
-                ],
-                if (needsModel && a.storeDirectory != null) ...[
-                  const SizedBox(height: 16),
-                  Text(a.model.setupLabel),
-                  const SizedBox(height: 8),
-                  Text('License: ${a.model.spec.license}'),
-                  SelectableText(a.model.spec.licenseUrl),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: a.downloadModel,
-                    icon: const Icon(Icons.download),
-                    label: Text(
-                      a.error == null ? 'Download' : 'Resume download',
-                    ),
-                  ),
-                ],
-                if (a.phase == AudioPhase.installing) ...[
-                  const SizedBox(height: 16),
-                  LinearProgressIndicator(
-                    value: a.installProgress?.stage == InstallStage.downloading
-                        ? a.installProgress!.fraction
-                        : null,
+            child: LiveTranslationFollower(
+              controller: a,
+              builder: (context, scroll) => ListView(
+                controller: scroll,
+                padding: const EdgeInsets.all(24),
+                children: [
+                  Text(
+                    a.model.name,
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  if (a.installProgress?.stage == InstallStage.downloading)
-                    Text(
-                      '${(a.installProgress!.bytes / 1e9).toStringAsFixed(2)} of ${(a.installProgress!.totalBytes / 1e9).toStringAsFixed(2)} GB',
-                    ),
-                  TextButton(
-                    onPressed: a.cancel,
-                    child: const Text('Cancel download'),
+                  Text(
+                    'Experimental · '
+                    '${a.model.supportsLiveTranscription ? 'Live transcription continues until stopped. Other recording modes allow' : 'Recordings allow'} '
+                    'up to 30 seconds. '
+                    '${a.model.supportsPhotoQuestions ? 'Ask about a photo by voice or text, or enter' : 'Or enter'} '
+                    'text to generate speech. '
+                    '${a.model.supportsPhotoQuestions ? 'Audio and photos stay' : 'Audio stays'} on this device. '
+                    'Recordings are not saved; generated speech uses a temporary playback file.',
                   ),
-                ],
-                if (needsModel) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    'You can also use a model prepared on another computer.',
-                  ),
-                  if (directory != null) ...[
-                    const SizedBox(height: 8),
-                    SelectableText('Model folder: $directory'),
+                  const SizedBox(height: 24),
+                  Text(status),
+                  if (a.phase == AudioPhase.loading ||
+                      a.phase == AudioPhase.preparingTranslator ||
+                      a.phase == AudioPhase.finishing ||
+                      a.phase == AudioPhase.replying ||
+                      a.phase == AudioPhase.synthesizing ||
+                      a.phase == AudioPhase.cancelling) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
                   ],
+                  if (needsModel && a.storeDirectory != null) ...[
+                    const SizedBox(height: 16),
+                    Text(a.model.setupLabel),
+                    const SizedBox(height: 8),
+                    Text('License: ${a.model.spec.license}'),
+                    SelectableText(a.model.spec.licenseUrl),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: a.downloadModel,
+                      icon: const Icon(Icons.download),
+                      label: Text(
+                        a.error == null ? 'Download' : 'Resume download',
+                      ),
+                    ),
+                  ],
+                  if (a.phase == AudioPhase.installing) ...[
+                    const SizedBox(height: 16),
+                    LinearProgressIndicator(
+                      value:
+                          a.installProgress?.stage == InstallStage.downloading
+                          ? a.installProgress!.fraction
+                          : null,
+                    ),
+                    const SizedBox(height: 8),
+                    if (a.installProgress?.stage == InstallStage.downloading)
+                      Text(
+                        '${(a.installProgress!.bytes / 1e9).toStringAsFixed(2)} of ${(a.installProgress!.totalBytes / 1e9).toStringAsFixed(2)} GB',
+                      ),
+                    TextButton(
+                      onPressed: a.cancel,
+                      child: const Text('Cancel download'),
+                    ),
+                  ],
+                  if (needsModel) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'You can also use a model prepared on another computer.',
+                    ),
+                    if (directory != null) ...[
+                      const SizedBox(height: 8),
+                      SelectableText('Model folder: $directory'),
+                    ],
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        if (onChoose != null)
+                          FilledButton.icon(
+                            onPressed: onChoose,
+                            icon: const Icon(Icons.folder_open),
+                            label: const Text('Choose model folder'),
+                          ),
+                        if (onRetry != null)
+                          TextButton(
+                            onPressed: onRetry,
+                            child: const Text('Check again'),
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (a.error ?? setupError case final String error) ...[
+                    const SizedBox(height: 16),
+                    SelectableText(
+                      error,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  DropdownButtonFormField<AudioTask>(
+                    initialValue: a.task,
+                    decoration: const InputDecoration(labelText: 'Audio mode'),
+                    items: [
+                      if (a.model.supportsPhotoQuestions)
+                        const DropdownMenuItem(
+                          value: AudioTask.photoQuestion,
+                          child: Text('Ask about a photo'),
+                        ),
+                      const DropdownMenuItem(
+                        value: AudioTask.transcription,
+                        child: Text('Transcription and TTS'),
+                      ),
+                      const DropdownMenuItem(
+                        value: AudioTask.conversation,
+                        child: Text('Voice conversation (English)'),
+                      ),
+                      if (a.model.supportsLiveTranscription)
+                        const DropdownMenuItem(
+                          value: AudioTask.liveTranscription,
+                          child: Text('Live transcription (English)'),
+                        ),
+                      if (a.model.supportsLiveTranscription)
+                        const DropdownMenuItem(
+                          value: AudioTask.liveTranslation,
+                          child: Text('Live translation (English)'),
+                        ),
+                    ],
+                    onChanged: ready ? (value) => a.setTask(value!) : null,
+                  ),
+                  const SizedBox(height: 16),
+                  if (a.task == AudioTask.conversation) ...[
+                    const Text(
+                      'Ask a question in English, then stop to receive text and speech. '
+                      'Record again to continue the conversation. Replies play after generation. '
+                      'Voice conversation currently supports English only.',
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: ready ? a.newConversation : null,
+                        icon: const Icon(Icons.add_comment_outlined),
+                        label: const Text('New conversation'),
+                      ),
+                    ),
+                  ] else if (a.task == AudioTask.photoQuestion) ...[
+                    _PhotoQuestion(controller: a, enabled: ready),
+                  ] else if (a.task == AudioTask.liveTranslation) ...[
+                    LiveTranslationSettings(controller: a, enabled: ready),
+                  ] else if (a.task == AudioTask.liveTranscription) ...[
+                    const Text(
+                      'English LiveASR · Continues until you stop. Words appear about once per second of audio, plus processing time. '
+                      'Stop to finish the transcript. Cancel discards it. Japanese is available after recording in Transcription and TTS mode.',
+                    ),
+                  ] else
+                    DropdownButtonFormField<String>(
+                      initialValue: a.language ?? 'auto',
+                      decoration: const InputDecoration(
+                        labelText: 'Speech language',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'auto',
+                          child: Text('Detect language'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Japanese',
+                          child: Text('Japanese'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'English',
+                          child: Text('English'),
+                        ),
+                      ],
+                      onChanged: ready
+                          ? (value) {
+                              a.language = value == 'auto' ? null : value;
+                            }
+                          : null,
+                    ),
                   const SizedBox(height: 16),
                   Wrap(
-                    spacing: 8,
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
-                      if (onChoose != null)
+                      if (a.phase == AudioPhase.recording)
                         FilledButton.icon(
-                          onPressed: onChoose,
-                          icon: const Icon(Icons.folder_open),
-                          label: const Text('Choose model folder'),
+                          onPressed: a.stop,
+                          icon: const Icon(Icons.stop),
+                          label: Text(
+                            a.task == AudioTask.conversation ||
+                                    a.task == AudioTask.photoQuestion
+                                ? 'Stop and reply'
+                                : a.task == AudioTask.liveTranscription
+                                ? 'Stop live transcription'
+                                : a.task == AudioTask.liveTranslation
+                                ? 'Stop live translation'
+                                : 'Stop and transcribe',
+                          ),
+                        )
+                      else
+                        FilledButton.icon(
+                          onPressed: ready ? a.record : null,
+                          icon: const Icon(Icons.mic),
+                          label: Text(
+                            a.task == AudioTask.conversation ||
+                                    a.task == AudioTask.photoQuestion
+                                ? 'Record question'
+                                : a.task == AudioTask.liveTranscription
+                                ? 'Start live transcription'
+                                : a.task == AudioTask.liveTranslation
+                                ? 'Start live translation'
+                                : 'Record',
+                          ),
                         ),
-                      if (onRetry != null)
+                      if (a.active &&
+                          a.phase != AudioPhase.cancelling &&
+                          a.phase != AudioPhase.installing &&
+                          a.phase != AudioPhase.replying &&
+                          a.phase != AudioPhase.synthesizing &&
+                          a.phase != AudioPhase.playing)
                         TextButton(
-                          onPressed: onRetry,
-                          child: const Text('Check again'),
+                          onPressed: a.cancel,
+                          child: Text(
+                            a.task == AudioTask.conversation
+                                ? 'Cancel voice message'
+                                : 'Cancel recording',
+                          ),
+                        ),
+                      if (a.phase == AudioPhase.replying ||
+                          (a.phase == AudioPhase.playing &&
+                              (a.task == AudioTask.conversation ||
+                                  a.task == AudioTask.photoQuestion)))
+                        TextButton(
+                          onPressed: a.cancel,
+                          child: const Text('Stop reply'),
                         ),
                     ],
                   ),
-                ],
-                if (a.error ?? setupError case final String error) ...[
-                  const SizedBox(height: 16),
-                  SelectableText(
-                    error,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                DropdownButtonFormField<AudioTask>(
-                  initialValue: a.task,
-                  decoration: const InputDecoration(labelText: 'Audio mode'),
-                  items: [
-                    if (a.model.supportsPhotoQuestions)
-                      const DropdownMenuItem(
-                        value: AudioTask.photoQuestion,
-                        child: Text('Ask about a photo'),
-                      ),
-                    const DropdownMenuItem(
-                      value: AudioTask.transcription,
-                      child: Text('Transcription and TTS'),
-                    ),
-                    const DropdownMenuItem(
-                      value: AudioTask.conversation,
-                      child: Text('Voice conversation (English)'),
-                    ),
-                    if (a.model.supportsLiveTranscription)
-                      const DropdownMenuItem(
-                        value: AudioTask.liveTranscription,
-                        child: Text('Live transcription (English)'),
-                      ),
-                  ],
-                  onChanged: ready ? (value) => a.setTask(value!) : null,
-                ),
-                const SizedBox(height: 16),
-                if (a.task == AudioTask.conversation) ...[
-                  const Text(
-                    'Ask a question in English, then stop to receive text and speech. '
-                    'Record again to continue the conversation. Replies play after generation. '
-                    'Voice conversation currently supports English only.',
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: ready ? a.newConversation : null,
-                      icon: const Icon(Icons.add_comment_outlined),
-                      label: const Text('New conversation'),
-                    ),
-                  ),
-                ] else if (a.task == AudioTask.photoQuestion) ...[
-                  _PhotoQuestion(controller: a, enabled: ready),
-                ] else if (a.task == AudioTask.liveTranscription) ...[
-                  const Text(
-                    'English LiveASR · Continues until you stop. Words appear about once per second of audio, plus processing time. '
-                    'Stop to finish the transcript. Cancel discards it. Japanese is available after recording in Transcription and TTS mode.',
-                  ),
-                ] else
-                  DropdownButtonFormField<String>(
-                    initialValue: a.language ?? 'auto',
-                    decoration: const InputDecoration(
-                      labelText: 'Speech language',
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'auto',
-                        child: Text('Detect language'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Japanese',
-                        child: Text('Japanese'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'English',
-                        child: Text('English'),
-                      ),
-                    ],
-                    onChanged: ready
-                        ? (value) {
-                            a.language = value == 'auto' ? null : value;
-                          }
-                        : null,
-                  ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  children: [
-                    if (a.phase == AudioPhase.recording)
-                      FilledButton.icon(
-                        onPressed: a.stop,
-                        icon: const Icon(Icons.stop),
-                        label: Text(
-                          a.task == AudioTask.conversation ||
-                                  a.task == AudioTask.photoQuestion
-                              ? 'Stop and reply'
-                              : a.task == AudioTask.liveTranscription
-                              ? 'Stop live transcription'
-                              : 'Stop and transcribe',
-                        ),
-                      )
-                    else
-                      FilledButton.icon(
-                        onPressed: ready ? a.record : null,
-                        icon: const Icon(Icons.mic),
-                        label: Text(
-                          a.task == AudioTask.conversation ||
-                                  a.task == AudioTask.photoQuestion
-                              ? 'Record question'
-                              : a.task == AudioTask.liveTranscription
-                              ? 'Start live transcription'
-                              : 'Record',
-                        ),
-                      ),
-                    if (a.active &&
-                        a.phase != AudioPhase.cancelling &&
-                        a.phase != AudioPhase.installing &&
-                        a.phase != AudioPhase.replying &&
-                        a.phase != AudioPhase.synthesizing &&
-                        a.phase != AudioPhase.playing)
-                      TextButton(
-                        onPressed: a.cancel,
-                        child: Text(
-                          a.task == AudioTask.conversation
-                              ? 'Cancel voice message'
-                              : 'Cancel recording',
-                        ),
-                      ),
-                    if (a.phase == AudioPhase.replying ||
-                        (a.phase == AudioPhase.playing &&
-                            (a.task == AudioTask.conversation ||
-                                a.task == AudioTask.photoQuestion)))
-                      TextButton(
-                        onPressed: a.cancel,
-                        child: const Text('Stop reply'),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                if (a.task == AudioTask.photoQuestion) ...[
-                  for (final exchange in a.photoExchanges) ...[
-                    Text(
-                      [
-                        if (exchange.spoken) 'Spoken question',
-                        if (exchange.question.isNotEmpty) exchange.question,
-                      ].join(' · '),
-                      style: Theme.of(context).textTheme.labelLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    SelectableText(
-                      exchange.answer,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-                  if (a.partialReply.isNotEmpty)
-                    SelectableText(
-                      a.partialReply,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                ] else if (a.task != AudioTask.conversation &&
-                    a.transcript.isNotEmpty)
-                  SelectableText(
-                    a.transcript,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                if (a.task == AudioTask.conversation) ...[
-                  for (var i = 0; i < a.voiceTurns.length; i++) ...[
-                    Text(
-                      'Voice message ${i + 1} · ${a.voiceTurns[i].seconds.toStringAsFixed(1)} s',
-                      style: Theme.of(context).textTheme.labelLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    SelectableText(a.voiceTurns[i].reply),
-                    const SizedBox(height: 24),
-                  ],
-                  if (a.partialReply.isNotEmpty) SelectableText(a.partialReply),
-                ] else if (a.task == AudioTask.transcription) ...[
                   const SizedBox(height: 24),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  _SpeechComposer(controller: a, enabled: ready),
+                  if (a.task == AudioTask.photoQuestion) ...[
+                    for (final exchange in a.photoExchanges) ...[
+                      Text(
+                        [
+                          if (exchange.spoken) 'Spoken question',
+                          if (exchange.question.isNotEmpty) exchange.question,
+                        ].join(' · '),
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      SelectableText(
+                        exchange.answer,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                    if (a.partialReply.isNotEmpty)
+                      SelectableText(
+                        a.partialReply,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                  ] else if (a.task == AudioTask.liveTranslation)
+                    LiveTranslationTranscript(controller: a)
+                  else if (a.task != AudioTask.conversation &&
+                      a.transcript.isNotEmpty)
+                    SelectableText(
+                      a.transcript,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  if (a.task == AudioTask.conversation) ...[
+                    for (var i = 0; i < a.voiceTurns.length; i++) ...[
+                      Text(
+                        'Voice message ${i + 1} · ${a.voiceTurns[i].seconds.toStringAsFixed(1)} s',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      SelectableText(a.voiceTurns[i].reply),
+                      const SizedBox(height: 24),
+                    ],
+                    if (a.partialReply.isNotEmpty)
+                      SelectableText(a.partialReply),
+                  ] else if (a.task == AudioTask.transcription) ...[
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    _SpeechComposer(controller: a, enabled: ready),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

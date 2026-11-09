@@ -11,6 +11,8 @@ import 'package:dianoia/dianoia.dart';
 
 import 'dart:async';
 
+import 'fake_translation.dart';
+
 import 'audio_controller_test.dart'
     show TestAudioBackend, TestMicrophone, TestSpeechPlayer;
 
@@ -55,6 +57,114 @@ void main() {
     await tester.pumpAndSettle();
     await tester.runAsync(() => cancelled);
     expect(audio.phase, AudioPhase.ready);
+  });
+
+  testWidgets('live translation shows each sentence with its translation', (
+    tester,
+  ) async {
+    final backend = TestAudioBackend(), mic = TestMicrophone();
+    final controller = AudioController(
+      backend: backend,
+      microphone: mic,
+      player: TestSpeechPlayer(),
+      translation: FakeTranslation(),
+    );
+    addTearDown(controller.dispose);
+    await controller.load('/prepared');
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+    );
+    await tester.tap(find.text('Transcription and TTS'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Live translation (English)').last);
+    await tester.pumpAndSettle();
+    expect(controller.task, AudioTask.liveTranslation);
+    expect(find.text('Translate into'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Start live translation'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Start live translation'));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(controller.phase, AudioPhase.recording);
+    backend.liveText!('Hello there. How');
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.text('[Japanese] Hello there.'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Hello there.'), findsOneWidget);
+    expect(find.text('How'), findsOneWidget);
+    mic.source!.add(Uint8List(32));
+    backend.finishing = Completer<String>()..complete('Hello there. How now?');
+    await tester.pump();
+    await tester.ensureVisible(find.text('Stop live translation'));
+    await tester.tap(find.text('Stop live translation'));
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+    expect(controller.phase, AudioPhase.ready);
+    await tester.scrollUntilVisible(
+      find.text('[Japanese] How now?'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+  });
+
+  testWidgets('live translation follows new text until the reader scrolls up', (
+    tester,
+  ) async {
+    final backend = TestAudioBackend(), mic = TestMicrophone();
+    final controller = AudioController(
+      backend: backend,
+      microphone: mic,
+      player: TestSpeechPlayer(),
+      translation: FakeTranslation(),
+    );
+    addTearDown(controller.dispose);
+    await controller.load('/prepared');
+    controller.setTask(AudioTask.liveTranslation);
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+    );
+    await tester.runAsync(controller.record);
+    await tester.pump();
+    expect(controller.phase, AudioPhase.recording);
+    ScrollPosition position() =>
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+    final sentences = StringBuffer();
+    Future<void> speak(int count) async {
+      for (var i = 0; i < count; i++) {
+        sentences.write('Sentence number ${sentences.length}. ');
+        backend.liveText!('${sentences}And');
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        await tester.pump();
+      }
+    }
+
+    await speak(12);
+    expect(position().maxScrollExtent, greaterThan(0));
+    expect(position().pixels, position().maxScrollExtent);
+    expect(find.text('And'), findsOneWidget);
+
+    final page = find.byType(Scrollable).first;
+    await tester.drag(page, const Offset(0, 300));
+    await tester.pump(const Duration(seconds: 1));
+    final reading = position().pixels;
+    expect(reading, lessThan(position().maxScrollExtent - 100));
+    await speak(3);
+    expect(position().pixels, reading);
+
+    await tester.drag(page, const Offset(0, -5000));
+    await tester.pump(const Duration(seconds: 1));
+    await speak(3);
+    expect(position().pixels, position().maxScrollExtent);
+    await tester.runAsync(controller.cancel);
   });
 
   testWidgets('live mode displays text while recording and finalizes on stop', (
