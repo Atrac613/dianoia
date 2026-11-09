@@ -115,6 +115,58 @@ void main() {
     );
   });
 
+  testWidgets('live translation follows new text until the reader scrolls up', (
+    tester,
+  ) async {
+    final backend = TestAudioBackend(), mic = TestMicrophone();
+    final controller = AudioController(
+      backend: backend,
+      microphone: mic,
+      player: TestSpeechPlayer(),
+      translation: FakeTranslation(),
+    );
+    addTearDown(controller.dispose);
+    await controller.load('/prepared');
+    controller.setTask(AudioTask.liveTranslation);
+    await tester.pumpWidget(
+      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+    );
+    await tester.runAsync(controller.record);
+    await tester.pump();
+    expect(controller.phase, AudioPhase.recording);
+    ScrollPosition position() =>
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+    final sentences = StringBuffer();
+    Future<void> speak(int count) async {
+      for (var i = 0; i < count; i++) {
+        sentences.write('Sentence number ${sentences.length}. ');
+        backend.liveText!('${sentences}And');
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        await tester.pump();
+      }
+    }
+
+    await speak(12);
+    expect(position().maxScrollExtent, greaterThan(0));
+    expect(position().pixels, position().maxScrollExtent);
+    expect(find.text('And'), findsOneWidget);
+
+    final page = find.byType(Scrollable).first;
+    await tester.drag(page, const Offset(0, 300));
+    await tester.pump(const Duration(seconds: 1));
+    final reading = position().pixels;
+    expect(reading, lessThan(position().maxScrollExtent - 100));
+    await speak(3);
+    expect(position().pixels, reading);
+
+    await tester.drag(page, const Offset(0, -5000));
+    await tester.pump(const Duration(seconds: 1));
+    await speak(3);
+    expect(position().pixels, position().maxScrollExtent);
+    await tester.runAsync(controller.cancel);
+  });
+
   testWidgets('live mode displays text while recording and finalizes on stop', (
     tester,
   ) async {

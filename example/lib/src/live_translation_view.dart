@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import 'audio_controller.dart';
 import 'live_translation.dart';
@@ -130,4 +131,101 @@ class _Segment extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Keeps the page scrolled to the newest text of a live translation.
+///
+/// Following starts with each live translation and continues through the
+/// translations that arrive after it stops. Scrolling up to reread stops it;
+/// scrolling back to the bottom resumes it.
+class LiveTranslationFollower extends StatefulWidget {
+  const LiveTranslationFollower({
+    super.key,
+    required this.controller,
+    required this.builder,
+  });
+  final AudioController controller;
+
+  /// Builds the page's scroll view with the given scroll controller.
+  final Widget Function(BuildContext, ScrollController) builder;
+
+  @override
+  State<LiveTranslationFollower> createState() =>
+      _LiveTranslationFollowerState();
+}
+
+class _LiveTranslationFollowerState extends State<LiveTranslationFollower> {
+  /// How close to the bottom still counts as reading the newest text.
+  static const _bottomSlack = 48.0;
+  final _scroll = ScrollController();
+  late Listenable _changes;
+  bool _following = false, _wasRecording = false, _jumpScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _changes = _listen();
+  }
+
+  Listenable _listen() =>
+      Listenable.merge([widget.controller, widget.controller.translator])
+        ..addListener(_changed);
+
+  @override
+  void didUpdateWidget(LiveTranslationFollower old) {
+    super.didUpdateWidget(old);
+    if (old.controller == widget.controller) return;
+    _changes.removeListener(_changed);
+    _changes = _listen();
+  }
+
+  @override
+  void dispose() {
+    _changes.removeListener(_changed);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _changed() {
+    final audio = widget.controller;
+    final live = audio.task == AudioTask.liveTranslation;
+    final recording = live && audio.phase == AudioPhase.recording;
+    if (recording && !_wasRecording) _following = true;
+    _wasRecording = recording;
+    if (!live) _following = false;
+    if (!_following || _jumpScheduled) return;
+    // The new text is laid out in the next frame; scroll after it.
+    _jumpScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _jumpScheduled = false;
+      if (!mounted || !_following || !_scroll.hasClients) return;
+      final position = _scroll.position;
+      if (position.pixels < position.maxScrollExtent) {
+        position.jumpTo(position.maxScrollExtent);
+      }
+    });
+  }
+
+  bool _scrolled(ScrollNotification notification) {
+    if (notification.depth != 0 ||
+        widget.controller.task != AudioTask.liveTranslation) {
+      return false;
+    }
+    final metrics = notification.metrics;
+    if (notification is UserScrollNotification &&
+        notification.direction == ScrollDirection.forward) {
+      _following = false;
+    } else if (notification is ScrollEndNotification &&
+        metrics.pixels >= metrics.maxScrollExtent - _bottomSlack) {
+      _following = true;
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      NotificationListener<ScrollNotification>(
+        onNotification: _scrolled,
+        child: widget.builder(context, _scroll),
+      );
 }
