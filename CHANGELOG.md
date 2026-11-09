@@ -1,4 +1,4 @@
-## Unreleased
+## 0.3.0
 
 - Experimental LFM3-Omni-2B Q4_0 under `package:dianoia/lab.dart`. One turn
   can mix text, images, audio clips and a video with its soundtrack
