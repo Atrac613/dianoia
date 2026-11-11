@@ -56,33 +56,87 @@ final class Q8Cache {
   /// Maps [path] if it is a cache with [key]; otherwise returns null. A
   /// cache that exists but cannot be mapped is an error rather than a miss:
   /// a miss would quantize from model.safetensors, which a device bundle
-  /// (`lfm3 pack`) does not hold.
+  /// (`lfm3 pack`) does not hold. So is a cache with this format's magic
+  /// whose header or matrices do not fit the file, such as a truncated
+  /// copy: it throws [FormatException], since the kernels would otherwise
+  /// read past the mapping.
   static Q8Cache? open(String path, String key) {
     final length = File(path).existsSync() ? File(path).lengthSync() : 0;
     if (length < 16) return null;
     final file =
         MappedFile.open(path) ??
         (throw StateError('mapping $path ($length bytes) failed'));
-    if (utf8.decode(file.bytes(0, 8), allowMalformed: true) != _magic) {
+    try {
+      if (utf8.decode(file.bytes(0, 8), allowMalformed: true) != _magic) {
+        file.release();
+        return null;
+      }
+      final headerLength = ByteData.sublistView(
+        file.bytes(8, 8),
+      ).getUint64(0, Endian.little);
+      // A u64 above 2^63 reads as negative.
+      if (headerLength < 0 || headerLength > file.length - 16) {
+        throw FormatException('$path: header exceeds the file');
+      }
+      final header = jsonDecode(utf8.decode(file.bytes(16, headerLength)));
+      if (header is! Map<String, Object?>) {
+        throw FormatException('$path: header is not an object');
+      }
+      if (header['version'] != _version || header['key'] != key) {
+        file.release();
+        return null;
+      }
+      final tensors = header['tensors'];
+      if (tensors is! Map<String, Object?>) {
+        throw FormatException('$path: header lacks tensors');
+      }
+      final entries = <String, Map<String, Object?>>{};
+      for (final MapEntry(key: name, :value) in tensors.entries) {
+        if (value is! Map<String, Object?> || !_fits(value, file.length)) {
+          throw FormatException('$path: $name does not fit the file');
+        }
+        entries[name] = value;
+      }
+      return Q8Cache._(file, entries);
+    } on FormatException {
       file.release();
-      return null;
+      rethrow;
     }
-    final headerLength = ByteData.sublistView(
-      file.bytes(8, 8),
-    ).getUint64(0, Endian.little);
-    final header =
-        jsonDecode(utf8.decode(file.bytes(16, headerLength)))
-            as Map<String, Object?>;
-    if (header['version'] != _version || header['key'] != key) {
-      file.release();
-      return null;
-    }
-    return Q8Cache._(file, {
-      for (final MapEntry(:key, :value)
-          in (header['tensors'] as Map<String, Object?>).entries)
-        key: value as Map<String, Object?>,
-    });
   }
+
+  /// Whether a header entry describes a matrix of a known format whose
+  /// values and scales lie inside a file of [fileLength] bytes, aligned
+  /// for the scale type.
+  static bool _fits(Map<String, Object?> e, int fileLength) {
+    final format = e['format'] ?? 'q8';
+    final rows = e['rows'],
+        cols = e['cols'],
+        qs = e['qs'],
+        scales = e['scales'];
+    if ((format != 'q8' && format != 'q4') ||
+        rows is! int ||
+        cols is! int ||
+        qs is! int ||
+        scales is! int) {
+      return false;
+    }
+    // Bounding each side keeps rows * cols from overflowing.
+    if (rows <= 0 ||
+        cols <= 0 ||
+        rows > _maxSide ||
+        cols > _maxSide ||
+        cols % 32 != 0) {
+      return false;
+    }
+    final (qsLength, scalesLength) = _byteLengths(format as String, rows, cols);
+    return qs >= 0 &&
+        scales >= 0 &&
+        scales % (format == 'q4' ? 2 : 4) == 0 &&
+        qs <= fileLength - qsLength &&
+        scales <= fileLength - scalesLength;
+  }
+
+  static const _maxSide = 1 << 31;
 
   /// The mapping, for handing the whole file to the GPU in one piece.
   MappedFile get file => _file;
