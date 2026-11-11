@@ -71,4 +71,43 @@ void main() {
       cache!.close();
     });
   }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');
+
+  group('after a failure', () {
+    late Lfm3Model model;
+    setUpAll(() async {
+      model = await Lfm3Model.load(
+        backbone,
+        maxSeq: 64,
+        maxChunk: 4,
+        weights: WeightFormat.q8,
+        q8CachePath: cachePath,
+      );
+    });
+    tearDownAll(() => model.close());
+    setUp(() => model.reset());
+
+    test('a forward pass that fails partway forgets the sequence', () async {
+      await model.forward([10, 20, 30]);
+      await model.checkpoint();
+      // Fails in the second chunk, after the first has advanced the state.
+      await expectLater(
+        model.forward(
+          [40, 50, 60, 70, 80, 90],
+          capture: (slot, first, rows, count) {
+            if (first > 3) throw StateError('injected failure');
+          },
+        ),
+        throwsStateError,
+      );
+      expect(model.length, 0);
+      expect(model.history, isEmpty);
+
+      // The same tokens fed again match a fresh model.
+      await model.forward([10, 20, 30, 40]);
+      final again = Float32List.fromList(model.logits);
+      await model.reset();
+      await model.forward([10, 20, 30, 40]);
+      expect(again, orderedEquals(model.logits));
+    });
+  }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');
 }

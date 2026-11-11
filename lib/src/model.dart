@@ -609,6 +609,30 @@ final class Lfm3Model {
       throw StateError('sequence exceeds maxSeq=$maxSeq');
     }
     if (tokens.isNotEmpty) _hasHiddenState = false;
+    try {
+      await _forward(tokens, capture, computeLogits, overrides);
+    } catch (_) {
+      // A chunk that failed partway (a GPU command buffer the system
+      // rejected, a worker isolate that died) may have advanced the conv
+      // histories and KV rows without [length] and [history]: forget the
+      // sequence, so no later prefill reuses state that no longer matches.
+      if (!_closed) {
+        try {
+          await reset();
+        } on Object {
+          // The original error says more than a failed reset.
+        }
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _forward(
+    List<int> tokens,
+    void Function(int slot, int first, Float32List rows, int count)? capture,
+    bool computeLogits,
+    Map<int, Float32List> overrides,
+  ) async {
     final gpu = _gpu;
     if (gpu != null) {
       final h = config.hiddenSize;
