@@ -109,5 +109,39 @@ void main() {
       await model.forward([10, 20, 30, 40]);
       expect(again, orderedEquals(model.logits));
     });
+
+    test('a reply that fails mid-generation leaves the messages', () async {
+      final session = ChatSession(
+        model,
+        Lfm3Tokenizer.load(backbone),
+        system: 'S',
+        maxNew: 8,
+      );
+      await session.warmUp();
+      final before = [...session.messages];
+      var calls = 0;
+      await expectLater(
+        session.send(
+          {'role': 'user', 'content': 'hi'},
+          onText: (_) {
+            if (++calls == 2) throw StateError('injected failure');
+            return true;
+          },
+        ),
+        throwsStateError,
+      );
+      expect(session.messages, before);
+
+      // The next turn renders one user message, as if the failed one had
+      // never been sent.
+      final turn = await session.send({'role': 'user', 'content': 'hi'});
+      expect(session.messages, hasLength(2));
+      expect(
+        turn.promptTokens,
+        session.promptIds([
+          {'role': 'user', 'content': 'hi'},
+        ]).length,
+      );
+    });
   }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');
 }

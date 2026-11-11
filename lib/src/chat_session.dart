@@ -135,8 +135,9 @@ final class ChatSession {
   /// Do not modify the view; copy it before retaining it across model calls.
   /// Observer work, [onText]'s included, counts in the generation timings.
   ///
-  /// Throws [ContextLengthExceeded], and leaves the conversation as it was,
-  /// when the prompt leaves no room in the context for a reply.
+  /// Throws [ContextLengthExceeded] when the prompt leaves no room in the
+  /// context for a reply. Whatever [send] throws, from the model, [onLogits]
+  /// or [onText], it leaves [messages] as they were before the call.
   Future<ChatTurn> send(
     Map<String, Object?> message, {
     void Function(Float32List logits)? onLogits,
@@ -165,15 +166,22 @@ final class ChatSession {
     sw
       ..reset()
       ..start();
-    while (gen.length < maxNew && model.history.length < model.maxSeq) {
-      final next = _argmax(model.logits);
-      if (next == model.config.eosTokenId) break;
-      gen.add(next);
-      await model.step(next);
-      onLogits?.call(model.logits);
-      if (onText != null && !await onText(_complete(tokenizer.decode(gen)))) {
-        break;
+    try {
+      while (gen.length < maxNew && model.history.length < model.maxSeq) {
+        final next = _argmax(model.logits);
+        if (next == model.config.eosTokenId) break;
+        gen.add(next);
+        await model.step(next);
+        onLogits?.call(model.logits);
+        if (onText != null && !await onText(_complete(tokenizer.decode(gen)))) {
+          break;
+        }
       }
+    } catch (_) {
+      // The model keeps what it has fed; the next prompt, which no longer
+      // has this reply, rewinds to the checkpoint at its end.
+      messages.removeLast();
+      rethrow;
     }
     final decodeSeconds = sw.elapsedMicroseconds / 1e6;
     final text = tokenizer.decode(gen);
