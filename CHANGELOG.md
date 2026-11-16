@@ -1,3 +1,19 @@
+## Unreleased
+
+- Faster decoding on Metal with the same bits. A one-token matrix product
+  now gives each SIMD group two rows instead of one (`gemv_q8_r2`,
+  `gemv_q4_r2`; `GpuForward.decodeRows` selects 1, 2 or 4 and
+  `restoreDecodeRowsDefault` the backend's default), and the attention
+  kernel loads eight keys per step in both of its loops over the keys.
+  Every output equals the old kernels' bit for bit (`tool/lab_parity.sh`).
+  On an M2 Max under other load, old and new builds run alternately on a
+  431-token prompt: Q4 decode 36-46 to 56-65 tok/s, Q8 31-33 to 37-47
+  tok/s; prompt processing is unchanged. Not yet measured on an iPhone.
+- `GpuForward.profiling` now works on Metal: each dispatch runs in a
+  command buffer of its own, so `takeProfile` reports GPU time per kernel
+  kind (the wall clock is far slower meanwhile). `dianoia run --gpu
+  --kernel-profile` prints the decode breakdown.
+
 ## 0.3.0
 
 - Experimental LFM3-Omni-2B Q4_0 under `package:dianoia/lab.dart`. One turn
