@@ -16,6 +16,7 @@ import 'dart:typed_data';
 
 import 'chat_template.dart';
 import 'model.dart';
+import 'model_use.dart';
 import 'tokenizer.dart';
 import 'tool_calls.dart';
 
@@ -98,6 +99,15 @@ final class ChatSession {
   /// (Lfm3Model.loadState), and after computing it saves it there. Returns
   /// whether the state came from the file.
   Future<bool> warmUp({String? statePath}) async {
+    beginModelUse(model);
+    try {
+      return await _warmUp(statePath);
+    } finally {
+      endModelUse(model);
+    }
+  }
+
+  Future<bool> _warmUp(String? statePath) async {
     if (statePath != null &&
         await model.loadState(statePath) &&
         _startsWith(prefix, model.history) &&
@@ -143,6 +153,19 @@ final class ChatSession {
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
   }) async {
+    beginModelUse(model);
+    try {
+      return await _send(message, onLogits, onText);
+    } finally {
+      endModelUse(model);
+    }
+  }
+
+  Future<ChatTurn> _send(
+    Map<String, Object?> message,
+    void Function(Float32List logits)? onLogits,
+    FutureOr<bool> Function(String text)? onText,
+  ) async {
     final ids = promptIds([...messages, message]);
     if (ids.length >= model.maxSeq) {
       throw ContextLengthExceeded(ids.length, model.maxSeq);
