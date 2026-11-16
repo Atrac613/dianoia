@@ -433,6 +433,12 @@ struct AttentionParams {
 // weighted sum of values (one thread per dimension), and the per-head
 // output gate sigmoid(gate). Scores live in threadgroup memory, which the
 // host sizes for the last token's keys.
+//
+// A thread's time here is the latency of its loads, one key after another,
+// so both loops over the keys take ATTENTION_KEYS of them per step: the
+// loads go out together, and the arithmetic that follows is each key's own,
+// in the order of the one-key loops that finish the job.
+constant uint ATTENTION_KEYS = 8;
 kernel void attention(device const float* q [[buffer(0)]],
                       device const float* keys [[buffer(1)]],
                       device const float* values [[buffer(2)]],
@@ -456,11 +462,26 @@ kernel void attention(device const float* q [[buffer(0)]],
   const uint kvo = head / p.group * p.hd;
   device const float4* q4 = (device const float4*)(q + qo);
   const uint hd4 = p.hd / 4;
-  for (uint i = simd; i < count; i += simds) {
-    device const float4* k4 =
-        (device const float4*)(keys + (ulong)(start + i) * p.kv_dim + kvo);
+  device const float4* k4 = (device const float4*)(keys + (ulong)start * p.kv_dim + kvo);
+  const uint kv4 = p.kv_dim / 4;
+  uint i = simd;
+  for (; i + (ATTENTION_KEYS - 1) * simds < count; i += ATTENTION_KEYS * simds) {
+    float d[ATTENTION_KEYS];
+    for (uint j = 0; j < ATTENTION_KEYS; j++) d[j] = 0.0f;
+    for (uint c = lane; c < hd4; c += 32) {
+      const float4 qc = q4[c];
+      for (uint j = 0; j < ATTENTION_KEYS; j++) {
+        d[j] += dot(qc, k4[(ulong)(i + j * simds) * kv4 + c]);
+      }
+    }
+    for (uint j = 0; j < ATTENTION_KEYS; j++) {
+      const float score = simd_sum(d[j]);
+      if (lane == 0) scores[i + j * simds] = score * p.scale;
+    }
+  }
+  for (; i < count; i += simds) {
     float d = 0.0f;
-    for (uint c = lane; c < hd4; c += 32) d += dot(q4[c], k4[c]);
+    for (uint c = lane; c < hd4; c += 32) d += dot(q4[c], k4[(ulong)i * kv4 + c]);
     d = simd_sum(d);
     if (lane == 0) scores[i] = d * p.scale;
   }
@@ -484,7 +505,16 @@ kernel void attention(device const float* q [[buffer(0)]],
   for (uint d = tid; d < p.hd; d += threads) {
     device const float* v = values + (ulong)start * p.kv_dim + kvo + d;
     float acc = 0.0f;
-    for (uint i = 0; i < count; i++) acc += scores[i] * v[(ulong)i * p.kv_dim];
+    uint i = 0;
+    for (; i + ATTENTION_KEYS <= count; i += ATTENTION_KEYS) {
+      float weight[ATTENTION_KEYS], value[ATTENTION_KEYS];
+      for (uint j = 0; j < ATTENTION_KEYS; j++) {
+        weight[j] = scores[i + j];
+        value[j] = v[(ulong)(i + j) * p.kv_dim];
+      }
+      for (uint j = 0; j < ATTENTION_KEYS; j++) acc += weight[j] * value[j];
+    }
+    for (; i < count; i++) acc += scores[i] * v[(ulong)i * p.kv_dim];
     out[qo + d] = (acc / sum) * g;
   }
 }
