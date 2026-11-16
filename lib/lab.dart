@@ -20,6 +20,7 @@ export 'src/speech_reply.dart';
 export 'src/chat_bench.dart';
 export 'src/chat_template.dart';
 export 'src/config.dart';
+export 'src/control_vector.dart';
 export 'src/download.dart';
 export 'src/executor.dart';
 export 'src/gguf.dart';

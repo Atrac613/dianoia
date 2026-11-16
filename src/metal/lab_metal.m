@@ -529,6 +529,38 @@ kernel void swiglu(device float* g [[buffer(0)]],
   g[i] = (a / (1.0f + exp(-a))) * u[i];
 }
 
+struct SteerParams {
+  uint cols;
+  uint mode;
+  float scale;
+};
+
+// A control vector on rows of `cols` values, one threadgroup per row.
+// Mode 0 adds v to the row; mode 1 takes the unit direction v and removes
+// scale times the row's component along it: x - (scale * (x . v)) v.
+kernel void steer(device float* x [[buffer(0)]],
+                  device const float* v [[buffer(1)]],
+                  constant SteerParams& p [[buffer(2)]],
+                  uint row [[threadgroup_position_in_grid]],
+                  uint tid [[thread_index_in_threadgroup]],
+                  uint threads [[threads_per_threadgroup]],
+                  uint simd [[simdgroup_index_in_threadgroup]],
+                  uint lane [[thread_index_in_simdgroup]]) {
+  threadgroup float scratch[32];
+  device float* xr = x + (ulong)row * p.cols;
+  if (p.mode == 0) {
+    for (uint j = tid; j < p.cols; j += threads) xr[j] = xr[j] + v[j];
+    return;
+  }
+  // Each thread reads and writes only its own columns, so the update needs
+  // no barrier beyond the reduction's.
+  float along = 0.0f;
+  for (uint j = tid; j < p.cols; j += threads) along += xr[j] * v[j];
+  along = group_sum(along, scratch, simd, lane, (threads + 31) / 32);
+  const float c = p.scale * along;
+  for (uint j = tid; j < p.cols; j += threads) xr[j] = xr[j] - c * v[j];
+}
+
 kernel void copy_f32(device const float* src [[buffer(0)]],
                      device float* dst [[buffer(1)]],
                      constant uint& count [[buffer(2)]],
@@ -543,7 +575,7 @@ static id<MTLCommandQueue> gQueue;
 static __unsafe_unretained id<MTLComputePipelineState> gGemvQ8Rows[2], gGemvQ4Rows[2];
 static id<MTLComputePipelineState> gDecodePipelines[4];  // keeps them alive
 static id<MTLComputePipelineState> gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gTouch, gRmsNorm, gHeadNormRope, gConv,
-    gAttention, gSwiglu, gCopy;
+    gAttention, gSwiglu, gCopy, gSteer;
 static double gLastGpuMs;
 static const NSUInteger kRowsPerGroup = 8;
 static const NSUInteger kGemmTokens = 8, kGemmRows = 4;
@@ -606,9 +638,10 @@ int64_t lab_gpu_init(void) {
     gAttention = pipeline(library, @"attention");
     gSwiglu = pipeline(library, @"swiglu");
     gCopy = pipeline(library, @"copy_f32");
+    gSteer = pipeline(library, @"steer");
     gReady = gGemvQ8Rows[0] && gGemvQ8Rows[1] && gGemvQ4Rows[0] && gGemvQ4Rows[1] && gGemvQ8 &&
              gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv &&
-             gAttention && gSwiglu && gCopy;
+             gAttention && gSwiglu && gCopy && gSteer;
     return gReady;
   }
 }
@@ -730,7 +763,8 @@ enum {
   kKindAttention = 7,
   kKindSwiglu = 8,
   kKindCopy = 9,
-  kKinds = 16
+  kKindSteer = 16,
+  kKinds = 17
 };
 static int gProfiling;
 static double gKindMs[kKinds];
@@ -1076,4 +1110,24 @@ void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOf
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
   profiled(kKindCopy);
+}
+
+typedef struct {
+  uint32_t cols, mode;
+  float scale;
+} SteerParams;
+
+// Applies a control vector, v at vOffset, to `rows` rows of `cols` floats
+// at x + xOffset: mode 0 adds it, mode 1 projects the unit direction v out
+// of each row, scaled by `scale`.
+void lab_gpu_enc_steer(int64_t x, int64_t xOffset, int64_t v, int64_t vOffset, int64_t rows,
+                       int64_t cols, int64_t mode, double scale) {
+  const SteerParams p = {(uint32_t)cols, (uint32_t)mode, (float)scale};
+  [gEnc setComputePipelineState:gSteer];
+  [gEnc setBuffer:gTable[x] offset:(NSUInteger)xOffset atIndex:0];
+  [gEnc setBuffer:gTable[v] offset:(NSUInteger)vOffset atIndex:1];
+  [gEnc setBytes:&p length:sizeof p atIndex:2];
+  [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)rows, 1, 1)
+       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindSteer);
 }

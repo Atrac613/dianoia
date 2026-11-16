@@ -25,6 +25,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'config.dart';
+import 'control_vector.dart';
 import 'native.dart';
 import 'ops.dart';
 import 'q8_cache.dart';
@@ -280,6 +281,33 @@ external void _swiglu(int g, int u, int count);
 )
 external void _copy(int src, int srcOffset, int dst, int dstOffset, int count);
 
+@Native<Void Function(Int64, Int64, Int64, Int64, Int64, Int64, Int64, Double)>(
+  symbol: 'lab_gpu_enc_steer',
+  isLeaf: true,
+)
+external void _steer(
+  int x,
+  int xOffset,
+  int v,
+  int vOffset,
+  int rows,
+  int cols,
+  int mode,
+  double scale,
+);
+
+/// A control vector on the GPU: its applied vectors, one row of hidden
+/// size per layer (zero for layers it does not steer), and which layers it
+/// steers.
+final class _Steering {
+  _Steering(this.buffer, this.layers, this.mode, this.scale);
+
+  final _Buffer buffer;
+  final List<bool> layers;
+  final int mode;
+  final double scale;
+}
+
 /// A Q8 or Q4 matrix: the buffer holding it and byte offsets into it.
 final class _Matrix {
   const _Matrix(
@@ -360,7 +388,7 @@ final class _Buffer {
 }
 
 final class GpuForward {
-  GpuForward._(this.config, this.maxSeq, this.maxChunk);
+  GpuForward._(this.config, this.maxSeq, this.maxChunk, this.steers);
 
   /// Starts the GPU of the kernels asset, or with [libPath] of the library
   /// there, and prepares [cache]'s weights for it. The native CPU kernels
@@ -385,7 +413,12 @@ final class GpuForward {
     if (maxSeq * 4 + 128 > _maxThreadgroupMemory()) {
       throw ArgumentError('--max-seq=$maxSeq is too long for GPU attention');
     }
-    final gpu = GpuForward._(config, maxSeq, maxChunk);
+    // A GPU library from elsewhere (the lab's, for parity checks) may
+    // predate control vectors.
+    final steers =
+        libPath == null ||
+        DynamicLibrary.open(libPath).providesSymbol('lab_gpu_enc_steer');
+    final gpu = GpuForward._(config, maxSeq, maxChunk, steers);
     try {
       gpu._load(modelDir, cache);
     } catch (_) {
@@ -397,6 +430,50 @@ final class GpuForward {
 
   /// GPU buffers in the process not yet released, for leak checks.
   static int get liveBuffers => _liveBuffers();
+
+  /// Whether the GPU library applies control vectors ([setControlVector]).
+  final bool steers;
+
+  _Steering? _steering;
+
+  /// Applies [vector] in every following [forward], after each layer it
+  /// steers and before that layer's capture, or stops with null. Uploads its
+  /// vectors to a buffer of its own, released when replaced, cleared or
+  /// disposed. Callers make sure no state computed under another vector is
+  /// reused (Lfm3Model.setControlVector).
+  void setControlVector(ControlVector? vector) {
+    if (_disposed) throw StateError('the GPU forward pass is disposed');
+    final c = config;
+    if (vector != null) {
+      if (!steers) {
+        throw UnsupportedError('this GPU library has no lab_gpu_enc_steer');
+      }
+      if (vector.hiddenSize != c.hiddenSize || vector.maxLayer >= c.numLayers) {
+        throw ArgumentError('the control vector does not fit this model');
+      }
+    }
+    if (_steering case final old?) {
+      _steering = null;
+      _owned.remove(old.buffer.handle);
+      _release(old.buffer.handle);
+    }
+    if (vector == null) return;
+    final h = c.hiddenSize;
+    final buffer = _newBuffer(c.numLayers * h);
+    final layers = List.filled(c.numLayers, false);
+    for (var l = 0; l < c.numLayers; l++) {
+      final v = vector.appliedVector(l);
+      if (v == null) continue;
+      buffer.view.setAll(l * h, v);
+      layers[l] = true;
+    }
+    _steering = _Steering(
+      buffer,
+      layers,
+      vector.mode == ControlMode.add ? 0 : 1,
+      vector.scale,
+    );
+  }
 
   /// The buffers this forward pass made, which [dispose] releases.
   final _owned = <int>[];
@@ -416,6 +493,7 @@ final class GpuForward {
     _disposed = true;
     _owned.forEach(_release);
     _owned.clear();
+    _steering = null;
   }
 
   /// The GPU's name, once a [GpuForward] exists.
@@ -458,6 +536,7 @@ final class GpuForward {
     'gemv_q8_i8',
     'gemv_q4_i8',
     'gemv_q8_i8_vec',
+    'steer',
   ];
 
   /// Rows per subgroup (SIMD group on Metal) of the decode kernels: 1, 2 or
@@ -942,6 +1021,7 @@ final class GpuForward {
         ..setAll(at + 3 * pair, _slidingRope.sin);
     }
 
+    final steering = _steering;
     var dispatched = 0;
     void matmul(_Matrix w, _Buffer x, int y, [int yOffset = 0]) {
       w.encode(x.handle, y, yOffset, n);
@@ -1055,6 +1135,21 @@ final class GpuForward {
       dispatched++;
       matmul(l.w2, _g, _m.handle);
       norm(_m, l.postFfnNorm, _x, accumulate: true);
+      // The residual leaving layer i is complete: steer it before the
+      // capture, the next layer and the LM head read it.
+      if (steering != null && steering.layers[i]) {
+        _steer(
+          _x.handle,
+          0,
+          steering.buffer.handle,
+          i * h * 4,
+          n,
+          h,
+          steering.mode,
+          steering.scale,
+        );
+        dispatched++;
+      }
       if (capture) snapshot(i + 1);
     }
     if (withLogits) {

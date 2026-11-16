@@ -134,6 +134,9 @@ static const uint32_t kSwiglu[] =
 static const uint32_t kCopy[] =
 #include "copy.inc"
     ;
+static const uint32_t kSteer[] =
+#include "steer.inc"
+    ;
 static const uint32_t kQuantize[] =
 #include "quantize.inc"
     ;
@@ -167,7 +170,7 @@ enum {
 // them).
 enum { kKindGemvQ8, kKindGemmQ8, kKindGemvQ4, kKindGemmQ4, kKindRmsNorm, kKindHeadNormRope,
        kKindConv, kKindAttention, kKindSwiglu, kKindCopy, kKindQuantize, kKindGemmQ8I8,
-       kKindGemmQ4I8, kKindGemvQ8I8, kKindGemvQ4I8, kKindGemvQ8I8Vec, kKinds };
+       kKindGemmQ4I8, kKindGemvQ8I8, kKindGemvQ4I8, kKindGemvQ8I8Vec, kKindSteer, kKinds };
 
 // Rows per subgroup the decode GEMVs are built for (a specialization
 // constant); lab_gpu_set_decode_rows picks one.
@@ -189,7 +192,7 @@ static VkPhysicalDeviceProperties gProperties;
 static VkDeviceSize gMaxBuffer, gHeapSize;
 static VkPipelineLayout gLayout;
 static VkPipeline gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gRmsNorm, gHeadNormRope, gConv,
-    gAttention, gSwiglu, gCopy, gQuantize, gGemmQ8I8, gGemmQ4I8;
+    gAttention, gSwiglu, gCopy, gSteer, gQuantize, gGemmQ8I8, gGemmQ4I8;
 static const uint32_t kDecodeRows[] = {1, 2, 4};
 static VkPipeline gGemvQ4I8[3], gGemvQ8I8[3][3];
 static VkPipeline gGemvQ8I8Vec[3][3];
@@ -452,6 +455,7 @@ LAB_EXPORT int64_t lab_gpu_init(void) {
   PIPELINE(gAttention, kAttention);
   PIPELINE(gSwiglu, kSwiglu);
   PIPELINE(gCopy, kCopy);
+  PIPELINE(gSteer, kSteer);
   if (gIntDot) {
     PIPELINE(gQuantize, kQuantize);
     PIPELINE(gGemmQ8I8, kGemmQ8I8);
@@ -964,4 +968,22 @@ LAB_EXPORT void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, in
   const CopyParams p = {at(src, srcOffset), at(dst, dstOffset), (uint32_t)count, 0};
   dispatch(kKindCopy, gCopy, &p, sizeof p, groups(count, 256), 1);
   wrote(dst);
+}
+
+typedef struct {
+  uint64_t x, v;
+  uint32_t cols, mode;
+  float scale;
+  uint32_t pad;
+} SteerParams;
+
+// Applies a control vector, v at vOffset, to `rows` rows of `cols` floats
+// at x + xOffset: mode 0 adds it, mode 1 projects the unit direction v out
+// of each row, scaled by `scale`.
+LAB_EXPORT void lab_gpu_enc_steer(int64_t x, int64_t xOffset, int64_t v, int64_t vOffset,
+                                  int64_t rows, int64_t cols, int64_t mode, double scale) {
+  const SteerParams p = {at(x, xOffset), at(v, vOffset), (uint32_t)cols, (uint32_t)mode,
+                         (float)scale, 0};
+  dispatch(kKindSteer, gSteer, &p, sizeof p, (uint32_t)rows, 1);
+  wrote(x);
 }
