@@ -13,6 +13,24 @@
   command buffer of its own, so `takeProfile` reports GPU time per kernel
   kind (the wall clock is far slower meanwhile). `dianoia run --gpu
   --kernel-profile` prints the breakdown for the prompt and for decoding.
+- Experimental control vectors (activation steering) under
+  `package:dianoia/lab.dart`: `ControlVector` adds a direction to, or
+  projects it out of, the residual stream leaving chosen layers, and
+  `Lfm3Model.setControlVector` applies one on the CPU path and on the GPU
+  (a new `steer` kernel for Metal and Vulkan; Vulkan is so far checked on
+  its own kernel only, not on a device). Vectors load from safetensors or
+  llama.cpp GGUF control-vector files and save as safetensors.
+  `tool/control_vector_extract.dart` builds one from two contrasting prompt
+  sets, reports how well each layer separates them (a leave-one-out d',
+  `LayerSeparation`) and leaves out layers below `--min-separation`;
+  `tool/control_vector_probe.dart` compares replies with and without it.
+  `benchmarkControlVector` and `tool/control_vector_bench.dart` check a
+  vector on a device's CPU and GPU, and the device bench app runs them on
+  an iPhone (`tool/device_bench/run_ios_control_vector.sh`).
+  `LocalModel` and `LocalVisionModel` take a vector between replies
+  through lab-only extensions (`setControlVector`, `controlVector`);
+  `package:dianoia/dianoia.dart` is unchanged.
+  See docs/control_vectors.md.
 
 ## 0.3.0
 

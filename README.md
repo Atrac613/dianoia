@@ -344,6 +344,10 @@ Command flags are documented at the top of [bin/dianoia.dart](bin/dianoia.dart).
 The [VL integration notes](docs/lfm3_vl_support.md) cover local checkpoint
 preparation; the [benchmark guide](docs/lfm3_vl_device_benchmark.md) covers desktop
 and dedicated-device measurements.
+Experimental [control vectors](docs/control_vectors.md) (activation
+steering on the CPU and GPU, lab API) come with
+`tool/control_vector_extract.dart` and `tool/control_vector_probe.dart`; they
+change the model's output, so keep them off for benchmarks and parity checks.
 
 ## Development
 
