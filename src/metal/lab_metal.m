@@ -586,14 +586,44 @@ int64_t lab_gpu_register_q8_head(int64_t w, int64_t qs, int64_t rows, int64_t co
   (void)w; (void)qs; (void)rows; (void)cols; (void)q4Body; return 0;
 }
 
-// Per-kernel timing (lab_vulkan.c has it); Metal reports none.
-void lab_gpu_set_profiling(int64_t on) { (void)on; }
+// Per-kernel timing. Metal has no timestamps inside a command buffer, so
+// while profiling is on every dispatch gets a command buffer of its own,
+// committed and waited for (see `profiled`). The kernels then run with idle
+// gaps between them, so the times show where a token's GPU time goes rather
+// than what an unprofiled token costs. Kinds are in lab_vulkan.c's order.
+enum {
+  kKindGemvQ8 = 0,
+  kKindGemmQ8 = 1,
+  kKindGemvQ4 = 2,
+  kKindGemmQ4 = 3,
+  kKindRmsNorm = 4,
+  kKindHeadNormRope = 5,
+  kKindConv = 6,
+  kKindAttention = 7,
+  kKindSwiglu = 8,
+  kKindCopy = 9,
+  kKinds = 16
+};
+static int gProfiling;
+static double gKindMs[kKinds];
+static int64_t gKindCount[kKinds];
+// GPU time and failures of the command buffers `profiled` split off since
+// lab_gpu_begin.
+static double gSplitMs;
+static int gSplitFailed;
 
+void lab_gpu_set_profiling(int64_t on) { gProfiling = on != 0; }
+
+// Copies into ms and counts, per kernel kind, the GPU time and dispatches
+// since the last call, and starts over. Returns the number of kinds.
 int64_t lab_gpu_profile(double* ms, int64_t* counts, int64_t kinds) {
-  (void)ms;
-  (void)counts;
-  (void)kinds;
-  return 0;
+  for (int64_t k = 0; k < kinds && k < kKinds; k++) {
+    ms[k] = gKindMs[k];
+    counts[k] = gKindCount[k];
+    gKindMs[k] = 0;
+    gKindCount[k] = 0;
+  }
+  return kKinds;
 }
 
 // GPU execution time of the last waited command buffer, in milliseconds.
@@ -693,6 +723,29 @@ void lab_gpu_begin(void) {
   @autoreleasepool {
     gCmd = [gQueue commandBufferWithUnretainedReferences];
     gEnc = [gCmd computeCommandEncoder];
+    gSplitMs = 0;
+    gSplitFailed = 0;
+  }
+}
+
+// With profiling on, runs the dispatch just encoded (of kernel kind `kind`)
+// in a command buffer of its own, books its GPU time and opens the next.
+static void profiled(int kind) {
+  if (!gProfiling) return;
+  @autoreleasepool {
+    [gEnc endEncoding];
+    [gCmd commit];
+    [gCmd waitUntilCompleted];
+    const double ms = (gCmd.GPUEndTime - gCmd.GPUStartTime) * 1000.0;
+    gKindMs[kind] += ms;
+    gKindCount[kind]++;
+    gSplitMs += ms;
+    if (gCmd.status == MTLCommandBufferStatusError) {
+      NSLog(@"lab_metal: %@", gCmd.error);
+      gSplitFailed = 1;
+    }
+    gCmd = [gQueue commandBufferWithUnretainedReferences];
+    gEnc = [gCmd computeCommandEncoder];
   }
 }
 
@@ -707,12 +760,12 @@ int64_t lab_gpu_commit(int64_t wait) {
     [cb commit];
     if (!wait) return 1;
     [cb waitUntilCompleted];
-    gLastGpuMs = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0;
+    gLastGpuMs = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0 + gSplitMs;
     if (cb.status == MTLCommandBufferStatusError) {
       NSLog(@"lab_metal: %@", cb.error);
       return 0;
     }
-    return 1;
+    return gSplitFailed ? 0 : 1;
   }
 }
 
@@ -721,12 +774,13 @@ typedef struct {
 } GemmParams;
 
 static void encode_matmul(id<MTLComputePipelineState> gemv, id<MTLComputePipelineState> gemm,
-                          int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
+                          int gemvKind, int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
                           int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows, int64_t cols,
                           int64_t n) {
   if (n == 1) {
     encode_gemv(gEnc, gemv, gTable[w], qsOffset, scalesOffset, gTable[x], xOffset, gTable[y],
                 yOffset, rows, cols);
+    profiled(gemvKind);
     return;
   }
   const GemmParams p = {(uint32_t)rows, (uint32_t)cols, (uint32_t)n};
@@ -740,6 +794,7 @@ static void encode_matmul(id<MTLComputePipelineState> gemv, id<MTLComputePipelin
   [gEnc dispatchThreadgroups:MTLSizeMake(((NSUInteger)rows + rowsPerGroup - 1) / rowsPerGroup,
                                          ((NSUInteger)n + kGemmTokens - 1) / kGemmTokens, 1)
        threadsPerThreadgroup:MTLSizeMake(32 * kRowsPerGroup, 1, 1)];
+  profiled(gemvKind + 1);
 }
 
 // Y = X W^T for n tokens, X [n, cols] and Y [n, rows], with W in Q8 inside
@@ -747,7 +802,7 @@ static void encode_matmul(id<MTLComputePipelineState> gemv, id<MTLComputePipelin
 void lab_gpu_enc_matmul_q8(int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
                              int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows,
                              int64_t cols, int64_t n) {
-  encode_matmul(gGemvQ8, gGemmQ8, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
+  encode_matmul(gGemvQ8, gGemmQ8, kKindGemvQ8, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
                 n);
 }
 
@@ -755,7 +810,7 @@ void lab_gpu_enc_matmul_q8(int64_t w, int64_t qsOffset, int64_t scalesOffset, in
 void lab_gpu_enc_matmul_q4(int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
                              int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows,
                              int64_t cols, int64_t n) {
-  encode_matmul(gGemvQ4, gGemmQ4, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
+  encode_matmul(gGemvQ4, gGemmQ4, kKindGemvQ4, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
                 n);
 }
 
@@ -776,6 +831,7 @@ void lab_gpu_enc_rms_norm(int64_t x, int64_t xOffset, int64_t w, int64_t wOffset
   [gEnc setBytes:&p length:sizeof p atIndex:3];
   [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)rows, 1, 1)
        threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindRmsNorm);
 }
 
 typedef struct {
@@ -797,6 +853,7 @@ void lab_gpu_enc_head_norm_rope(int64_t x, int64_t xOffset, int64_t xStride, int
   [gEnc setBytes:&p length:sizeof p atIndex:3];
   [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)heads, (NSUInteger)n, 1)
        threadsPerThreadgroup:MTLSizeMake((NSUInteger)hd / 2, 1, 1)];
+  profiled(kKindHeadNormRope);
 }
 
 typedef struct {
@@ -815,6 +872,7 @@ void lab_gpu_enc_conv(int64_t bcx, int64_t weight, int64_t weightOffset, int64_t
   [gEnc setBytes:&p length:sizeof p atIndex:4];
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)width, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindConv);
 }
 
 typedef struct {
@@ -847,6 +905,7 @@ void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate
   [gEnc setThreadgroupMemoryLength:((NSUInteger)keysOfLast * 4 + 15) / 16 * 16 atIndex:0];
   [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)heads, (NSUInteger)n, 1)
        threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
+  profiled(kKindAttention);
 }
 
 void lab_gpu_enc_swiglu(int64_t g, int64_t u, int64_t count) {
@@ -857,6 +916,7 @@ void lab_gpu_enc_swiglu(int64_t g, int64_t u, int64_t count) {
   [gEnc setBytes:&n length:sizeof n atIndex:2];
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindSwiglu);
 }
 
 void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOffset,
@@ -868,4 +928,5 @@ void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOf
   [gEnc setBytes:&n length:sizeof n atIndex:2];
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindCopy);
 }

@@ -624,12 +624,14 @@ final class GpuForward {
     return samples;
   }
 
-  /// Times every dispatch on the GPU while on (Vulkan; Metal reports
-  /// nothing), for [takeProfile].
+  /// Times every dispatch on the GPU while on, for [takeProfile]. Vulkan
+  /// writes timestamps around each; Metal, which has none inside a command
+  /// buffer, commits and waits for every dispatch separately, so a forward
+  /// pass takes far longer on the wall clock while this is on.
   static set profiling(bool on) => _setProfiling(on ? 1 : 0);
 
   /// GPU milliseconds and dispatch counts per kernel kind since the last
-  /// call; empty where the backend does not time dispatches.
+  /// call; empty if nothing was dispatched while [profiling].
   static Map<String, (double, int)> takeProfile() {
     final n = kernelKinds.length;
     final ms = NativeKernels.allocate<Double>(n * 8);

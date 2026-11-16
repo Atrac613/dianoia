@@ -16,7 +16,10 @@
 ///   --gpu runs whole tokens on the GPU (Metal or Vulkan) from the cache
 ///   (needs --weights=q8 or q4); --gpu-lib=PATH takes the GPU layer from a
 ///   library built elsewhere.
-///   --profile (run only) prints where decoding time goes.
+///   --profile (run only) prints where decoding time goes. With --gpu,
+///   --kernel-profile also times every decode dispatch by kernel kind; it
+///   runs each in a command buffer of its own on Metal, so the decode rate
+///   it prints is not the model's.
 ///   --force=FILE (run only) feeds those token ids as the continuation
 ///   instead of the greedy choice, for teacher-forced quality comparison.
 ///
@@ -274,6 +277,11 @@ Future<int> _run(Map<String, String> flags) async {
   var decodeSteps = 0;
   model.executorStats.clear();
   model.gpu?.clearStats();
+  final kernelProfile = flags['kernel-profile'] == 'true' && model.gpu != null;
+  if (kernelProfile) {
+    GpuForward.profiling = true;
+    GpuForward.takeProfile();
+  }
   while (gen.length < steps) {
     final next = forced?[gen.length] ?? _argmax(model.logits);
     gen.add(next);
@@ -285,6 +293,21 @@ Future<int> _run(Map<String, String> flags) async {
   }
   final genS = sw.elapsedMilliseconds / 1000;
   final gpu = model.gpu;
+  if (kernelProfile) {
+    final profile = GpuForward.takeProfile();
+    GpuForward.profiling = false;
+    final total = profile.values.fold(0.0, (sum, v) => sum + v.$1);
+    stdout.writeln('decode kernels per token (one command buffer each):');
+    for (final MapEntry(key: kind, value: (ms, count)) in profile.entries) {
+      stdout.writeln(
+        '  ${kind.padRight(16)}'
+        '${(ms / decodeSteps).toStringAsFixed(2).padLeft(7)} ms '
+        '${(100 * ms / total).toStringAsFixed(1).padLeft(5)}% '
+        '${(count / decodeSteps).toStringAsFixed(0).padLeft(4)} dispatches '
+        '${(1000 * ms / count).toStringAsFixed(0).padLeft(5)} us each',
+      );
+    }
+  }
   if (flags['profile'] == 'true' && decodeSteps > 0 && gpu != null) {
     double perToken(int micros) => micros / gpu.calls / 1000;
     stdout.writeln(
