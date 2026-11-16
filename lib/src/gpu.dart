@@ -460,9 +460,14 @@ final class GpuForward {
     'gemv_q8_i8_vec',
   ];
 
-  /// Rows per subgroup of the decode kernels on Vulkan: 1, 2 or 4.
-  /// Zero selects the old int8 GEMM as a reference; Metal ignores it.
+  /// Rows per subgroup (SIMD group on Metal) of the decode kernels: 1, 2 or
+  /// 4. Zero selects the reference: the old int8 GEMM on Vulkan, one row on
+  /// Metal. On Metal every setting computes the same bits. The default is 4
+  /// on Vulkan and 2 on Metal ([restoreDecodeRowsDefault]).
   static set decodeRows(int rows) => _setDecodeRows(rows);
+
+  /// Returns [decodeRows] to the backend's default.
+  static void restoreDecodeRowsDefault() => _setDecodeRows(-1);
 
   /// Q8 decode workgroup size on Vulkan; false if unsupported (Metal too).
   static bool setQ8Workgroup(int invocations) =>
@@ -616,7 +621,7 @@ final class GpuForward {
         }
       }
     } finally {
-      decodeRows = 4;
+      restoreDecodeRowsDefault();
       restoreQ8VectorDefault();
       setQ8Workgroup(128);
       profiling = false;

@@ -653,9 +653,11 @@ LAB_EXPORT void lab_gpu_begin(void) {
 }
 
 // Rows per subgroup of the decode GEMVs: 1, 2 or 4; 0 selects the old
-// int8 GEMM for a same-device numerical and performance reference.
+// int8 GEMM for a same-device numerical and performance reference, and a
+// negative value restores the default of four.
 LAB_EXPORT void lab_gpu_set_decode_rows(int64_t rows) {
   if (rows == 0) gDecodeRows = -1;
+  if (rows < 0) gDecodeRows = 2;
   for (int i = 0; i < 3; i++) {
     if (kDecodeRows[i] == (uint32_t)rows) gDecodeRows = i;
   }
