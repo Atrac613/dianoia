@@ -12,7 +12,7 @@
 - `GpuForward.profiling` now works on Metal: each dispatch runs in a
   command buffer of its own, so `takeProfile` reports GPU time per kernel
   kind (the wall clock is far slower meanwhile). `dianoia run --gpu
-  --kernel-profile` prints the decode breakdown.
+  --kernel-profile` prints the breakdown for the prompt and for decoding.
 
 ## 0.3.0
 
