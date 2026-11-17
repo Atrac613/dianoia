@@ -1,0 +1,38 @@
+#version 460
+#include "common.glsl"
+#include "reduce.glsl"
+
+// A control vector on rows of cols values, one workgroup per row. Mode 0
+// adds v to the row; mode 1 takes the unit direction v and removes scale
+// times the row's component along it: x - (scale * (x . v)) v. Each
+// invocation reads and writes only its own columns.
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Params {
+  Floats x;
+  Floats v;
+  uint cols;
+  uint mode;
+  float scale;
+} p;
+
+void main() {
+  const uint base = gl_WorkGroupID.x * p.cols;
+  const uint tid = gl_LocalInvocationID.x;
+  if (p.mode == 0u) {
+    for (uint j = tid; j < p.cols; j += gl_WorkGroupSize.x) {
+      precise const float y = p.x.v[base + j] + p.v.v[j];
+      p.x.v[base + j] = y;
+    }
+    return;
+  }
+  precise float along = 0.0;
+  for (uint j = tid; j < p.cols; j += gl_WorkGroupSize.x) {
+    along += p.x.v[base + j] * p.v.v[j];
+  }
+  along = group_sum(along);
+  precise const float c = p.scale * along;
+  for (uint j = tid; j < p.cols; j += gl_WorkGroupSize.x) {
+    precise const float y = p.x.v[base + j] - c * p.v.v[j];
+    p.x.v[base + j] = y;
+  }
+}

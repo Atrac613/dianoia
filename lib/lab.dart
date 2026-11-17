@@ -7,6 +7,8 @@
 library;
 
 export 'dianoia.dart';
+export 'src/local_model.dart'
+    show LocalModelControlVector, LocalVisionModelControlVector;
 export 'src/audio_features.dart';
 export 'src/audio_gguf.dart';
 export 'src/audio_bundle.dart';
@@ -20,6 +22,9 @@ export 'src/speech_reply.dart';
 export 'src/chat_bench.dart';
 export 'src/chat_template.dart';
 export 'src/config.dart';
+export 'src/control_vector.dart';
+export 'src/control_vector_bench.dart';
+export 'src/control_vector_eval.dart';
 export 'src/download.dart';
 export 'src/executor.dart';
 export 'src/gguf.dart';

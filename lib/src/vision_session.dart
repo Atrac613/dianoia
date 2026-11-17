@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'chat_session.dart';
 import 'image_decode.dart';
 import 'model.dart';
+import 'model_use.dart';
 import 'tokenizer.dart';
 import 'tool_calls.dart';
 import 'vision_encoder.dart';
@@ -121,9 +122,11 @@ final class VisionChatRuntime {
     _active = done;
     _owner = owner;
     _cancelled = false;
+    beginModelUse(model);
     try {
       return await operation();
     } finally {
+      endModelUse(model);
       _active = null;
       _owner = null;
       done.complete();

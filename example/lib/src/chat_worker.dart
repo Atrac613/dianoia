@@ -7,9 +7,11 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:dianoia/dianoia.dart';
-import 'package:dianoia/lab.dart' show Lfm3Model, Lfm3Tokenizer;
+import 'package:dianoia/lab.dart'
+    show ControlVector, Lfm3Model, Lfm3Tokenizer, LocalModelControlVector;
 
 import 'chat_protocol.dart';
+import 'control_vectors.dart';
 import 'example_model.dart';
 import 'omni_conversation.dart';
 
@@ -45,6 +47,64 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   StreamSubscription<InstallProgress>? install;
   var stopRequested = false;
   var replyStarted = false;
+  // Experimental control vectors, for the text chat only.
+  final vectorDir = selected == ExampleModel.lfm3
+      ? location.controlVectorDir
+      : null;
+  String? steering;
+  Future<void> steeringChange = Future.value();
+
+  // Without vectors the chat looks as it always did: nothing is sent,
+  // unless the user asked for the folder to be listed again.
+  void reportSteering([String? error, bool always = false]) {
+    if (vectorDir == null) return;
+    List<String> vectors;
+    try {
+      vectors = listControlVectors(vectorDir);
+    } on FileSystemException catch (e) {
+      vectors = const [];
+      error ??= 'Control vector folder: $e';
+    }
+    if (always || vectors.isNotEmpty || steering != null || error != null) {
+      out.send(SteeringState(vectors, steering, error: error));
+    }
+  }
+
+  /// Steers with [name] (null: off) and starts a new conversation. A file
+  /// that cannot be used leaves steering off; a reply still running changes
+  /// nothing.
+  Future<void> steer(String? name) async {
+    final local = model, chat = session;
+    if (local == null || chat == null || vectorDir == null) return;
+    String? error;
+    var next = name;
+    ControlVector? vector;
+    if (name != null) {
+      try {
+        if (!listControlVectors(vectorDir).contains(name)) {
+          throw StateError('no control vector named $name');
+        }
+        vector = loadControlVector(vectorDir, name);
+      } catch (e) {
+        error = 'Control vector $name: $e';
+        next = null;
+      }
+    }
+    try {
+      await local.setControlVector(vector);
+      steering = next;
+    } on StateError catch (e) {
+      reportSteering('Control vector unchanged: $e');
+      return;
+    } catch (e) {
+      error = 'Control vector $name: $e';
+      await local.setControlVector(null);
+      steering = null;
+    }
+    chat.clear();
+    await chat.warmUp();
+    reportSteering(error, true);
+  }
 
   Future<void> open(String dir, {void Function()? onFailed}) async {
     out.send(const WorkerProgress('Loading the model…'));
@@ -86,7 +146,10 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
         session = chat;
         backend = loaded.backend;
       }
-      if (!closing) out.send(WorkerReady(backend.name.toUpperCase()));
+      if (!closing) {
+        out.send(WorkerReady(backend.name.toUpperCase()));
+        reportSteering();
+      }
     } catch (e) {
       onFailed?.call();
       out.send(WorkerFailed('$e'));
@@ -102,6 +165,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
       await install?.cancel();
       await loading;
       await replying;
+      await steeringChange;
       await model?.close();
       await visionModel?.close();
       omni?.close();
@@ -126,6 +190,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
         stopRequested = false;
         replyStarted = false;
         final responder = omni, chat = omniChat;
+        final pendingSteering = steeringChange;
         replying = responder != null && chat != null
             ? _omniReply(
                 responder,
@@ -135,18 +200,30 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
                 out,
                 () => stopRequested || closing,
               )
-            : _reply(
-                session,
-                visionSession,
-                text,
-                image,
-                out,
-                () => stopRequested,
-                () => replyStarted = true,
+            : pendingSteering.then(
+                (_) => _reply(
+                  session,
+                  visionSession,
+                  text,
+                  image,
+                  out,
+                  () => stopRequested,
+                  () => replyStarted = true,
+                ),
               );
       case StopReply():
         stopRequested = true;
         if (!replyStarted) visionSession?.cancel();
+      case SetSteering(:final name):
+        steeringChange = steeringChange.then((_) async {
+          try {
+            await steer(name);
+          } catch (e) {
+            reportSteering('Control vector $name: $e', true);
+          }
+        });
+      case RescanSteering():
+        reportSteering(null, true);
       case NewChat():
         omniChat?.clear();
         session?.clear();

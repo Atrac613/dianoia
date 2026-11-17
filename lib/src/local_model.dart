@@ -6,7 +6,9 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'chat_session.dart';
+import 'control_vector.dart';
 import 'model.dart';
+import 'model_use.dart';
 import 'native.dart';
 import 'quant.dart';
 import 'tokenizer.dart';
@@ -146,6 +148,62 @@ final class LocalModel {
           'them with `dianoia import-gguf` or `dianoia pack`',
     );
   }
+}
+
+/// Experimental, lab-only: steering a [LocalModel] with a control vector
+/// (docs/control_vectors.md). `package:dianoia/lab.dart` exports this
+/// extension; `package:dianoia/dianoia.dart` hides it, so apps see no new
+/// member on [LocalModel].
+extension LocalModelControlVector on LocalModel {
+  /// The control vector steering this model's replies, or null.
+  ControlVector? get controlVector => _model.controlVector;
+
+  /// Steers every following reply of every conversation of this model with
+  /// [vector], or stops steering with null.
+  ///
+  /// The model's computed state holds only under the vector it was computed
+  /// with, so a different vector resets it: each [ChatSession] keeps its
+  /// messages, and its next [ChatSession.send] prefills them again under the
+  /// new vector, giving what a model steered from the start would. Saved
+  /// states (`warmUp(statePath:)`) record the vector and are not loaded
+  /// under another. A vector that steers exactly as the current one changes
+  /// nothing.
+  ///
+  /// Throws [StateError] while a reply or a warm-up is running (call it
+  /// between replies), [ArgumentError] for a vector of another model.
+  Future<void> setControlVector(ControlVector? vector) =>
+      _steer(_model, vector);
+}
+
+/// Sets [vector] on [model], resetting its sequence if the vector changes
+/// the arithmetic, unless a conversation is using it.
+Future<void> _steer(Lfm3Model model, ControlVector? vector) async {
+  if (modelInUse(model)) {
+    throw StateError(
+      'a reply is being generated; set the control vector between replies',
+    );
+  }
+  if (vector?.fingerprint == model.controlVector?.fingerprint) {
+    model.setControlVector(vector);
+    return;
+  }
+  await model.reset();
+  model.setControlVector(vector);
+}
+
+/// Experimental, lab-only: steering a [LocalVisionModel]'s language
+/// backbone with a control vector, as [LocalModelControlVector] does for a
+/// [LocalModel]. Every visual turn prefills from scratch, so a new vector
+/// applies from the next turn on.
+extension LocalVisionModelControlVector on LocalVisionModel {
+  /// The control vector steering this model's replies, or null.
+  ControlVector? get controlVector => _runtime.model.controlVector;
+
+  /// Steers every following turn with [vector], or stops with null. Throws
+  /// [StateError] while a turn is running, [ArgumentError] for a vector of
+  /// another model.
+  Future<void> setControlVector(ControlVector? vector) =>
+      _steer(_runtime.model, vector);
 }
 
 /// An experimental visual model using the CPU reference vision encoder and

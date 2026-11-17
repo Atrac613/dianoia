@@ -29,6 +29,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'config.dart';
+import 'control_vector.dart';
 import 'executor.dart';
 import 'gpu.dart';
 import 'native.dart';
@@ -292,6 +293,66 @@ final class Lfm3Model {
   /// Identifies the states [saveState] writes for this model, weights and
   /// backend; [loadState] refuses others.
   final String _stateKey;
+
+  /// [_stateKey] and the active control vector: a state computed under one
+  /// vector does not hold under another.
+  String get _currentStateKey => switch (_control) {
+    null => _stateKey,
+    final c => '$_stateKey control=${c.fingerprint}',
+  };
+
+  /// The control vector steering the forward pass, or null.
+  ControlVector? get controlVector => _control;
+  ControlVector? _control;
+
+  /// How many [forward] calls are running; the vector may not change then.
+  int _forwarding = 0;
+
+  /// Steers every following forward pass with [vector] (experimental), or
+  /// stops steering with null. See control_vector.dart.
+  ///
+  /// The KV rows, conv histories and checkpoints of a sequence hold only
+  /// under the vector they were computed with, so a different vector needs
+  /// an empty sequence: throws [StateError] unless [length] is 0 (call
+  /// [reset] first) or the vector steers exactly as the current one.
+  /// [reset] keeps the vector; [saveState] records it, and [loadState]
+  /// refuses a state saved under any other.
+  ///
+  /// Both paths apply vectors; the GPU's sum for project mode is in float32
+  /// in another order, so its rows differ from the CPU's in the last bits.
+  /// Throws [ArgumentError] for a vector of another hidden size or with
+  /// directions past the last layer, and [UnsupportedError] on a GPU
+  /// library without the kernel (`gpuLib` of an older build).
+  void setControlVector(ControlVector? vector) {
+    _checkOpen();
+    if (vector != null) {
+      if (_gpu case final gpu? when !gpu.steers) {
+        throw UnsupportedError(
+          'the GPU library has no control-vector kernel (lab_gpu_enc_steer)',
+        );
+      }
+      if (vector.hiddenSize != config.hiddenSize ||
+          vector.maxLayer >= config.numLayers) {
+        throw ArgumentError(
+          'the control vector has hidden size ${vector.hiddenSize} and '
+          'directions up to layer ${vector.maxLayer}; the model has '
+          '${config.hiddenSize} and ${config.numLayers} layers',
+        );
+      }
+    }
+    if (vector?.fingerprint == _control?.fingerprint) {
+      _control = vector;
+      return;
+    }
+    if (length != 0 || _checkpoints.isNotEmpty || _forwarding != 0) {
+      throw StateError(
+        'the control vector changes only on an empty sequence; reset first',
+      );
+    }
+    _gpu?.setControlVector(vector);
+    _control = vector;
+  }
+
   GpuForward? get gpu => _gpu;
 
   /// Number of tokens processed so far, i.e. the position of the next one.
@@ -452,7 +513,7 @@ final class Lfm3Model {
     final header = utf8.encode(
       jsonEncode({
         'version': _stateVersion,
-        'key': _stateKey,
+        'key': _currentStateKey,
         'tokens': _history,
         'blocks': [for (final b in blocks) b.length],
       }),
@@ -503,7 +564,7 @@ final class Lfm3Model {
               as Map<String, Object?>;
       final tokens = (header['tokens'] as List).cast<int>();
       if (header['version'] != _stateVersion ||
-          header['key'] != _stateKey ||
+          header['key'] != _currentStateKey ||
           tokens.isEmpty ||
           tokens.length > maxSeq) {
         return false;
@@ -609,6 +670,7 @@ final class Lfm3Model {
       throw StateError('sequence exceeds maxSeq=$maxSeq');
     }
     if (tokens.isNotEmpty) _hasHiddenState = false;
+    _forwarding++;
     try {
       await _forward(tokens, capture, computeLogits, overrides);
     } catch (_) {
@@ -624,6 +686,8 @@ final class Lfm3Model {
         }
       }
       rethrow;
+    } finally {
+      _forwarding--;
     }
   }
 
@@ -714,6 +778,7 @@ final class Lfm3Model {
     final n = tokens.length;
     final h = config.hiddenSize;
     final executor = _executor!;
+    final control = _control;
     for (var t = 0; t < n; t++) {
       final override = overrides[start + t];
       if (override == null) {
@@ -735,6 +800,9 @@ final class Lfm3Model {
       _m.setAll(0, await executor.ffn(i, _a, n));
       if (norms.postFfn != null) _normRows(_m, norms.postFfn!, _m, n);
       _addInto(_x, _m, n * h);
+      // The residual leaving layer i is complete: steer it before anything
+      // (the capture, the next layer, the logits) reads it.
+      control?.apply(_x, n, i);
       capture?.call(i + 1, length, _x, n);
     }
     length += n;

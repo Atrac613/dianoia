@@ -314,6 +314,40 @@ Measured on the GPU while the reply streams onto the screen:
 On a Pixel 8 the app also installed from Hugging Face itself: download, build and load finished within 11 minutes of the tap (not timed more closely), and the model answered. On the Windows PC the same install took 70 seconds. The macOS build has not been run yet. Replies are shown as plain text, so
 the model's Markdown (`**bold**`) appears as written.
 
+### Control vectors (experimental)
+
+The text chat (LFM3-1.7B; not the image or audio models) can be steered
+with control vectors (activation steering, see
+[docs/control_vectors.md](../docs/control_vectors.md)). They change how the
+model answers and are for trying vectors by hand, not for everyday use.
+
+Put each vector in a `control_vectors` folder: `<name>.safetensors` (from
+`tool/control_vector_extract.dart`; a llama.cpp GGUF control vector also
+loads under that name, recognised by its header) and an optional
+`<name>.json` with its settings, every key optional:
+
+```json
+{"mode": "add", "scale": 0.15, "first_layer": 8, "last_layer": 16}
+```
+
+`mode` is `project` (default) or `add`, `scale` defaults to 1, and the
+layers default to every layer the file has. The folder is
+
+- macOS: `~/Library/Containers/dev.atrac613.dianoiaExample/Data/Documents/control_vectors`;
+- iOS: the app's Documents in Files or Finder, `control_vectors`
+  (or `xcrun devicectl device copy to ... --domain-identifier
+  dev.atrac613.dianoiaExample --destination Documents/control_vectors`);
+- Android: `Android/data/dev.atrac613.dianoia_example/files/control_vectors`;
+- Windows: `control_vectors` in the local app cache directory.
+
+When the folder holds vectors, the chat's app bar gets a tune button
+(**Control vector (experimental)**): **Off** and each name, the active one
+checked, and **Rescan folder**. Choosing one starts a new conversation,
+since the model's state is recomputed under the vector, and the title shows
+`steered: <name>`. A file that cannot be used (malformed settings, another
+model's hidden size) shows an error and leaves steering off. Without the
+folder the chat is unchanged.
+
 ## LFM3-VL in the chat app
 
 Select **LFM3-VL-2B (QAD Q4_0)** and tap **Download**.

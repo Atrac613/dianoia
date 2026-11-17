@@ -19,6 +19,11 @@ WEIGHTS=q4 tool/device_bench/run_ios.sh       # the first connected iPhone
 tool/device_bench/run_android.sh              # QAD Q4, the first adb device
 ```
 
+`run_ios_control_vector.sh VECTOR PROMPTS [REFUSALS]` runs the app in its
+`control_vector` mode instead: a control vector on the phone's CPU and GPU
+against the same checks on this Mac (docs/control_vectors.md), written to
+`results/iphone_control_vector.txt`.
+
 The app keeps the bundle identifiers of the lab's bench app
 (`com.noguwo.dartllmlab.lfm3Bench`, `com.noguwo.dartllmlab.lfm3_bench`), so
 it replaces that app on a phone and reuses the model bundles already copied

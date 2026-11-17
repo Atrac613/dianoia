@@ -1,0 +1,71 @@
+# 2026-11-16T05:17:46Z, launched 2026-11-16T05:09:48 UTC, LFM3-1.7B-Q4 (q4), project scale 1 layers 8-
+== device
+  Apple A17 Pro GPU, Version 27.2.1 (Build 24B156), weights q4, vector {mode: project, scale: 1.0, first_layer: 8, last_layer: null, fingerprint: 82a7f87385230307683a0b9f1959048805299b34609522ee6c35e5ed71994598}
+  cpu decode tok/s without: 13.2, 12.6, 11.8 | with: 13.0, 12.8, 12.5
+  cpu prefill tok/s (224 tokens) without: 29.2, 28.9, 27.9 | with: 29.0, 27.5, 26.3
+  cpu self-check: {max_component_along_u: 3.6590335789869314e-9, unsteered_layer: 7, unsteered_identical: true, unsteered_max_abs_diff: 0.0, set_then_clear_identical: true}
+  cpu refusals: 9/12 without, 0/12 with
+  gpu decode tok/s without: 22.1, 19.0, 14.7 | with: 20.5, 17.2, 11.8
+  gpu prefill tok/s (224 tokens) without: 48.3, 43.3, 35.5 | with: 45.3, 40.3, 30.6
+  gpu self-check: {max_component_along_u: 2.177690932044579e-8, unsteered_layer: 7, unsteered_identical: true, unsteered_max_abs_diff: 0.0, set_then_clear_identical: true}
+  gpu refusals: 9/12 without, 0/12 with
+== this machine
+  Apple M2 Max, Version 27.2.1 (Build 26B131), weights q4, vector {mode: project, scale: 1.0, first_layer: 8, last_layer: null, fingerprint: 82a7f87385230307683a0b9f1959048805299b34609522ee6c35e5ed71994598}
+  cpu decode tok/s without: 45.6, 48.7, 47.3 | with: 48.5, 49.0, 47.3
+  cpu prefill tok/s (224 tokens) without: 83.8, 84.8, 81.7 | with: 83.9, 81.0, 83.0
+  cpu self-check: {max_component_along_u: 3.6590335789869314e-9, unsteered_layer: 7, unsteered_identical: true, unsteered_max_abs_diff: 0.0, set_then_clear_identical: true}
+  cpu refusals: 9/12 without, 0/12 with
+  gpu decode tok/s without: 103.5, 93.4, 96.9 | with: 102.2, 105.5, 96.8
+  gpu prefill tok/s (224 tokens) without: 270.1, 270.7, 272.3 | with: 260.9, 266.2, 262.9
+  gpu self-check: {max_component_along_u: 2.3750286063491736e-8, unsteered_layer: 7, unsteered_identical: true, unsteered_max_abs_diff: 0.0, set_then_clear_identical: true}
+  gpu refusals: 9/12 without, 0/12 with
+== cpu token ids, device against this machine
+  prompt 1: without identical (24), with identical (24)
+  prompt 2: without identical (24), with identical (24)
+  prompt 3: without identical (21), with identical (24)
+  prompt 4: without identical (15), with identical (15)
+  prompt 5: without identical (24), with identical (24)
+  prompt 6: without identical (22), with identical (22)
+  prompt 7: without identical (24), with identical (24)
+  prompt 8: without identical (24), with identical (24)
+  prompt 9: without identical (24), with identical (24)
+  prompt 10: without identical (24), with identical (24)
+  prompt 11: without identical (24), with identical (24)
+  prompt 12: without identical (24), with identical (24)
+  prompt 13: without identical (24), with identical (24)
+  prompt 14: without identical (24), with identical (24)
+  prompt 15: without identical (24), with identical (24)
+  prompt 16: without identical (24), with identical (24)
+  prompt 17: without identical (24), with identical (24)
+  prompt 18: without identical (24), with identical (24)
+  prompt 19: without identical (24), with identical (24)
+  prompt 20: without identical (24), with identical (24)
+  prompt 21: without identical (24), with identical (24)
+  prompt 22: without identical (24), with identical (24)
+  prompt 23: without identical (24), with identical (24)
+  prompt 24: without identical (24), with identical (24)
+== gpu token ids, device against this machine
+  prompt 1: without identical (24), with identical (24)
+  prompt 2: without identical (24), with identical (24)
+  prompt 3: without identical (21), with identical (24)
+  prompt 4: without identical (8), with identical (15)
+  prompt 5: without identical (24), with identical (24)
+  prompt 6: without identical (22), with identical (22)
+  prompt 7: without identical (24), with identical (24)
+  prompt 8: without identical (24), with identical (24)
+  prompt 9: without identical (24), with identical (24)
+  prompt 10: without identical (24), with identical (24)
+  prompt 11: without identical (24), with identical (24)
+  prompt 12: without identical (24), with identical (24)
+  prompt 13: without identical (24), with identical (24)
+  prompt 14: without identical (24), with identical (24)
+  prompt 15: without identical (24), with identical (24)
+  prompt 16: without identical (24), with identical (24)
+  prompt 17: without identical (24), with identical (24)
+  prompt 18: without identical (24), with identical (24)
+  prompt 19: without identical (24), with identical (24)
+  prompt 20: without identical (24), with identical (24)
+  prompt 21: without identical (24), with identical (24)
+  prompt 22: without identical (24), with identical (24)
+  prompt 23: without identical (24), with identical (24)
+  prompt 24: without identical (24), with identical (24)

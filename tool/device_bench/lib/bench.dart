@@ -14,6 +14,10 @@
 /// * optionally `tool_cases.json` (example/), for the time to first
 ///   token with a system prompt and a tool catalog (chat_bench.dart).
 ///
+/// `"mode": "control_vector"` in `bench_config.json` runs only the control
+/// vector checks instead (control_vector_check.dart,
+/// run_ios_control_vector.sh).
+///
 /// It measures the tool-calling prompt on the GPU (Metal on iOS, Vulkan on
 /// Android) and on the CPU (native kernels) and writes `bench/<time>.json`.
 /// For each reference
@@ -28,6 +32,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
+import 'control_vector_check.dart';
 import 'gpu_sustained.dart';
 import 'lifecycle_check.dart';
 
@@ -84,6 +89,9 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
         output.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(r));
       },
     );
+  }
+  if (config['mode'] == 'control_vector') {
+    return controlVectorCheck(config, docs, log);
   }
   final bundle = config['bundle'] as String? ?? 'LFM3-1.7B-device';
   final weights = WeightFormat.values.byName(

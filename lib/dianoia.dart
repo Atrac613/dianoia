@@ -28,7 +28,8 @@ library;
 
 export 'src/chat_session.dart'
     show ChatSession, ChatTurn, ContextLengthExceeded;
-export 'src/local_model.dart';
+export 'src/local_model.dart'
+    hide LocalModelControlVector, LocalVisionModelControlVector;
 export 'src/model_store.dart';
 export 'src/tool_calls.dart';
 export 'src/vision_session.dart'
