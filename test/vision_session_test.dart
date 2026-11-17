@@ -80,6 +80,45 @@ void main() {
       },
     );
 
+    test('follow-ups reuse the conversation, image rows included, and keep its '
+        'logits', () async {
+      Future<(ChatTurn, List<Float32List>)> follow(
+        VisionChatSession session,
+      ) async {
+        final logits = <Float32List>[];
+        final turn = await session.send(
+          'Explain.',
+          onLogits: (v) => logits.add(Float32List.fromList(v)),
+        );
+        return (turn, logits);
+      }
+
+      // Reused: nothing runs between the two turns.
+      final kept = model.chat(maxNewTokens: 3);
+      final first = await kept.send('Describe.', images: [_image()]);
+      final (reused, reusedLogits) = await follow(kept);
+      expect(reused.reusedTokens, greaterThanOrEqualTo(first.promptTokens));
+
+      // Fed again: another conversation with another image overwrites the
+      // model's state between the turns, so its rows cannot be reused.
+      final again = model.chat(maxNewTokens: 3);
+      expect(
+        (await again.send('Describe.', images: [_image()])).text,
+        first.text,
+      );
+      final other = await model
+          .chat(maxNewTokens: 1)
+          .send('Describe.', images: [_image(80)]);
+      expect(other.reusedTokens, lessThan(first.promptTokens - 1));
+      final (fed, fedLogits) = await follow(again);
+      expect(fed.reusedTokens, lessThan(other.reusedTokens + 1));
+      expect(fed.text, reused.text);
+      expect(fedLogits, hasLength(reusedLogits.length));
+      for (var i = 0; i < fedLogits.length; i++) {
+        expect(fedLogits[i], orderedEquals(reusedLogits[i]));
+      }
+    });
+
     test(
       'visual progress covers new images and skips retained features',
       () async {

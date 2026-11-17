@@ -5,6 +5,7 @@ library;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'gpu.dart';
 import 'matmul.dart';
 import 'native.dart';
 import 'ops.dart';
@@ -12,9 +13,10 @@ import 'safetensors.dart';
 import 'vision_config.dart';
 import 'vision_image.dart';
 
-/// Correctness-first, synchronous CPU inference. Weights are widened to f32
+/// Correctness-first, synchronous inference. Weights are widened to f32
 /// on the Dart heap, except matrices given as native Q4/Q8 blocks, whose
-/// products run in the native kernels with float inputs. This is a lab API,
+/// products run in the native kernels with float inputs, or on the GPU
+/// after [useGpu]; the rest stays on the CPU. This is a lab API,
 /// not the optimized on-device path. Images are encoded independently; no
 /// cross-image attention or video state. [close] frees native matrices.
 final class Lfm3VisionEncoder {
@@ -24,14 +26,40 @@ final class Lfm3VisionEncoder {
     Map<String, NativeMatrix> native = const {},
   ]) : _native = Map.of(native);
 
-  factory Lfm3VisionEncoder.load(String modelDir) {
+  /// Reads the vision/projector tensors of the checkpoint in [modelDir].
+  /// With [quantize], every linear weight but the patchifier's whose width
+  /// is a multiple of 32 is quantized to Q8 in native memory as it is read
+  /// (the native kernels must be loaded), so its products run in the native
+  /// kernels or, after [useGpu], on the GPU, at a quarter of float32's
+  /// memory. Quantizing changes the outputs; without it every weight stays
+  /// float32 on the Dart heap.
+  factory Lfm3VisionEncoder.load(String modelDir, {bool quantize = false}) {
     final c = Lfm3VlConfig.load(modelDir);
     final st = SafetensorsFile.open('$modelDir/model.safetensors');
+    final weights = <String, Float32List>{};
+    final native = <String, NativeMatrix>{};
     try {
-      return Lfm3VisionEncoder._(c, {
-        for (final e in lfm3VisionTensorShapes(c).entries)
-          e.key: st.readF32(e.key, e.value),
-      });
+      for (final e in lfm3VisionTensorShapes(c).entries) {
+        final values = st.readF32(e.key, e.value);
+        if (quantize &&
+            e.value.length == 2 &&
+            e.value[1] % 32 == 0 &&
+            !e.key.endsWith('patchifier.weight')) {
+          native[e.key] = NativeQ8Matrix.quantize(
+            values,
+            e.value[0],
+            e.value[1],
+          );
+        } else {
+          weights[e.key] = values;
+        }
+      }
+      return Lfm3VisionEncoder.fromWeights(c, weights, native: native);
+    } catch (_) {
+      for (final m in native.values) {
+        m.free();
+      }
+      rethrow;
     } finally {
       st.close();
     }
@@ -69,10 +97,43 @@ final class Lfm3VisionEncoder {
   final Map<String, NativeMatrix> _native;
   bool _closed = false;
 
-  /// Frees native matrices. The encoder cannot be used afterwards.
+  /// The GPU copies of the native matrices, after [useGpu].
+  GpuLinear? _gpu;
+
+  /// Whether the native matrices' products run on the GPU ([useGpu]).
+  bool get onGpu => _gpu != null;
+
+  /// Moves the products of the native (Q4 or Q8) matrices to the GPU,
+  /// copying them into GPU memory; the CPU copies stay as they are. Returns
+  /// whether it did: false without native matrices or where the GPU does not
+  /// start. The rest of the encoder stays on the CPU. Outputs then differ
+  /// from the CPU kernels' in the last bits. Encode only while no other
+  /// isolate runs a GPU forward pass (see GpuLinear).
+  bool useGpu() {
+    if (_closed) throw StateError('vision encoder is closed');
+    if (_gpu != null) return true;
+    if (_native.isEmpty) return false;
+    final gpu = GpuLinear.start();
+    if (gpu == null) return false;
+    try {
+      for (final e in _native.entries) {
+        gpu.upload(e.key, e.value);
+      }
+    } catch (_) {
+      gpu.dispose();
+      rethrow;
+    }
+    _gpu = gpu;
+    return true;
+  }
+
+  /// Frees native matrices and their GPU copies. The encoder cannot be used
+  /// afterwards.
   void close() {
     if (_closed) return;
     _closed = true;
+    _gpu?.dispose();
+    _gpu = null;
     for (final m in _native.values) {
       m.free();
     }
@@ -224,7 +285,12 @@ final class Lfm3VisionEncoder {
     final matrix = _native['$name.weight'];
     final w = _weights['$name.weight'];
     if (matrix != null) {
-      matrix.apply(x, result, n, int8Inputs: false);
+      final gpu = _gpu;
+      if (gpu != null) {
+        gpu.apply('$name.weight', x, result, n);
+      } else {
+        matrix.apply(x, result, n, int8Inputs: false);
+      }
     } else if (w == null) {
       throw StateError('missing vision weight $name');
     } else if (cols % 4 == 0) {
@@ -313,13 +379,35 @@ final class Lfm3VisionEncoder {
     k = _norm(k, '${p}k_layernorm.weight', d, c.normEps);
     _rotate(q, c.numHeads, positions);
     _rotate(k, c.numKvHeads, positions);
+    final scale = 1 / math.sqrt(d);
+    // With the native kernels (and their attention on), C computes the same
+    // softmax attention over all n patches on every native thread; its sums
+    // run in another order, so the rows differ from the Dart path's in the
+    // last bits.
+    if (NativeKernels.isLoaded &&
+        NativeKernels.instance.attention &&
+        d % 4 == 0 &&
+        c.numHeads * d == h) {
+      final output = Float32List(n * h);
+      nativeFullAttention(
+        q,
+        k,
+        v,
+        output,
+        n: n,
+        heads: c.numHeads,
+        kvHeads: c.numKvHeads,
+        headDim: d,
+        scale: scale,
+      );
+      return _linear('${p}out_proj', output, h, h, n);
+    }
     // Per head, scores = K q and output = V^T p as batched matrix products
     // over all n patches; each key/value head is gathered once per group.
     final output = Float32List(n * h);
     final qh = Float32List(n * d), kh = Float32List(n * d);
     final vt = Float32List(d * n), oh = Float32List(n * d);
     final scores = Float32List(n * n);
-    final scale = 1 / math.sqrt(d);
     final group = c.numHeads ~/ c.numKvHeads;
     for (var kvHead = 0; kvHead < c.numKvHeads; kvHead++) {
       for (var s = 0; s < n; s++) {

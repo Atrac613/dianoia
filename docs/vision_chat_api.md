@@ -6,8 +6,10 @@ images and text-only follow-ups, and retains projected image features within
 each conversation. `ChatTurn` is the same result type used by text chat.
 
 The language backbone can run on CPU, Metal or Vulkan where the existing engine
-supports it. The vision encoder/projector currently uses the float32 CPU
-reference implementation. Public-API OCR and follow-up tests have run on macOS
+supports it. `LocalVisionModel` quantizes the vision encoder's linear
+weights to Q8 at load and runs their products on the GPU with a GPU
+language model, otherwise in the native CPU kernels; attention, norms and
+the projector's activations stay on the CPU. Public-API OCR and follow-up tests have run on macOS
 CPU and Metal. Initial physical iPhone timing/memory results are recorded in
 the [device report](lfm3_vl_iphone_validation_2026-11-01.md); Android/Vulkan vision
 conversations remain unvalidated. Run loading and inference in a single worker isolate: each vision
@@ -72,7 +74,8 @@ you choose, using the pinned manifest as described below.
 The measured Q8 bundle is 2,885,204,285 bytes (2.69 GiB), compared with
 9,275,569,800 bytes (8.64 GiB) for the original checkpoint plus imported backbone
 and Q8 cache. This saves 68.9% of disk space in that preparation layout; it does
-not reduce the vision encoder's float32 working memory. See the
+not change the vision encoder's working memory, which holds its linear
+weights as Q8. See the
 [bundle validation report](lfm3_vl_bundle_2026-11-01.md).
 
 ## Install the official QAD Q4 GGUFs
@@ -381,10 +384,13 @@ RGB bytes and visual features are kept private.
   drops vision weights and closes language resources. It is idempotent. New
   sends and new sessions are rejected once closing starts.
 
-Each successful visual turn re-prefills the language prompt from reset; image
-features are reused, but `ChatTurn.reusedTokens` is currently zero.
+A follow-up reuses the language state the model already holds for the
+conversation, image rows included, and feeds only what is new
+(`ChatTurn.reusedTokens`); its logits equal a full re-prefill's. Image rows are
+reused only for the same attached image in the same conversation, so another
+conversation, or the same picture attached again, feeds them again.
 `prefillSeconds` includes any new image encoding. `model.backend` describes the
-language backend; it does not imply GPU image encoding. `onLogits` is a
+language backend; the encoder's linear layers follow it onto the GPU. `onLogits` is a
 synchronous observer of a temporary model view: copy logits before retaining
 them across model calls.
 

@@ -183,6 +183,8 @@ final class VisionChatRuntime {
     _requestCancel();
     final active = _active;
     if (active != null) await active.future;
+    // The encoder may hold native and GPU copies of its matrices.
+    encoder?.close();
     encoder = null;
     await model.close();
   }
@@ -234,7 +236,8 @@ final class VisionChatSession {
 
   /// Sends a user question, inserting image parts before its text. A text-only
   /// follow-up retains earlier image features without encoding those images
-  /// again. Each turn re-prefills language state; reusedTokens is zero.
+  /// again, and reuses the language state the model holds for the
+  /// conversation so far (reusedTokens), images included.
   Future<ChatTurn> send(
     String text, {
     List<ChatImage> images = const [],
@@ -343,9 +346,11 @@ final class VisionChatSession {
         _runtime.checkCancelled();
         onProgress?.call(const VisionProgress(VisionPhase.prefilling));
         _runtime.checkCancelled();
-        await prompt.prefill(_runtime.model, [
+        // An attachment's features never change once encoded, so the
+        // attachment itself keys its rows for reuse.
+        final reused = await prompt.prefill(_runtime.model, [
           for (final image in allImages) image.features!,
-        ]);
+        ], imageKeys: allImages);
         _runtime.checkCancelled();
         final prefillSeconds = clock.elapsedMicroseconds / 1e6;
         onLogits?.call(_runtime.model.logits);
@@ -382,7 +387,7 @@ final class VisionChatSession {
           text: text,
           reply: parseAssistantReply(text),
           promptTokens: prompt.ids.length,
-          reusedTokens: 0,
+          reusedTokens: reused,
           prefillSeconds: prefillSeconds,
           generatedTokens: generated.length,
           decodeSeconds: clock.elapsedMicroseconds / 1e6,

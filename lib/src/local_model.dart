@@ -270,7 +270,15 @@ final class LocalVisionModel {
       threads: threads,
     );
     try {
-      final encoder = Lfm3VisionEncoder.load(modelDir);
+      // Q8 linears run in the native kernels, or on the GPU with the
+      // language model, instead of in Dart.
+      final encoder = Lfm3VisionEncoder.load(modelDir, quantize: true);
+      try {
+        if (language.backend == InferenceBackend.gpu) encoder.useGpu();
+      } catch (_) {
+        encoder.close();
+        rethrow;
+      }
       return LocalVisionModel._(
         VisionChatRuntime(language._model, tokenizer, processor, encoder),
         language.backend,

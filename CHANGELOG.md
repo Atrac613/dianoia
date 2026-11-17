@@ -1,5 +1,39 @@
 ## Unreleased
 
+- Image conversations reuse language state between turns. `Lfm3Model`'s
+  `prefill` and `forward` take `embeddingKeys` for embedding overrides, and
+  `prefill` reuses an override position only where it was fed under an
+  equal key; `VisionPrompt.prefill`'s `imageKeys` uses it, and
+  `VisionChatSession` keys each image by its attachment. A follow-up then
+  feeds only its new tokens, with the same logits as feeding everything
+  again (`ChatTurn.reusedTokens` is no longer always zero). On an M2 Max a
+  follow-up to a 640x480 image reaches its first token in 0.07 s instead of
+  1.16 s on the GPU, and 0.32 s instead of 6.1 s on the CPU.
+- `LocalVisionModel` quantizes the LFM3-VL vision encoder's linear weights
+  (BF16 in the checkpoint) to Q8 at load (`Lfm3VisionEncoder.load`'s
+  `quantize`) and runs their products on the GPU with a GPU language model,
+  otherwise in the native CPU kernels, instead of in Dart over float32.
+  This changes the encoder's outputs: on the official QAD Q4 bundle three
+  cards (Japanese and Latin OCR, a shapes photo) give the same answers as
+  before on the CPU and the GPU. On an M2 Max a 640x480 image (320 prompt
+  tokens) reaches its first token in 3.2-3.4 s instead of 19.5 s on the
+  GPU and 10.6 s instead of 23.7 s on the CPU, and peak memory drops from
+  1.1 to 0.6 GB (GPU) and 2.2 to 1.5 GB (CPU). Closing a vision model now
+  frees its encoder's native and GPU memory.
+- `Lfm3VisionEncoder.useGpu` moves the products of an encoder's native Q4
+  or Q8 matrices (an mmproj GGUF's, as LFM3-Omni loads them) to the GPU
+  through the new `GpuLinear`, keeping a second copy of those matrices in
+  GPU memory; the rest of the encoder stays on the CPU. Outputs differ
+  from the CPU kernels' in the last bits (relative L2 2.5e-6). The Omni
+  tool's `--gpu` and the example's Omni chat use it when the language model
+  is on the GPU. On an M2 Max a 300-token image encodes in 2.0 s instead of
+  5.8 s, and an image question takes 3.9 s instead of 7.6 s.
+- The vision encoder's attention runs in C on every native thread
+  (`lab_attention_full`, `nativeFullAttention`) when the native kernels
+  are loaded with their attention on, instead of in Dart. Its sums run in
+  another order, so encoder outputs differ from the Dart path's in the
+  last bits (relative L2 5e-6 on LFM3-Omni-2B). On an M2 Max with 4 threads
+  a 640x480 image (300 image tokens) encodes in 5.8 s instead of 9.0 s.
 - Faster decoding on Metal with the same bits. A one-token matrix product
   now gives each SIMD group two rows instead of one (`gemv_q8_r2`,
   `gemv_q4_r2`; `GpuForward.decodeRows` selects 1, 2 or 4 and

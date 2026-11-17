@@ -9,8 +9,10 @@ and English voice conversation.
 
 Dart owns the tokenizer, chat template, graph and conversation state. Native
 code provides quantized CPU kernels and the Metal/Vulkan language backend.
-The vision encoder and projector currently run in the CPU reference
-implementation, even when language inference uses the GPU.
+The vision encoder's linear layers run as quantized products: Q8 (quantized
+from the BF16 vision weights at load) for LFM3-VL, the mmproj's Q4 for
+LFM3-Omni. They run on the GPU when the language model does, otherwise in
+the native CPU kernels; the rest of the encoder runs on the CPU.
 
 `package:dianoia/dianoia.dart` is the app API and may change before 1.0.
 `package:dianoia/lab.dart` exposes internals without a stability promise.
@@ -384,7 +386,7 @@ state, logit and token to match byte for byte.
 | `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; on Windows also no `vulkan-1.dll`, or a discrete GPU without Resizable BAR (the buffers live in the part of its memory the CPU can map). `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. |
 | `--max-seq=N is too long for GPU attention` | GPU attention keeps one score per key in threadgroup memory. Lower `contextLength`. |
 | Edited C or Metal code has no effect | Hook outputs are cached under `.dart_tool/`; delete `.dart_tool/hooks_runner` and run again. |
-| A camera photo takes a long time before the first reply | Vision encoding uses the CPU reference implementation. Use `onProgress` and a lower `maxImageTokens` budget (the example uses 256); finer image detail costs more work. |
+| A camera photo takes a long time before the first reply | Encoding grows with the image's tokens, and on the CPU backend it all runs on the CPU. Use `onProgress` and a lower `maxImageTokens` budget (the example uses 256); finer image detail costs more work. |
 | QAD model exists but `isInstalled` is false | Check that the requested model ID and source pins match. A legacy bundle without `qad_source.json` must be explicitly removed and reinstalled. |
 | Physical iPhone Debug build exits with `SIGBUS` in JIT memory | Reproduce with `flutter run --profile` to separate AOT app behavior from Debug JIT/debugger failures; keep the app installed to preserve partial downloads. |
 | `test/shaders_test.dart` fails | A shader changed without its SPIR-V. Run `tool/compile_shaders.sh`. |

@@ -1202,3 +1202,103 @@ final class GpuForward {
     gpuMicros += (_lastGpuMs() * 1000).round();
   }
 }
+
+/// Products of quantized matrices on the GPU for work outside the language
+/// forward pass, such as the vision encoder's linear layers: each [apply]
+/// copies the inputs in, runs one matrix product over all n rows in its own
+/// command buffer and copies the outputs back. The GPU computes the same
+/// products as the CPU kernels with float inputs, its sums in another
+/// order, so the outputs differ from theirs in the last bits.
+///
+/// The GPU layer encodes one command buffer at a time per process: do not
+/// call [apply] while another isolate runs a [GpuForward].
+final class GpuLinear {
+  GpuLinear._();
+
+  /// Starts the GPU of the kernels asset, or returns null where it does not
+  /// start (no GPU, or none the kernels support).
+  static GpuLinear? start() => _init() == 1 ? GpuLinear._() : null;
+
+  final _matrices = <String, _Matrix>{};
+  final _owned = <int>[];
+  _Buffer? _x, _y;
+  bool _disposed = false;
+
+  /// The names of the matrices [upload] copied in.
+  Iterable<String> get names => _matrices.keys;
+
+  /// Copies [matrix] (Q4 or Q8) into a GPU buffer of its own, under [name].
+  void upload(String name, CachedMatrix matrix) {
+    _checkOpen();
+    final qs = matrix.qsBytes, scales = matrix.scaleBytes;
+    final scalesAt = (qs.length + 63) ~/ 64 * 64;
+    final bytes = scalesAt + scales.length;
+    final handle = _Buffer._check(_buffer(bytes), bytes);
+    _owned.add(handle);
+    final view = _contents(handle).cast<Uint8>().asTypedList(bytes);
+    view
+      ..setAll(0, qs)
+      ..setAll(scalesAt, scales);
+    final previous = _matrices[name];
+    if (previous != null) {
+      _owned.remove(previous.buffer);
+      _release(previous.buffer);
+    }
+    _matrices[name] = _Matrix(
+      switch (matrix.format) {
+        'q4' => true,
+        'q8' => false,
+        final f => throw ArgumentError('cannot multiply $f matrices'),
+      },
+      handle,
+      0,
+      scalesAt,
+      matrix.rows,
+      matrix.cols,
+    );
+  }
+
+  /// ys[t * rows + r] = (W xs[t])[r] for t < n, W the matrix [upload]ed
+  /// as [name] and xs [n, cols].
+  void apply(String name, Float32List xs, Float32List ys, int n) {
+    _checkOpen();
+    final w =
+        _matrices[name] ?? (throw ArgumentError('no GPU matrix named $name'));
+    if (n < 1 || xs.length < n * w.cols || ys.length < n * w.rows) {
+      throw ArgumentError('GPU product: bad shapes for n=$n');
+    }
+    final x = _x = _grow(_x, n * w.cols);
+    final y = _y = _grow(_y, n * w.rows);
+    x.view.setRange(0, n * w.cols, xs);
+    _begin();
+    w.encode(x.handle, y.handle, 0, n);
+    if (_commit(1) != 1) throw StateError('GPU command buffer failed');
+    ys.setRange(0, n * w.rows, y.view);
+  }
+
+  /// [buffer], or a larger one replacing it, of at least [floats].
+  _Buffer _grow(_Buffer? buffer, int floats) {
+    if (buffer != null && buffer.length >= floats) return buffer;
+    if (buffer != null) {
+      _owned.remove(buffer.handle);
+      _release(buffer.handle);
+    }
+    final grown = _Buffer(floats);
+    _owned.add(grown.handle);
+    return grown;
+  }
+
+  void _checkOpen() {
+    if (_disposed) throw StateError('the GPU products are disposed');
+  }
+
+  /// Releases every GPU buffer. Using this afterwards throws.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _owned.forEach(_release);
+    _owned.clear();
+    _matrices.clear();
+    _x = _y = null;
+  }
+}

@@ -103,6 +103,11 @@ void main() {
     expect(seen, ['embedding', 'layer.0']);
   });
 
+  test('without native matrices the encoder stays on the CPU', () {
+    expect(encoder.useGpu(), isFalse);
+    expect(encoder.onGpu, isFalse);
+  });
+
   test('mismatched preprocessing and nonfinite pixels are rejected', () {
     expect(
       () => encoder.encode(syntheticVisionImage(2, 2, patch: 4)),

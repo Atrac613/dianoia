@@ -107,7 +107,9 @@ original VL checkpoint, validating required shapes through the safetensors
 reader. `encode(image)` consumes a `VisionImageInput` from the RGB processor
 and returns flattened `[imageTokens, textHiddenSize]` projected embeddings.
 Optional capture callbacks receive independent snapshots after embedding norm,
-each vision layer and the projector.
+each vision layer and the projector. `load(modelDir, quantize: true)`, which
+`LocalVisionModel` uses, quantizes the linear weights to Q8 in native memory,
+and `useGpu()` then runs their products on the GPU.
 
 The synchronous float32 CPU implementation includes patch projection, RMSNorm,
 gated depthwise 2D convolution, bidirectional grouped-query attention with axial

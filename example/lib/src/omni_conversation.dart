@@ -211,16 +211,24 @@ final class OmniResponder {
   ).withMaxImageTokens(maxImageTokens);
   Lfm3VisionEncoder? _vision;
 
+  /// The vision encoder, with its matrix products on the GPU when the
+  /// language model runs there.
+  Lfm3VisionEncoder _loadVision() {
+    final vision = loadVisionEncoderGguf(
+      '$directory/${Lfm3OmniQ4Source.mmproj.name}',
+      config,
+    );
+    if (model.gpu != null) vision.useGpu();
+    return vision;
+  }
+
   /// Decodes a PNG or JPEG and projects it for the language model.
   Future<OmniImage> encodeImage(
     Uint8List encoded, {
     void Function()? check,
     void Function(int completed, int total)? onProgress,
   }) async {
-    final vision = _vision ??= loadVisionEncoderGguf(
-      '$directory/${Lfm3OmniQ4Source.mmproj.name}',
-      config,
-    );
+    final vision = _vision ??= _loadVision();
     final rgb = decodeImageRgb(encoded);
     final image = _processor.prepareRgb(
       rgb.pixels,
