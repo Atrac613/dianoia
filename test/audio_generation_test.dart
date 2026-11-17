@@ -143,6 +143,21 @@ void main() {
         );
       },
     );
+    test('depth logits for some codebooks equal the full rows', () {
+      final h = Float32List.fromList([for (var i = 0; i < 32; i++) i / 16 - 1]);
+      final codes = [3, -1, 7, -1, 0, -1, 1, -1, 2, -1, 5, -1];
+      final full = g.depthLogits(h, codes);
+      final some = g.depthLogits(h, codes, only: [9, 2, 4, 2]);
+      final v = g.vocabSize;
+      for (var cb = 0; cb < g.codebooks; cb++) {
+        final expected = [2, 4, 9].contains(cb)
+            ? full.sublist(cb * v, (cb + 1) * v)
+            : Float32List(v);
+        expect(some.sublist(cb * v, (cb + 1) * v), orderedEquals(expected));
+      }
+      expect(() => g.depthLogits(h, codes, only: [12]), throwsArgumentError);
+      expect(() => g.depthLogits(h, codes, only: [-1]), throwsArgumentError);
+    });
     test('sampling is seeded, reveals all codebooks and validates options', () {
       final h = Float32List(32);
       final a = g.sampleFrame(h, math.Random(1)),

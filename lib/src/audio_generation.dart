@@ -493,10 +493,13 @@ final class Lfm3AudioGenerator {
 
   /// One MaskGIT pass: -1 marks a masked codebook, others are known codes.
   /// Returns [codebooks, vocabSize] logits. No random sampling occurs here.
+  /// With [only], just those codebooks' rows are computed and the others
+  /// stay zero: each row's arithmetic is the same either way.
   Float32List depthLogits(
     Float32List hidden,
     List<int> codes, {
     void Function(String, Float32List)? capture,
+    Iterable<int>? only,
   }) {
     _open();
     if (hidden.length != hiddenSize ||
@@ -504,6 +507,10 @@ final class Lfm3AudioGenerator {
         codes.length != codebooks ||
         codes.any((c) => c < -1 || c >= vocabSize)) {
       throw ArgumentError('invalid depth input');
+    }
+    final rows = only?.toSet() ?? {for (var cb = 0; cb < codebooks; cb++) cb};
+    if (rows.any((cb) => cb < 0 || cb >= codebooks)) {
+      throw ArgumentError('invalid depth codebooks');
     }
     final h = _depth.h;
     final input = _linear('a.gen.code.proj_in', hidden, 1, bias: true);
@@ -519,7 +526,7 @@ final class Lfm3AudioGenerator {
     capture?.call('embedding', Float32List.fromList(output));
     final logits = Float32List(codebooks * vocabSize),
         norms = _floats['a.gen.code.head_norm.weight']!;
-    for (var cb = 0; cb < codebooks; cb++) {
+    for (final cb in rows) {
       final row = Float32List.fromList(output.sublist(cb * h, (cb + 1) * h));
       final norm = _norm(
         row,
@@ -603,8 +610,10 @@ final class Lfm3AudioGenerator {
     final order = List.generate(codebooks, (i) => i)..shuffle(random);
     final codes = List.filled(codebooks, -1);
     for (var pass = 0; pass < 3; pass++) {
-      final logits = depthLogits(hidden, codes);
-      for (final cb in order.skip(pass * 4).take(4)) {
+      // Each pass samples four codebooks: only their heads are needed.
+      final sampled = order.skip(pass * 4).take(4).toList();
+      final logits = depthLogits(hidden, codes, only: sampled);
+      for (final cb in sampled) {
         final seen = {for (final frame in history) frame[cb]};
         final scores = List<double>.generate(vocabSize, (v) {
           var score = logits[cb * vocabSize + v];
