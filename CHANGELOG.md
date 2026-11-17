@@ -1,5 +1,15 @@
 ## Unreleased
 
+- Faster speech generation. `Lfm3AudioGenerator.load`'s `int8Inputs`
+  quantizes the depth decoder's and codec's product inputs to int8 and uses
+  the CPU's integer dot products, as the language model's CPU path does;
+  the example app and the `--int8-inputs` flag of the audio and Omni tools
+  use it. Speech then differs from the float reference (depth logits by
+  about 1.4% relative L2); English and Japanese test sentences synthesized
+  with it transcribe back to the same text. On an M2 Max speech generates
+  at 0.6 times real time instead of 0.87. The depth decoder also applies
+  only the output heads of the four codebooks each pass samples, which
+  leaves every frame unchanged.
 - Image conversations reuse language state between turns. `Lfm3Model`'s
   `prefill` and `forward` take `embeddingKeys` for embedding overrides, and
   `prefill` reuses an override position only where it was fed under an

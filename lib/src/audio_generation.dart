@@ -16,10 +16,10 @@ final class _Matrix {
   final int rows, cols;
   final NativeQ4Matrix? native;
   final Float32List? values;
-  Float32List apply(Float32List x, int n) {
+  Float32List apply(Float32List x, int n, {bool int8Inputs = false}) {
     final out = Float32List(n * rows);
     if (native != null) {
-      native!.apply(x, out, n, int8Inputs: false);
+      native!.apply(x, out, n, int8Inputs: int8Inputs);
     } else {
       gemm(values!, x, out, rows, cols, n);
     }
@@ -100,7 +100,8 @@ final class _GraphState {
 }
 
 /// Published generation weights only; does not load the ASR encoder.
-/// All matrix blocks are retained exactly, with float activation inputs.
+/// All matrix blocks are retained exactly. Their products take float
+/// activation inputs unless [int8Inputs].
 final class Lfm3AudioGenerator {
   Lfm3AudioGenerator._(
     this._depth,
@@ -115,9 +116,17 @@ final class Lfm3AudioGenerator {
     this._heads,
     this.variant,
     this.sampling,
+    this.int8Inputs,
   );
 
-  factory Lfm3AudioGenerator.load(String mmproj) {
+  /// Loads the generation weights of [mmproj]. With [int8Inputs] the depth
+  /// decoder's and codec's Q4 products quantize their inputs to int8 per
+  /// block of 32 and use the CPU's integer dot products, as the language
+  /// model's CPU path does: speech generates about 1.4 times faster, and its
+  /// arithmetic is no longer the float reference's, so sampled codes and the
+  /// waveform differ (depth logits by about 1.4% relative L2). The output
+  /// heads, products of one row, keep float inputs.
+  factory Lfm3AudioGenerator.load(String mmproj, {bool int8Inputs = false}) {
     if (!NativeKernels.isLoaded) NativeKernels.load(null);
     final file = GgufFile.open(mmproj);
     final matrices = <String, _Matrix>{};
@@ -290,6 +299,7 @@ final class Lfm3AudioGenerator {
         heads,
         variant,
         sampling,
+        int8Inputs,
       );
     } catch (_) {
       for (final m in [...matrices.values, ...heads]) {
@@ -316,6 +326,10 @@ final class Lfm3AudioGenerator {
   final Map<String, _Matrix> _matrices;
   final List<_Matrix> _heads;
   final _streams = <LiquidCodecStream>{};
+
+  /// Whether the depth decoder's and codec's products take int8 inputs
+  /// (see [Lfm3AudioGenerator.load]).
+  final bool int8Inputs;
   bool _closed = false;
   void _open() {
     if (_closed) throw StateError('Audio generator is closed');
@@ -337,7 +351,7 @@ final class Lfm3AudioGenerator {
 
   Float32List _linear(String name, Float32List x, int n, {bool bias = false}) {
     final m = _matrices['$name.weight']!;
-    final out = m.apply(x, n);
+    final out = m.apply(x, n, int8Inputs: int8Inputs);
     if (bias) {
       final b = _floats['$name.bias']!;
       for (var i = 0; i < out.length; i++) {

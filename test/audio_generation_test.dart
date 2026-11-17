@@ -143,6 +143,31 @@ void main() {
         );
       },
     );
+    test('int8 inputs stay close to the float products', () {
+      final q = Lfm3AudioGenerator.load(
+        '${temp.path}/mmproj.gguf',
+        int8Inputs: true,
+      );
+      addTearDown(q.close);
+      expect(g.int8Inputs, isFalse);
+      expect(q.int8Inputs, isTrue);
+      final h = Float32List.fromList([for (var i = 0; i < 32; i++) i / 16 - 1]);
+      final codes = [3, -1, 7, -1, 0, -1, 1, -1, 2, -1, 5, -1];
+      final exact = g.depthLogits(h, codes), fast = q.depthLogits(h, codes);
+      var num = 0.0, den = 0.0;
+      for (var i = 0; i < exact.length; i++) {
+        expect(fast[i].isFinite, isTrue);
+        num += (fast[i] - exact[i]) * (fast[i] - exact[i]);
+        den += exact[i] * exact[i];
+      }
+      expect(math.sqrt(num / den), lessThan(0.05));
+      final frame = q.sampleFrame(h, math.Random(1));
+      expect(frame.every((c) => c >= 0 && c < q.vocabSize), isTrue);
+      final stream = q.startCodecStream();
+      addTearDown(stream.close);
+      final audio = [for (final c in frame) c == q.eosCode ? 0 : c];
+      expect(stream.add(audio).every((x) => x.isFinite), isTrue);
+    });
     test('depth logits for some codebooks equal the full rows', () {
       final h = Float32List.fromList([for (var i = 0; i < 32; i++) i / 16 - 1]);
       final codes = [3, -1, 7, -1, 0, -1, 1, -1, 2, -1, 5, -1];

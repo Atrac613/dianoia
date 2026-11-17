@@ -486,7 +486,10 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
               }
               if (input != null) throw StateError('Recording is active');
               final options = request['value'] as Map;
-              generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
+              generator ??= Lfm3AudioGenerator.load(
+                '$directory/$mmprojName',
+                int8Inputs: true,
+              );
               final current = synthesizer = AudioSynthesizer(
                 model!,
                 tokenizer!,
@@ -551,7 +554,10 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                   },
                 );
               } else if (recordingConversation) {
-                generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
+                generator ??= Lfm3AudioGenerator.load(
+                  '$directory/$mmprojName',
+                  int8Inputs: true,
+                );
                 conversation ??= AudioConversationSession(
                   model!,
                   tokenizer!,
@@ -677,7 +683,10 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                 }
               }
               if (options['speak'] as bool) {
-                generator ??= Lfm3AudioGenerator.load('$directory/$mmprojName');
+                generator ??= Lfm3AudioGenerator.load(
+                  '$directory/$mmprojName',
+                  int8Inputs: true,
+                );
               }
               final chat = photo!;
               final SpeechReply reply;
