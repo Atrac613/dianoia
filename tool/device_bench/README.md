@@ -19,6 +19,11 @@ WEIGHTS=q4 tool/device_bench/run_ios.sh       # the first connected iPhone
 tool/device_bench/run_android.sh              # QAD Q4, the first adb device
 ```
 
+With `{"mode": "speech", "bundle": DIR}` in `Documents/bench_config.json`
+the app synthesizes an English and a Japanese sentence with the LFM3-Omni or
+Audio bundle in `Documents/DIR`, with float and with int8 product inputs in
+ABBA order, and writes `bench/speech-latest.json` and the waveforms.
+
 `run_ios_control_vector.sh VECTOR PROMPTS [REFUSALS]` runs the app in its
 `control_vector` mode instead: a control vector on the phone's CPU and GPU
 against the same checks on this Mac (docs/control_vectors.md), written to

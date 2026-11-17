@@ -7,7 +7,9 @@
   use it. Speech then differs from the float reference (depth logits by
   about 1.4% relative L2); English and Japanese test sentences synthesized
   with it transcribe back to the same text. On an M2 Max speech generates
-  at 0.6 times real time instead of 0.87. The depth decoder also applies
+  at 0.6 times real time instead of 0.87; on an iPhone 15 Pro Max at 1.14
+  times real time instead of 1.7-3.0 (the device bench's new `speech`
+  mode). The depth decoder also applies
   only the output heads of the four codebooks each pass samples, which
   leaves every frame unchanged.
 - Image conversations reuse language state between turns. `Lfm3Model`'s

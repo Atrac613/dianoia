@@ -35,6 +35,7 @@ import 'package:dianoia/lab.dart';
 import 'control_vector_check.dart';
 import 'gpu_sustained.dart';
 import 'lifecycle_check.dart';
+import 'speech_check.dart';
 
 const _androidPackage = 'com.noguwo.dartllmlab.lfm3_bench';
 
@@ -92,6 +93,9 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   }
   if (config['mode'] == 'control_vector') {
     return controlVectorCheck(config, docs, log);
+  }
+  if (config['mode'] == 'speech') {
+    return speechCheck(config, docs, log);
   }
   final bundle = config['bundle'] as String? ?? 'LFM3-1.7B-device';
   final weights = WeightFormat.values.byName(
