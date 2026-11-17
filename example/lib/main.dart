@@ -4,7 +4,7 @@
 /// documents; see README.md.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'src/model_selection_page.dart';
 
