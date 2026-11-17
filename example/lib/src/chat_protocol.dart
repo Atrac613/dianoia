@@ -15,6 +15,7 @@ final class ModelLocation {
     required this.storeDir,
     required this.dropDir,
     required this.copyDir,
+    this.controlVectorDir,
   });
 
   /// The [ModelStore] the app downloads into.
@@ -28,6 +29,10 @@ final class ModelLocation {
   /// Where a bundle from [dropDir] is mapped from: [dropDir] itself, or on
   /// Android an internal copy of it.
   final String copyDir;
+
+  /// Where the user may put experimental control vectors for the text chat
+  /// (control_vectors.dart), next to [dropDir]; null offers none.
+  final String? controlVectorDir;
 }
 
 // UI to worker.
@@ -81,6 +86,19 @@ final class CancelInstall extends ChatCommand {
 /// Stops pending work and releases the model before the worker exits.
 final class CloseWorker extends ChatCommand {
   const CloseWorker();
+}
+
+/// Steers the text chat with the control vector [name] from
+/// [ModelLocation.controlVectorDir], or stops steering with null
+/// (experimental). Starts a new conversation.
+final class SetSteering extends ChatCommand {
+  const SetSteering(this.name);
+  final String? name;
+}
+
+/// Lists [ModelLocation.controlVectorDir] again.
+final class RescanSteering extends ChatCommand {
+  const RescanSteering();
 }
 
 // Worker to UI.
@@ -161,4 +179,15 @@ final class ReplyDone extends ChatEvent {
 final class ReplyFailed extends ChatEvent {
   const ReplyFailed(this.message);
   final String message;
+}
+
+/// The control vectors the text chat offers and the one steering it, after
+/// the model loads and after every [SetSteering] or [RescanSteering];
+/// [error] says why the last change failed (steering is then off, unless
+/// a reply was running and nothing changed).
+final class SteeringState extends ChatEvent {
+  const SteeringState(this.available, this.active, {this.error});
+  final List<String> available;
+  final String? active;
+  final String? error;
 }

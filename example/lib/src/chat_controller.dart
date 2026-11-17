@@ -66,6 +66,14 @@ class ChatController extends ChangeNotifier {
   String? backend;
   bool replying = false;
 
+  /// Experimental control vectors the text chat offers (empty: none), the
+  /// one steering it, whether a change is under way, and why the last
+  /// change failed.
+  List<String> steeringOptions = const [];
+  String? steering;
+  bool steeringBusy = false;
+  String? steeringError;
+
   SendPort? _commands;
   ReceivePort? _events;
 
@@ -123,6 +131,7 @@ class ChatController extends ChangeNotifier {
     if (!ready ||
         commands == null ||
         replying ||
+        steeringBusy ||
         (text.trim().isEmpty && image == null) ||
         (image != null &&
             (!model.acceptsImages ||
@@ -140,8 +149,36 @@ class ChatController extends ChangeNotifier {
 
   void stop() => _commands?.send(const StopReply());
 
+  /// Steers the chat with the control vector [name], or stops with null
+  /// (experimental). The model starts over, so the conversation does too.
+  void setSteering(String? name) {
+    final commands = _commands;
+    if (!ready ||
+        commands == null ||
+        replying ||
+        steeringBusy ||
+        model != ExampleModel.lfm3) {
+      return;
+    }
+    if (name == steering) return;
+    messages.clear();
+    steeringBusy = true;
+    steeringError = null;
+    commands.send(SetSteering(name));
+    notifyListeners();
+  }
+
+  /// Lists the control vector folder again.
+  void rescanSteering() => _commands?.send(const RescanSteering());
+
+  /// Hides the last steering error.
+  void dismissSteeringError() {
+    steeringError = null;
+    notifyListeners();
+  }
+
   void newChat() {
-    if (replying) return;
+    if (replying || steeringBusy) return;
     messages.clear();
     _commands?.send(const NewChat());
     notifyListeners();
@@ -192,6 +229,11 @@ class ChatController extends ChangeNotifier {
               '${event.tokensPerSecond.toStringAsFixed(1)} tok/s · '
               'first token $firstTokenMs ms';
         replying = false;
+      case SteeringState(:final available, :final active, :final error):
+        steeringOptions = available;
+        steering = active;
+        steeringBusy = false;
+        if (error != null) steeringError = error;
       case ReplyFailed(:final message):
         // Drop the empty reply; the user's message stays, marked failed.
         if (messages.last.text.isEmpty) messages.removeLast();
@@ -216,6 +258,7 @@ class ChatController extends ChangeNotifier {
         storeDir: '$local/models',
         dropDir: dir,
         copyDir: dir,
+        controlVectorDir: '$local/control_vectors',
       );
     }
     final store = '${(await getApplicationSupportDirectory()).path}/models';
@@ -226,11 +269,17 @@ class ChatController extends ChangeNotifier {
         storeDir: store,
         dropDir: '${external!.path}/$name',
         copyDir: '${internal.path}/$name',
+        controlVectorDir: '${external.path}/control_vectors',
       );
     }
     final documents = await getApplicationDocumentsDirectory();
     final dir = '${documents.path}/$name';
-    return ModelLocation(storeDir: store, dropDir: dir, copyDir: dir);
+    return ModelLocation(
+      storeDir: store,
+      dropDir: dir,
+      copyDir: dir,
+      controlVectorDir: '${documents.path}/control_vectors',
+    );
   }
 
   @override

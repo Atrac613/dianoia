@@ -89,14 +89,22 @@ class _ChatPageState extends State<ChatPage> {
     builder: (context, _) => Scaffold(
       appBar: AppBar(
         title: Text(
-          _chat.backend == null
-              ? _chat.model.name
-              : '${_chat.model.name} · ${_chat.backend}',
+          [
+            _chat.model.name,
+            ?_chat.backend,
+            if (_chat.steering case final name?) 'steered: $name',
+          ].join(' · '),
         ),
         actions: [
+          if (_chat.steeringOptions.isNotEmpty || _chat.steering != null)
+            _steeringMenu(),
           IconButton(
             tooltip: 'New chat',
-            onPressed: _chat.ready && !_chat.replying && !_picking
+            onPressed:
+                _chat.ready &&
+                    !_chat.replying &&
+                    !_chat.steeringBusy &&
+                    !_picking
                 ? _newChat
                 : null,
             icon: const Icon(Icons.add_comment_outlined),
@@ -113,6 +121,7 @@ class _ChatPageState extends State<ChatPage> {
                 _ => _status(context),
               },
             ),
+            if (_chat.steeringError case final error?) _steeringError(error),
             _composer(context),
           ],
         ),
@@ -208,7 +217,9 @@ class _ChatPageState extends State<ChatPage> {
                   )
                 : IconButton.filled(
                     tooltip: 'Send',
-                    onPressed: _chat.ready && !_picking ? _send : null,
+                    onPressed: _chat.ready && !_chat.steeringBusy && !_picking
+                        ? _send
+                        : null,
                     icon: const Icon(Icons.arrow_upward),
                   ),
           ],
@@ -217,6 +228,66 @@ class _ChatPageState extends State<ChatPage> {
     ),
   );
 }
+
+extension on _ChatPageState {
+  /// Experimental: the control vector menu, Off and each vector in the
+  /// control_vectors folder, the active one checked. Choosing one starts a
+  /// new conversation.
+  Widget _steeringMenu() => PopupMenuButton<Object>(
+    tooltip: 'Control vector (experimental)',
+    enabled: _chat.ready && !_chat.replying && !_chat.steeringBusy && !_picking,
+    icon: _chat.steeringBusy
+        ? const SizedBox.square(
+            dimension: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : Icon(_chat.steering == null ? Icons.tune : Icons.tune_outlined),
+    onSelected: (choice) {
+      if (choice == _rescan) {
+        _chat.rescanSteering();
+        return;
+      }
+      if ((choice == _off ? null : choice) == _chat.steering) return;
+      _input.clear();
+      _chat.setSteering(choice == _off ? null : choice as String);
+    },
+    itemBuilder: (context) => [
+      const PopupMenuItem<Object>(
+        enabled: false,
+        child: Text('Control vector (experimental)'),
+      ),
+      CheckedPopupMenuItem<Object>(
+        value: _off,
+        checked: _chat.steering == null,
+        child: const Text('Off'),
+      ),
+      for (final name in _chat.steeringOptions)
+        CheckedPopupMenuItem<Object>(
+          value: name,
+          checked: _chat.steering == name,
+          child: Text(name),
+        ),
+      const PopupMenuDivider(),
+      const PopupMenuItem<Object>(value: _rescan, child: Text('Rescan folder')),
+    ],
+  );
+
+  Widget _steeringError(String error) => Material(
+    color: Theme.of(context).colorScheme.errorContainer,
+    child: ListTile(
+      dense: true,
+      title: Text(error),
+      trailing: IconButton(
+        tooltip: 'Dismiss',
+        onPressed: _chat.dismissSteeringError,
+        icon: const Icon(Icons.close),
+      ),
+    ),
+  );
+}
+
+// Menu values that are not vector names.
+const _off = #off, _rescan = #rescan;
 
 /// Owns the worker for one visit to a model's chat.
 class ModelChatPage extends StatefulWidget {

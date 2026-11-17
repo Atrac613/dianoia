@@ -34,6 +34,8 @@
   configuration on refused, benign and reference-answer sets: refusal
   openings, first-token KL, reply agreement and reference likelihood,
   reporting counts and likelihoods only.
+  The example's text chat has an experimental control vector menu, fed
+  from a `control_vectors` folder in the app's documents.
   See docs/control_vectors.md.
 
 ## 0.3.0
