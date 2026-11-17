@@ -865,9 +865,11 @@ void main() {
     },
     skip: !NativeKernels.isAvailable
         ? 'requires native kernels'
-        : hostHasGpu
+        : !hostHasGpu
+        ? noGpuSkip
+        : gpuStarts
         ? false
-        : noGpuSkip,
+        : gpuDoesNotStartSkip,
   );
 }
 
