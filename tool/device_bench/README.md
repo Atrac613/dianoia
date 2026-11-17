@@ -22,7 +22,11 @@ tool/device_bench/run_android.sh              # QAD Q4, the first adb device
 With `{"mode": "speech", "bundle": DIR}` in `Documents/bench_config.json`
 the app synthesizes an English and a Japanese sentence with the LFM3-Omni or
 Audio bundle in `Documents/DIR`, with float and with int8 product inputs in
-ABBA order, and writes `bench/speech-latest.json` and the waveforms.
+ABBA order, and writes `bench/speech-latest.json` and the waveforms. With
+`"profile": true` it first times a speech frame's parts (the depth
+decoder's sampling, one depth pass by stage, the codec and the language
+step), int8 and float in turn; `"profile_only": true` stops there, and
+`"threads"` sets the native threads.
 
 `run_ios_control_vector.sh VECTOR PROMPTS [REFUSALS]` runs the app in its
 `control_vector` mode instead: a control vector on the phone's CPU and GPU
