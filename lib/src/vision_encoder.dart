@@ -313,13 +313,35 @@ final class Lfm3VisionEncoder {
     k = _norm(k, '${p}k_layernorm.weight', d, c.normEps);
     _rotate(q, c.numHeads, positions);
     _rotate(k, c.numKvHeads, positions);
+    final scale = 1 / math.sqrt(d);
+    // With the native kernels (and their attention on), C computes the same
+    // softmax attention over all n patches on every native thread; its sums
+    // run in another order, so the rows differ from the Dart path's in the
+    // last bits.
+    if (NativeKernels.isLoaded &&
+        NativeKernels.instance.attention &&
+        d % 4 == 0 &&
+        c.numHeads * d == h) {
+      final output = Float32List(n * h);
+      nativeFullAttention(
+        q,
+        k,
+        v,
+        output,
+        n: n,
+        heads: c.numHeads,
+        kvHeads: c.numKvHeads,
+        headDim: d,
+        scale: scale,
+      );
+      return _linear('${p}out_proj', output, h, h, n);
+    }
     // Per head, scores = K q and output = V^T p as batched matrix products
     // over all n patches; each key/value head is gathered once per group.
     final output = Float32List(n * h);
     final qh = Float32List(n * d), kh = Float32List(n * d);
     final vt = Float32List(d * n), oh = Float32List(n * d);
     final scores = Float32List(n * n);
-    final scale = 1 / math.sqrt(d);
     final group = c.numHeads ~/ c.numKvHeads;
     for (var kvHead = 0; kvHead < c.numKvHeads; kvHead++) {
       for (var s = 0; s < n; s++) {

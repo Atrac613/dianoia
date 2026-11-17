@@ -279,6 +279,73 @@ void nativeAttention(
   );
 }
 
+@Native<
+  Void Function(
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Double,
+    Int64,
+  )
+>(symbol: 'lab_attention_full', isLeaf: true)
+external void _attentionFull(
+  Pointer<Float> q,
+  Pointer<Float> keys,
+  Pointer<Float> values,
+  Pointer<Float> out,
+  int n,
+  int heads,
+  int kvHeads,
+  int headDim,
+  double scale,
+  int threads,
+);
+
+/// Grouped-query attention in which each of [n] tokens attends to all [n]
+/// (no mask, no gate), in C (src/c/lab_native.c, `lab_attention_full`):
+/// the vision encoder's. q and out are [n, heads * headDim], keys and
+/// values [n, kvHeads * headDim]; scores are scaled by [scale].
+void nativeFullAttention(
+  Float32List q,
+  Float32List keys,
+  Float32List values,
+  Float32List out, {
+  required int n,
+  required int heads,
+  required int kvHeads,
+  required int headDim,
+  required double scale,
+}) {
+  final kvDim = kvHeads * headDim;
+  if (n < 1 ||
+      kvHeads < 1 ||
+      q.length < n * heads * headDim ||
+      out.length < n * heads * headDim ||
+      keys.length < n * kvDim ||
+      values.length < n * kvDim ||
+      heads % kvHeads != 0 ||
+      headDim % 4 != 0) {
+    throw ArgumentError('native full attention: bad shapes');
+  }
+  _attentionFull(
+    q.address,
+    keys.address,
+    values.address,
+    out.address,
+    n,
+    heads,
+    kvHeads,
+    headDim,
+    scale,
+    NativeKernels.instance.threads,
+  );
+}
+
 /// Process-wide settings of the native kernels.
 final class NativeKernels {
   NativeKernels._(this.threads, this.int8Inputs, this.attention);

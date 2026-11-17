@@ -1,5 +1,11 @@
 ## Unreleased
 
+- The vision encoder's attention runs in C on every native thread
+  (`lab_attention_full`, `nativeFullAttention`) when the native kernels
+  are loaded with their attention on, instead of in Dart. Its sums run in
+  another order, so encoder outputs differ from the Dart path's in the
+  last bits (relative L2 5e-6 on LFM3-Omni-2B). On an M2 Max with 4 threads
+  a 640x480 image (300 image tokens) encodes in 5.8 s instead of 9.0 s.
 - Faster decoding on Metal with the same bits. A one-token matrix product
   now gives each SIMD group two rows instead of one (`gemv_q8_r2`,
   `gemv_q4_r2`; `GpuForward.decodeRows` selects 1, 2 or 4 and

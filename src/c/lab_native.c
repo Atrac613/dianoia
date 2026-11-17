@@ -677,6 +677,138 @@ LAB_EXPORT void lab_attention(const float* q, const float* keys, const float* va
 #endif
 }
 
+// ------------------------------------------------- Full attention
+//
+// The vision encoder's attention: every one of n tokens attends to all n,
+// with no mask and no output gate.
+//   q, out          [n, heads * hd]
+//   keys, values    [n, kv_heads * hd]
+// Query head h reads KV head h / (heads / kv_heads). Each (token, head) is a
+// task as in lab_attention: the scores against every key, scaled by `scale`,
+// a float32 softmax, then the values weighted by the exponentials and the
+// row divided by their sum once at the end. hd must be a multiple of 4.
+
+static void attend_full_one(const float* q, const float* keys, const float* values, float* out,
+                            float* scores, int64_t t, int64_t h, int64_t n, int64_t heads,
+                            int64_t kv_heads, int64_t hd, float scale) {
+  const int64_t q_dim = heads * hd, kv_dim = kv_heads * hd;
+  const int64_t kvo = (h / (heads / kv_heads)) * hd;
+  const float* qv = q + t * q_dim + h * hd;
+  float max = -INFINITY;
+  for (int64_t s = 0; s < n; s++) {
+    const float v = dot_hd(qv, keys + s * kv_dim + kvo, hd) * scale;
+    scores[s] = v;
+    if (v > max) max = v;
+  }
+  float sum = 0.0f;
+  for (int64_t s = 0; s < n; s++) {
+    const float e = expf(scores[s] - max);
+    scores[s] = e;
+    sum += e;
+  }
+  const float inv = 1.0f / sum;
+  const float* v0 = values + kvo;
+  float* o = out + t * q_dim + h * hd;
+  int64_t d = 0;
+#ifdef LAB_NEON
+  // Sixteen dimensions per pass over the keys keep four accumulators.
+  for (; d + 16 <= hd; d += 16) {
+    float32x4_t a0 = vdupq_n_f32(0.0f), a1 = a0, a2 = a0, a3 = a0;
+    for (int64_t s = 0; s < n; s++) {
+      const float* row = v0 + s * kv_dim + d;
+      const float p = scores[s];
+      a0 = vfmaq_n_f32(a0, vld1q_f32(row), p);
+      a1 = vfmaq_n_f32(a1, vld1q_f32(row + 4), p);
+      a2 = vfmaq_n_f32(a2, vld1q_f32(row + 8), p);
+      a3 = vfmaq_n_f32(a3, vld1q_f32(row + 12), p);
+    }
+    vst1q_f32(o + d, vmulq_n_f32(a0, inv));
+    vst1q_f32(o + d + 4, vmulq_n_f32(a1, inv));
+    vst1q_f32(o + d + 8, vmulq_n_f32(a2, inv));
+    vst1q_f32(o + d + 12, vmulq_n_f32(a3, inv));
+  }
+  for (; d < hd; d += 4) {
+    float32x4_t acc = vdupq_n_f32(0.0f);
+    for (int64_t s = 0; s < n; s++) acc = vfmaq_n_f32(acc, vld1q_f32(v0 + s * kv_dim + d), scores[s]);
+    vst1q_f32(o + d, vmulq_n_f32(acc, inv));
+  }
+#else
+  for (; d + 16 <= hd; d += 16) {
+    __m256 a0 = _mm256_setzero_ps(), a1 = a0;
+    for (int64_t s = 0; s < n; s++) {
+      const float* row = v0 + s * kv_dim + d;
+      const __m256 p = _mm256_set1_ps(scores[s]);
+      a0 = _mm256_fmadd_ps(_mm256_loadu_ps(row), p, a0);
+      a1 = _mm256_fmadd_ps(_mm256_loadu_ps(row + 8), p, a1);
+    }
+    _mm256_storeu_ps(o + d, _mm256_mul_ps(a0, _mm256_set1_ps(inv)));
+    _mm256_storeu_ps(o + d + 8, _mm256_mul_ps(a1, _mm256_set1_ps(inv)));
+  }
+  for (; d < hd; d += 4) {
+    __m128 acc = _mm_setzero_ps();
+    for (int64_t s = 0; s < n; s++) {
+      acc = _mm_fmadd_ps(_mm_loadu_ps(v0 + s * kv_dim + d), _mm_set1_ps(scores[s]), acc);
+    }
+    _mm_storeu_ps(o + d, _mm_mul_ps(acc, _mm_set1_ps(inv)));
+  }
+#endif
+}
+
+#ifdef _WIN32
+typedef struct {
+  const float *q, *keys, *values;
+  float* out;
+  int64_t tasks, n, heads, kv_heads, hd;
+  float scale;
+} FullAttention;
+
+static void full_attention_chunk(const void* job, int64_t c, int64_t chunks) {
+  const FullAttention* a = (const FullAttention*)job;
+  float* scores = (float*)malloc((size_t)a->n * sizeof(float));
+  for (int64_t k = a->tasks * c / chunks; k < a->tasks * (c + 1) / chunks; k++) {
+    attend_full_one(a->q, a->keys, a->values, a->out, scores, k / a->heads, k % a->heads, a->n,
+                    a->heads, a->kv_heads, a->hd, a->scale);
+  }
+  free(scores);
+}
+#endif
+
+LAB_EXPORT void lab_attention_full(const float* q, const float* keys, const float* values,
+                                   float* out, int64_t n, int64_t heads, int64_t kv_heads,
+                                   int64_t hd, double scale, int64_t threads) {
+  const int64_t tasks = n * heads;
+  const int64_t workers = threads < 1 ? 1 : (threads > tasks ? tasks : threads);
+  const float s = (float)scale;
+#ifdef _WIN32
+  const FullAttention a = {q, keys, values, out, tasks, n, heads, kv_heads, hd, s};
+  const int64_t runs = workers * CHUNKS_PER_THREAD;
+  parallel_chunks(workers, runs < tasks ? runs : tasks, full_attention_chunk, &a);
+#elif defined(__APPLE__)
+  // Tasks go out in runs, CHUNKS_PER_THREAD per worker, so a slower core
+  // takes fewer of them.
+  const int64_t runs = workers * CHUNKS_PER_THREAD < tasks ? workers * CHUNKS_PER_THREAD : tasks;
+  dispatch_apply((size_t)runs, DISPATCH_APPLY_AUTO, ^(size_t r) {
+    float* scores = (float*)malloc((size_t)n * sizeof(float));
+    for (int64_t k = tasks * (int64_t)r / runs; k < tasks * ((int64_t)r + 1) / runs; k++) {
+      attend_full_one(q, keys, values, out, scores, k / heads, k % heads, n, heads, kv_heads, hd,
+                      s);
+    }
+    free(scores);
+  });
+#else
+#pragma omp parallel num_threads((int)workers)
+  {
+    float* scores = (float*)malloc((size_t)n * sizeof(float));
+#pragma omp for schedule(dynamic, 16)
+    for (int64_t k = 0; k < tasks; k++) {
+      attend_full_one(q, keys, values, out, scores, k / heads, k % heads, n, heads, kv_heads, hd,
+                      s);
+    }
+    free(scores);
+  }
+#endif
+}
+
 // The process's physical footprint in bytes, the figure iOS compares with
 // an app's memory limit; on Windows, the working set; -1 where unavailable.
 LAB_EXPORT int64_t lab_phys_footprint(void) {
