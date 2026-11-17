@@ -98,6 +98,7 @@ Future<void> main(List<String> args) async {
   final imageRows = <Float32List>[], imageTokens = <int>[];
   if (images.isNotEmpty) {
     final vision = loadVisionEncoderGguf(mmproj, config);
+    if (gpu) vision.useGpu();
     lap('vision_load_seconds');
     for (final path in images) {
       final rgb = await readImageRgb(path);
@@ -140,6 +141,7 @@ Future<void> main(List<String> args) async {
     final clip = await _decodeVideo(path, processor, soundtrack: soundtrack);
     lap('video_decode_seconds');
     final vision = loadVisionEncoderGguf(mmproj, config);
+    if (gpu) vision.useGpu();
     final rows = [for (final g in clip.video.groups) vision.encode(g)];
     vision.close();
     final flat = Float32List(rows.fold(0, (n, r) => n + r.length));

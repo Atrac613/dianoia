@@ -9,8 +9,9 @@ and English voice conversation.
 
 Dart owns the tokenizer, chat template, graph and conversation state. Native
 code provides quantized CPU kernels and the Metal/Vulkan language backend.
-The vision encoder and projector currently run in the CPU reference
-implementation, even when language inference uses the GPU.
+The vision encoder and projector run on the CPU, except that an encoder
+loaded from a Q4 mmproj GGUF (LFM3-Omni) can run its quantized matrix
+products on the GPU (`Lfm3VisionEncoder.useGpu`).
 
 `package:dianoia/dianoia.dart` is the app API and may change before 1.0.
 `package:dianoia/lab.dart` exposes internals without a stability promise.

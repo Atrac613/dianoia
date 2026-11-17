@@ -5,6 +5,7 @@ library;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'gpu.dart';
 import 'matmul.dart';
 import 'native.dart';
 import 'ops.dart';
@@ -12,9 +13,10 @@ import 'safetensors.dart';
 import 'vision_config.dart';
 import 'vision_image.dart';
 
-/// Correctness-first, synchronous CPU inference. Weights are widened to f32
+/// Correctness-first, synchronous inference. Weights are widened to f32
 /// on the Dart heap, except matrices given as native Q4/Q8 blocks, whose
-/// products run in the native kernels with float inputs. This is a lab API,
+/// products run in the native kernels with float inputs, or on the GPU
+/// after [useGpu]; the rest stays on the CPU. This is a lab API,
 /// not the optimized on-device path. Images are encoded independently; no
 /// cross-image attention or video state. [close] frees native matrices.
 final class Lfm3VisionEncoder {
@@ -69,10 +71,43 @@ final class Lfm3VisionEncoder {
   final Map<String, NativeMatrix> _native;
   bool _closed = false;
 
-  /// Frees native matrices. The encoder cannot be used afterwards.
+  /// The GPU copies of the native matrices, after [useGpu].
+  GpuLinear? _gpu;
+
+  /// Whether the native matrices' products run on the GPU ([useGpu]).
+  bool get onGpu => _gpu != null;
+
+  /// Moves the products of the native (Q4 or Q8) matrices to the GPU,
+  /// copying them into GPU memory; the CPU copies stay as they are. Returns
+  /// whether it did: false without native matrices or where the GPU does not
+  /// start. The rest of the encoder stays on the CPU. Outputs then differ
+  /// from the CPU kernels' in the last bits. Encode only while no other
+  /// isolate runs a GPU forward pass (see GpuLinear).
+  bool useGpu() {
+    if (_closed) throw StateError('vision encoder is closed');
+    if (_gpu != null) return true;
+    if (_native.isEmpty) return false;
+    final gpu = GpuLinear.start();
+    if (gpu == null) return false;
+    try {
+      for (final e in _native.entries) {
+        gpu.upload(e.key, e.value);
+      }
+    } catch (_) {
+      gpu.dispose();
+      rethrow;
+    }
+    _gpu = gpu;
+    return true;
+  }
+
+  /// Frees native matrices and their GPU copies. The encoder cannot be used
+  /// afterwards.
   void close() {
     if (_closed) return;
     _closed = true;
+    _gpu?.dispose();
+    _gpu = null;
     for (final m in _native.values) {
       m.free();
     }
@@ -224,7 +259,12 @@ final class Lfm3VisionEncoder {
     final matrix = _native['$name.weight'];
     final w = _weights['$name.weight'];
     if (matrix != null) {
-      matrix.apply(x, result, n, int8Inputs: false);
+      final gpu = _gpu;
+      if (gpu != null) {
+        gpu.apply('$name.weight', x, result, n);
+      } else {
+        matrix.apply(x, result, n, int8Inputs: false);
+      }
     } else if (w == null) {
       throw StateError('missing vision weight $name');
     } else if (cols % 4 == 0) {

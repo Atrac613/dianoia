@@ -1,5 +1,13 @@
 ## Unreleased
 
+- `Lfm3VisionEncoder.useGpu` moves the products of an encoder's native Q4
+  or Q8 matrices (an mmproj GGUF's, as LFM3-Omni loads them) to the GPU
+  through the new `GpuLinear`, keeping a second copy of those matrices in
+  GPU memory; the rest of the encoder stays on the CPU. Outputs differ
+  from the CPU kernels' in the last bits (relative L2 2.5e-6). The Omni
+  tool's `--gpu` and the example's Omni chat use it when the language model
+  is on the GPU. On an M2 Max a 300-token image encodes in 2.0 s instead of
+  5.8 s, and an image question takes 3.9 s instead of 7.6 s.
 - The vision encoder's attention runs in C on every native thread
   (`lab_attention_full`, `nativeFullAttention`) when the native kernels
   are loaded with their attention on, instead of in Dart. Its sums run in
