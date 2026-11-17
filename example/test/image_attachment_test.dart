@@ -9,7 +9,7 @@ import 'package:dianoia_example/src/chat_page.dart';
 import 'package:dianoia_example/src/chat_protocol.dart';
 import 'package:dianoia_example/src/example_model.dart';
 import 'package:dianoia_example/src/message_bubble.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _RecordingChat extends ChatController {

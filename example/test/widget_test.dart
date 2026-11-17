@@ -8,7 +8,7 @@ import 'package:dianoia_example/src/model_selection_page.dart';
 import 'package:dianoia/dianoia.dart';
 import 'package:dianoia_example/src/message_bubble.dart';
 import 'package:dianoia_example/src/model_setup.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:dianoia_example/src/model_size.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';

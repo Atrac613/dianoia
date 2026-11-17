@@ -1,5 +1,5 @@
 import 'package:dianoia/dianoia.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'chat_controller.dart';
 import 'model_size.dart';

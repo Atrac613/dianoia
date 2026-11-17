@@ -16,7 +16,10 @@
 ///   --gpu runs whole tokens on the GPU (Metal or Vulkan) from the cache
 ///   (needs --weights=q8 or q4); --gpu-lib=PATH takes the GPU layer from a
 ///   library built elsewhere.
-///   --profile (run only) prints where decoding time goes.
+///   --profile (run only) prints where decoding time goes. With --gpu,
+///   --kernel-profile also times every dispatch by kernel kind, for the
+///   prompt and for decoding; it runs each in a command buffer of its own
+///   on Metal, so the rates it prints are not the model's.
 ///   --force=FILE (run only) feeds those token ids as the continuation
 ///   instead of the greedy choice, for teacher-forced quality comparison.
 ///
@@ -178,6 +181,30 @@ String? _q8CachePath(
 String Function(String) _requirer(Map<String, String> flags) =>
     (key) => flags[key] ?? (throw ArgumentError('missing --$key'));
 
+/// Prints GPU time by kernel kind per token of [tokens], from a profile
+/// taken while every dispatch ran in a command buffer of its own.
+void _printKernelProfile(
+  String phase,
+  Map<String, (double, int)> profile,
+  int tokens,
+) {
+  if (profile.isEmpty || tokens == 0) return;
+  final total = profile.values.fold(0.0, (sum, v) => sum + v.$1);
+  stdout.writeln(
+    '$phase kernels per token (one command buffer each), '
+    '${(total / tokens).toStringAsFixed(2)} ms:',
+  );
+  for (final MapEntry(key: kind, value: (ms, count)) in profile.entries) {
+    stdout.writeln(
+      '  ${kind.padRight(16)}'
+      '${(ms / tokens).toStringAsFixed(3).padLeft(8)} ms '
+      '${(100 * ms / total).toStringAsFixed(1).padLeft(5)}% '
+      '${count.toString().padLeft(6)} dispatches '
+      '${(1000 * ms / count).toStringAsFixed(0).padLeft(6)} us each',
+    );
+  }
+}
+
 Future<int> _run(Map<String, String> flags) async {
   final require = _requirer(flags);
   final modelDir = require('model');
@@ -221,6 +248,11 @@ Future<int> _run(Map<String, String> flags) async {
       ? List<int>.generate(t, (i) => i)
       : [t - 1];
   final hidden = Float32List(t * slots * h);
+  final kernelProfile = flags['kernel-profile'] == 'true' && model.gpu != null;
+  if (kernelProfile) {
+    GpuForward.profiling = true;
+    GpuForward.takeProfile();
+  }
   sw
     ..reset()
     ..start();
@@ -241,6 +273,9 @@ Future<int> _run(Map<String, String> flags) async {
     },
   );
   final promptS = sw.elapsedMilliseconds / 1000;
+  if (kernelProfile) {
+    _printKernelProfile('prompt', GpuForward.takeProfile(), t);
+  }
   final gpuPrompt = model.gpu;
   if (flags['profile'] == 'true' && gpuPrompt != null) {
     final gpu = gpuPrompt;
@@ -274,6 +309,7 @@ Future<int> _run(Map<String, String> flags) async {
   var decodeSteps = 0;
   model.executorStats.clear();
   model.gpu?.clearStats();
+  if (kernelProfile) GpuForward.takeProfile();
   while (gen.length < steps) {
     final next = forced?[gen.length] ?? _argmax(model.logits);
     gen.add(next);
@@ -285,6 +321,10 @@ Future<int> _run(Map<String, String> flags) async {
   }
   final genS = sw.elapsedMilliseconds / 1000;
   final gpu = model.gpu;
+  if (kernelProfile) {
+    _printKernelProfile('decode', GpuForward.takeProfile(), decodeSteps);
+    GpuForward.profiling = false;
+  }
   if (flags['profile'] == 'true' && decodeSteps > 0 && gpu != null) {
     double perToken(int micros) => micros / gpu.calls / 1000;
     stdout.writeln(

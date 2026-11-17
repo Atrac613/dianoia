@@ -330,7 +330,7 @@ Future<void> _gpuBench(
         log,
         'Reference GEMM $c',
       );
-      GpuForward.decodeRows = 4;
+      GpuForward.restoreDecodeRowsDefault();
       GpuForward.restoreQ8VectorDefault();
       gpuRecord['forced_$c'] = await _forced(
         gpu,
@@ -891,7 +891,7 @@ Future<Map<String, Object?>> _profileGpu(
   record['decode_sweep'] = sweep;
   record['q8_group_sweep'] = q8Sweep;
   record['q8_vector_sweep'] = vectorSweep;
-  GpuForward.decodeRows = 4;
+  GpuForward.restoreDecodeRowsDefault();
   GpuForward.restoreQ8VectorDefault();
   GpuForward.setQ8Workgroup(128);
   GpuForward.profiling = false;

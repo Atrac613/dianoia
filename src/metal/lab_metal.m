@@ -220,6 +220,86 @@ kernel void gemm_q4(device const uint4* qs [[buffer(0)]],
   }
 }
 
+// Decoding (one token) with R rows per SIMD group: lane l still handles
+// blocks l, l + 32, ... of each of its rows, block by block in gemv's
+// order, and each row's lanes are summed by simd_sum as there, so every y
+// equals gemv's bit for bit. The lane loads each input block once for its R
+// rows and the dispatch starts 1/R of the threads, which is where the time
+// of a product this small goes. A threadgroup is DECODE_GROUP_ROWS rows;
+// `rows` must be a multiple of R.
+constant uint DECODE_GROUP_ROWS = 16;
+
+template <uint R>
+static inline void gemv_q8_rows(device const char* qs, device const float* scales,
+                                device const float* x, device float* y, uint rows, uint cols,
+                                uint group, uint simd, uint lane) {
+  const uint row0 = group * DECODE_GROUP_ROWS + simd * R;
+  if (row0 >= rows) return;
+  const uint blocks = cols / 32;
+  const uint cols4 = cols / 4;
+  device const char4* q4 = (device const char4*)(qs + (ulong)row0 * cols);
+  device const float4* x4 = (device const float4*)x;
+  device const float* s = scales + (ulong)row0 * blocks;
+  float acc[R];
+  for (uint r = 0; r < R; r++) acc[r] = 0.0f;
+  for (uint b = lane; b < blocks; b += 32) {
+    float4 xv[8];
+    for (uint k = 0; k < 8; k++) xv[k] = x4[b * 8 + k];
+    for (uint r = 0; r < R; r++) {
+      float sum = 0.0f;
+      for (uint k = 0; k < 8; k++) sum += dot(float4(q4[r * cols4 + b * 8 + k]), xv[k]);
+      acc[r] += sum * s[r * blocks + b];
+    }
+  }
+  for (uint r = 0; r < R; r++) {
+    const float v = simd_sum(acc[r]);
+    if (lane == 0) y[row0 + r] = v;
+  }
+}
+
+template <uint R>
+static inline void gemv_q4_rows(device const uint4* qs, device const half* scales,
+                                device const float* x, device float* y, uint rows, uint cols,
+                                uint group, uint simd, uint lane) {
+  const uint row0 = group * DECODE_GROUP_ROWS + simd * R;
+  if (row0 >= rows) return;
+  const uint blocks = cols / 32;
+  device const uint4* q = qs + (ulong)row0 * blocks;
+  device const half* s = scales + (ulong)row0 * blocks;
+  device const float4* x4 = (device const float4*)x;
+  float acc[R];
+  for (uint r = 0; r < R; r++) acc[r] = 0.0f;
+  for (uint b = lane; b < blocks; b += 32) {
+    float4 xv[8];
+    for (uint k = 0; k < 8; k++) xv[k] = x4[b * 8 + k];
+    for (uint r = 0; r < R; r++) {
+      acc[r] += q4_block_dot(q[r * blocks + b], xv) * float(s[r * blocks + b]);
+    }
+  }
+  for (uint r = 0; r < R; r++) {
+    const float v = simd_sum(acc[r]);
+    if (lane == 0) y[row0 + r] = v;
+  }
+}
+
+#define DECODE_GEMV(NAME, ROWS_FN, QS, SCALES)                          \
+  kernel void NAME(device const QS* qs [[buffer(0)]],                   \
+                   device const SCALES* scales [[buffer(1)]],           \
+                   device const float* x [[buffer(2)]],                 \
+                   device float* y [[buffer(3)]],                       \
+                   constant uint& rows [[buffer(4)]],                   \
+                   constant uint& cols [[buffer(5)]],                   \
+                   uint group [[threadgroup_position_in_grid]],         \
+                   uint simd [[simdgroup_index_in_threadgroup]],        \
+                   uint lane [[thread_index_in_simdgroup]]) {           \
+    ROWS_FN(qs, scales, x, y, rows, cols, group, simd, lane);           \
+  }
+
+DECODE_GEMV(gemv_q8_r2, gemv_q8_rows<2>, char, float)
+DECODE_GEMV(gemv_q8_r4, gemv_q8_rows<4>, char, float)
+DECODE_GEMV(gemv_q4_r2, gemv_q4_rows<2>, uint4, half)
+DECODE_GEMV(gemv_q4_r4, gemv_q4_rows<4>, uint4, half)
+
 // The smallest possible dispatch, for measuring a round trip.
 kernel void touch(device float* y [[buffer(0)]], uint i [[thread_position_in_grid]]) {
   if (i == 0) y[0] += 1.0f;
@@ -353,6 +433,12 @@ struct AttentionParams {
 // weighted sum of values (one thread per dimension), and the per-head
 // output gate sigmoid(gate). Scores live in threadgroup memory, which the
 // host sizes for the last token's keys.
+//
+// A thread's time here is the latency of its loads, one key after another,
+// so both loops over the keys take ATTENTION_KEYS of them per step: the
+// loads go out together, and the arithmetic that follows is each key's own,
+// in the order of the one-key loops that finish the job.
+constant uint ATTENTION_KEYS = 8;
 kernel void attention(device const float* q [[buffer(0)]],
                       device const float* keys [[buffer(1)]],
                       device const float* values [[buffer(2)]],
@@ -376,11 +462,26 @@ kernel void attention(device const float* q [[buffer(0)]],
   const uint kvo = head / p.group * p.hd;
   device const float4* q4 = (device const float4*)(q + qo);
   const uint hd4 = p.hd / 4;
-  for (uint i = simd; i < count; i += simds) {
-    device const float4* k4 =
-        (device const float4*)(keys + (ulong)(start + i) * p.kv_dim + kvo);
+  device const float4* k4 = (device const float4*)(keys + (ulong)start * p.kv_dim + kvo);
+  const uint kv4 = p.kv_dim / 4;
+  uint i = simd;
+  for (; i + (ATTENTION_KEYS - 1) * simds < count; i += ATTENTION_KEYS * simds) {
+    float d[ATTENTION_KEYS];
+    for (uint j = 0; j < ATTENTION_KEYS; j++) d[j] = 0.0f;
+    for (uint c = lane; c < hd4; c += 32) {
+      const float4 qc = q4[c];
+      for (uint j = 0; j < ATTENTION_KEYS; j++) {
+        d[j] += dot(qc, k4[(ulong)(i + j * simds) * kv4 + c]);
+      }
+    }
+    for (uint j = 0; j < ATTENTION_KEYS; j++) {
+      const float score = simd_sum(d[j]);
+      if (lane == 0) scores[i + j * simds] = score * p.scale;
+    }
+  }
+  for (; i < count; i += simds) {
     float d = 0.0f;
-    for (uint c = lane; c < hd4; c += 32) d += dot(q4[c], k4[c]);
+    for (uint c = lane; c < hd4; c += 32) d += dot(q4[c], k4[(ulong)i * kv4 + c]);
     d = simd_sum(d);
     if (lane == 0) scores[i] = d * p.scale;
   }
@@ -404,7 +505,16 @@ kernel void attention(device const float* q [[buffer(0)]],
   for (uint d = tid; d < p.hd; d += threads) {
     device const float* v = values + (ulong)start * p.kv_dim + kvo + d;
     float acc = 0.0f;
-    for (uint i = 0; i < count; i++) acc += scores[i] * v[(ulong)i * p.kv_dim];
+    uint i = 0;
+    for (; i + ATTENTION_KEYS <= count; i += ATTENTION_KEYS) {
+      float weight[ATTENTION_KEYS], value[ATTENTION_KEYS];
+      for (uint j = 0; j < ATTENTION_KEYS; j++) {
+        weight[j] = scores[i + j];
+        value[j] = v[(ulong)(i + j) * p.kv_dim];
+      }
+      for (uint j = 0; j < ATTENTION_KEYS; j++) acc += weight[j] * value[j];
+    }
+    for (; i < count; i++) acc += scores[i] * v[(ulong)i * p.kv_dim];
     out[qo + d] = (acc / sum) * g;
   }
 }
@@ -429,11 +539,18 @@ kernel void copy_f32(device const float* src [[buffer(0)]],
 
 static id<MTLDevice> gDevice;
 static id<MTLCommandQueue> gQueue;
+// The decode GEMVs with 2 and 4 rows per SIMD group.
+static __unsafe_unretained id<MTLComputePipelineState> gGemvQ8Rows[2], gGemvQ4Rows[2];
+static id<MTLComputePipelineState> gDecodePipelines[4];  // keeps them alive
 static id<MTLComputePipelineState> gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gTouch, gRmsNorm, gHeadNormRope, gConv,
     gAttention, gSwiglu, gCopy;
 static double gLastGpuMs;
 static const NSUInteger kRowsPerGroup = 8;
 static const NSUInteger kGemmTokens = 8, kGemmRows = 4;
+static const NSUInteger kDecodeGroupRows = 16;  // DECODE_GROUP_ROWS in the shader
+// Rows per SIMD group of a one-token product (lab_gpu_set_decode_rows).
+static const int64_t kDefaultDecodeRows = 2;
+static int64_t gDecodeRows = kDefaultDecodeRows;
 
 // Buffers stay alive in gStrong until lab_gpu_release; gTable mirrors it
 // without reference counting, so a lookup on the encoding path is a load.
@@ -478,6 +595,10 @@ int64_t lab_gpu_init(void) {
     gGemmQ8 = pipeline(library, @"gemm_q8");
     gGemvQ4 = pipeline(library, @"gemv_q4");
     gGemmQ4 = pipeline(library, @"gemm_q4");
+    gGemvQ8Rows[0] = gDecodePipelines[0] = pipeline(library, @"gemv_q8_r2");
+    gGemvQ8Rows[1] = gDecodePipelines[1] = pipeline(library, @"gemv_q8_r4");
+    gGemvQ4Rows[0] = gDecodePipelines[2] = pipeline(library, @"gemv_q4_r2");
+    gGemvQ4Rows[1] = gDecodePipelines[3] = pipeline(library, @"gemv_q4_r4");
     gTouch = pipeline(library, @"touch");
     gRmsNorm = pipeline(library, @"rms_norm");
     gHeadNormRope = pipeline(library, @"head_norm_rope");
@@ -485,7 +606,8 @@ int64_t lab_gpu_init(void) {
     gAttention = pipeline(library, @"attention");
     gSwiglu = pipeline(library, @"swiglu");
     gCopy = pipeline(library, @"copy_f32");
-    gReady = gGemvQ8 && gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv &&
+    gReady = gGemvQ8Rows[0] && gGemvQ8Rows[1] && gGemvQ4Rows[0] && gGemvQ4Rows[1] && gGemvQ8 &&
+             gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv &&
              gAttention && gSwiglu && gCopy;
     return gReady;
   }
@@ -578,22 +700,58 @@ int64_t lab_gpu_wrap(void* address, int64_t bytes) {
 // The CPU address of a buffer's memory.
 void* lab_gpu_contents(int64_t handle) { return gTable[handle].contents; }
 
-// Rows per subgroup of decode (lab_vulkan.c); Metal's GEMV has one layout.
-void lab_gpu_set_decode_rows(int64_t rows) { (void)rows; }
+// Rows per SIMD group of the decode GEMVs: 2 or 4, or 1 (or 0) for gemv_q8
+// and gemv_q4, the reference the others equal bit for bit. Negative
+// restores the default; anything else is ignored.
+void lab_gpu_set_decode_rows(int64_t rows) {
+  if (rows < 0) gDecodeRows = kDefaultDecodeRows;
+  if (rows == 0 || rows == 1) gDecodeRows = 1;
+  if (rows == 2 || rows == 4) gDecodeRows = rows;
+}
 int64_t lab_gpu_set_q8_group(int64_t invocations) { (void)invocations; return 0; }
 int64_t lab_gpu_set_q8_vector(int64_t on) { (void)on; return 0; }
 int64_t lab_gpu_register_q8_head(int64_t w, int64_t qs, int64_t rows, int64_t cols, int64_t q4Body) {
   (void)w; (void)qs; (void)rows; (void)cols; (void)q4Body; return 0;
 }
 
-// Per-kernel timing (lab_vulkan.c has it); Metal reports none.
-void lab_gpu_set_profiling(int64_t on) { (void)on; }
+// Per-kernel timing. Metal has no timestamps inside a command buffer, so
+// while profiling is on every dispatch gets a command buffer of its own,
+// committed and waited for (see `profiled`). The kernels then run with idle
+// gaps between them, so the times show where a token's GPU time goes rather
+// than what an unprofiled token costs. Kinds are in lab_vulkan.c's order.
+enum {
+  kKindGemvQ8 = 0,
+  kKindGemmQ8 = 1,
+  kKindGemvQ4 = 2,
+  kKindGemmQ4 = 3,
+  kKindRmsNorm = 4,
+  kKindHeadNormRope = 5,
+  kKindConv = 6,
+  kKindAttention = 7,
+  kKindSwiglu = 8,
+  kKindCopy = 9,
+  kKinds = 16
+};
+static int gProfiling;
+static double gKindMs[kKinds];
+static int64_t gKindCount[kKinds];
+// GPU time and failures of the command buffers `profiled` split off since
+// lab_gpu_begin.
+static double gSplitMs;
+static int gSplitFailed;
 
+void lab_gpu_set_profiling(int64_t on) { gProfiling = on != 0; }
+
+// Copies into ms and counts, per kernel kind, the GPU time and dispatches
+// since the last call, and starts over. Returns the number of kinds.
 int64_t lab_gpu_profile(double* ms, int64_t* counts, int64_t kinds) {
-  (void)ms;
-  (void)counts;
-  (void)kinds;
-  return 0;
+  for (int64_t k = 0; k < kinds && k < kKinds; k++) {
+    ms[k] = gKindMs[k];
+    counts[k] = gKindCount[k];
+    gKindMs[k] = 0;
+    gKindCount[k] = 0;
+  }
+  return kKinds;
 }
 
 // GPU execution time of the last waited command buffer, in milliseconds.
@@ -693,6 +851,29 @@ void lab_gpu_begin(void) {
   @autoreleasepool {
     gCmd = [gQueue commandBufferWithUnretainedReferences];
     gEnc = [gCmd computeCommandEncoder];
+    gSplitMs = 0;
+    gSplitFailed = 0;
+  }
+}
+
+// With profiling on, runs the dispatch just encoded (of kernel kind `kind`)
+// in a command buffer of its own, books its GPU time and opens the next.
+static void profiled(int kind) {
+  if (!gProfiling) return;
+  @autoreleasepool {
+    [gEnc endEncoding];
+    [gCmd commit];
+    [gCmd waitUntilCompleted];
+    const double ms = (gCmd.GPUEndTime - gCmd.GPUStartTime) * 1000.0;
+    gKindMs[kind] += ms;
+    gKindCount[kind]++;
+    gSplitMs += ms;
+    if (gCmd.status == MTLCommandBufferStatusError) {
+      NSLog(@"lab_metal: %@", gCmd.error);
+      gSplitFailed = 1;
+    }
+    gCmd = [gQueue commandBufferWithUnretainedReferences];
+    gEnc = [gCmd computeCommandEncoder];
   }
 }
 
@@ -707,12 +888,12 @@ int64_t lab_gpu_commit(int64_t wait) {
     [cb commit];
     if (!wait) return 1;
     [cb waitUntilCompleted];
-    gLastGpuMs = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0;
+    gLastGpuMs = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0 + gSplitMs;
     if (cb.status == MTLCommandBufferStatusError) {
       NSLog(@"lab_metal: %@", cb.error);
       return 0;
     }
-    return 1;
+    return gSplitFailed ? 0 : 1;
   }
 }
 
@@ -720,13 +901,33 @@ typedef struct {
   uint32_t rows, cols, n;
 } GemmParams;
 
+// One token (`byRows` holds the GEMVs for 2 and 4 rows per SIMD group, which
+// take the same arguments as `gemv`) or a chunk of them.
 static void encode_matmul(id<MTLComputePipelineState> gemv, id<MTLComputePipelineState> gemm,
-                          int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
+                          __unsafe_unretained id<MTLComputePipelineState> const* byRows,
+                          int gemvKind, int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
                           int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows, int64_t cols,
                           int64_t n) {
+  if (n == 1 && gDecodeRows > 1 && rows % gDecodeRows == 0) {
+    const uint32_t r = (uint32_t)rows, c = (uint32_t)cols;
+    [gEnc setComputePipelineState:byRows[gDecodeRows == 2 ? 0 : 1]];
+    [gEnc setBuffer:gTable[w] offset:(NSUInteger)qsOffset atIndex:0];
+    [gEnc setBuffer:gTable[w] offset:(NSUInteger)scalesOffset atIndex:1];
+    [gEnc setBuffer:gTable[x] offset:(NSUInteger)xOffset atIndex:2];
+    [gEnc setBuffer:gTable[y] offset:(NSUInteger)yOffset atIndex:3];
+    [gEnc setBytes:&r length:sizeof r atIndex:4];
+    [gEnc setBytes:&c length:sizeof c atIndex:5];
+    [gEnc dispatchThreadgroups:MTLSizeMake(((NSUInteger)rows + kDecodeGroupRows - 1) /
+                                               kDecodeGroupRows,
+                                           1, 1)
+         threadsPerThreadgroup:MTLSizeMake(32 * kDecodeGroupRows / (NSUInteger)gDecodeRows, 1, 1)];
+    profiled(gemvKind);
+    return;
+  }
   if (n == 1) {
     encode_gemv(gEnc, gemv, gTable[w], qsOffset, scalesOffset, gTable[x], xOffset, gTable[y],
                 yOffset, rows, cols);
+    profiled(gemvKind);
     return;
   }
   const GemmParams p = {(uint32_t)rows, (uint32_t)cols, (uint32_t)n};
@@ -740,6 +941,7 @@ static void encode_matmul(id<MTLComputePipelineState> gemv, id<MTLComputePipelin
   [gEnc dispatchThreadgroups:MTLSizeMake(((NSUInteger)rows + rowsPerGroup - 1) / rowsPerGroup,
                                          ((NSUInteger)n + kGemmTokens - 1) / kGemmTokens, 1)
        threadsPerThreadgroup:MTLSizeMake(32 * kRowsPerGroup, 1, 1)];
+  profiled(gemvKind + 1);
 }
 
 // Y = X W^T for n tokens, X [n, cols] and Y [n, rows], with W in Q8 inside
@@ -747,7 +949,7 @@ static void encode_matmul(id<MTLComputePipelineState> gemv, id<MTLComputePipelin
 void lab_gpu_enc_matmul_q8(int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
                              int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows,
                              int64_t cols, int64_t n) {
-  encode_matmul(gGemvQ8, gGemmQ8, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
+  encode_matmul(gGemvQ8, gGemmQ8, gGemvQ8Rows, kKindGemvQ8, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
                 n);
 }
 
@@ -755,7 +957,7 @@ void lab_gpu_enc_matmul_q8(int64_t w, int64_t qsOffset, int64_t scalesOffset, in
 void lab_gpu_enc_matmul_q4(int64_t w, int64_t qsOffset, int64_t scalesOffset, int64_t x,
                              int64_t xOffset, int64_t y, int64_t yOffset, int64_t rows,
                              int64_t cols, int64_t n) {
-  encode_matmul(gGemvQ4, gGemmQ4, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
+  encode_matmul(gGemvQ4, gGemmQ4, gGemvQ4Rows, kKindGemvQ4, w, qsOffset, scalesOffset, x, xOffset, y, yOffset, rows, cols,
                 n);
 }
 
@@ -776,6 +978,7 @@ void lab_gpu_enc_rms_norm(int64_t x, int64_t xOffset, int64_t w, int64_t wOffset
   [gEnc setBytes:&p length:sizeof p atIndex:3];
   [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)rows, 1, 1)
        threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindRmsNorm);
 }
 
 typedef struct {
@@ -797,6 +1000,7 @@ void lab_gpu_enc_head_norm_rope(int64_t x, int64_t xOffset, int64_t xStride, int
   [gEnc setBytes:&p length:sizeof p atIndex:3];
   [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)heads, (NSUInteger)n, 1)
        threadsPerThreadgroup:MTLSizeMake((NSUInteger)hd / 2, 1, 1)];
+  profiled(kKindHeadNormRope);
 }
 
 typedef struct {
@@ -815,6 +1019,7 @@ void lab_gpu_enc_conv(int64_t bcx, int64_t weight, int64_t weightOffset, int64_t
   [gEnc setBytes:&p length:sizeof p atIndex:4];
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)width, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindConv);
 }
 
 typedef struct {
@@ -847,6 +1052,7 @@ void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate
   [gEnc setThreadgroupMemoryLength:((NSUInteger)keysOfLast * 4 + 15) / 16 * 16 atIndex:0];
   [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)heads, (NSUInteger)n, 1)
        threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
+  profiled(kKindAttention);
 }
 
 void lab_gpu_enc_swiglu(int64_t g, int64_t u, int64_t count) {
@@ -857,6 +1063,7 @@ void lab_gpu_enc_swiglu(int64_t g, int64_t u, int64_t count) {
   [gEnc setBytes:&n length:sizeof n atIndex:2];
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindSwiglu);
 }
 
 void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOffset,
@@ -868,4 +1075,5 @@ void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOf
   [gEnc setBytes:&n length:sizeof n atIndex:2];
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindCopy);
 }

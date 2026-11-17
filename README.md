@@ -105,7 +105,7 @@ processing are additional work and are not included.
 
 | Target | CPU kernels | GPU | Measured (LFM3-1.7B, QAD Q4_0, GPU) |
 |---|---|---|---|
-| macOS, Apple silicon | NEON `sdot`, Grand Central Dispatch | Metal | M2 Max: ~280 tok/s prompt, ~90 tok/s decode |
+| macOS, Apple silicon | NEON `sdot`, Grand Central Dispatch | Metal | M2 Max: ~290 tok/s prompt, ~150 tok/s decode |
 | iOS, A14 or later | NEON `sdot`, Grand Central Dispatch | Metal | iPhone: ~80 tok/s prompt, 29.5 tok/s decode, 0.56 s to first token |
 | Android, arm64 with dotprod | NEON `sdot`, OpenMP | Vulkan 1.2 (int8 dot products where present) | Pixel 8: ~82 tok/s prompt, ~18 tok/s sustained decode |
 | Windows, x86-64 with AVX2 | AVX2, the Windows thread pool | Vulkan 1.2 (Resizable BAR on a discrete GPU) | Radeon RX 6600 XT: ~400-800 tok/s prompt, ~130 tok/s decode |
