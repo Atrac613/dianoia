@@ -384,10 +384,13 @@ RGB bytes and visual features are kept private.
   drops vision weights and closes language resources. It is idempotent. New
   sends and new sessions are rejected once closing starts.
 
-Each successful visual turn re-prefills the language prompt from reset; image
-features are reused, but `ChatTurn.reusedTokens` is currently zero.
+A follow-up reuses the language state the model already holds for the
+conversation, image rows included, and feeds only what is new
+(`ChatTurn.reusedTokens`); its logits equal a full re-prefill's. Image rows are
+reused only for the same attached image in the same conversation, so another
+conversation, or the same picture attached again, feeds them again.
 `prefillSeconds` includes any new image encoding. `model.backend` describes the
-language backend; it does not imply GPU image encoding. `onLogits` is a
+language backend; the encoder's linear layers follow it onto the GPU. `onLogits` is a
 synchronous observer of a temporary model view: copy logits before retaining
 them across model calls.
 

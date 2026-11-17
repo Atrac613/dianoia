@@ -1,5 +1,14 @@
 ## Unreleased
 
+- Image conversations reuse language state between turns. `Lfm3Model`'s
+  `prefill` and `forward` take `embeddingKeys` for embedding overrides, and
+  `prefill` reuses an override position only where it was fed under an
+  equal key; `VisionPrompt.prefill`'s `imageKeys` uses it, and
+  `VisionChatSession` keys each image by its attachment. A follow-up then
+  feeds only its new tokens, with the same logits as feeding everything
+  again (`ChatTurn.reusedTokens` is no longer always zero). On an M2 Max a
+  follow-up to a 640x480 image reaches its first token in 0.07 s instead of
+  1.16 s on the GPU, and 0.32 s instead of 6.1 s on the CPU.
 - `LocalVisionModel` quantizes the LFM3-VL vision encoder's linear weights
   (BF16 in the checkpoint) to Q8 at load (`Lfm3VisionEncoder.load`'s
   `quantize`) and runs their products on the GPU with a GPU language model,

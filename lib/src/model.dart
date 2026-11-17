@@ -364,6 +364,10 @@ final class Lfm3Model {
   List<int> get history => List.unmodifiable(_history);
   final _history = <int>[];
 
+  /// Per position, the key [forward] was given for an embedding override
+  /// there, or null: lets [prefill] reuse positions fed the same embedding.
+  final _embeddingKeys = <Object?>[];
+
   /// Saved states by position (see [checkpoint]).
   final _checkpoints = <int, Object>{};
 
@@ -433,6 +437,7 @@ final class Lfm3Model {
     _hasHiddenState = false;
     length = 0;
     _history.clear();
+    _embeddingKeys.clear();
     _checkpoints.clear();
     _gpu?.reset();
     await _executor?.reset();
@@ -446,17 +451,34 @@ final class Lfm3Model {
   /// (positions in [ids], such as the end of the system prompt) and at the
   /// end of the prompt. Returns how many tokens were reused.
   ///
+  /// [embeddingOverrides] replaces token lookup at positions of [ids], as
+  /// in [forward]. Such a position is reused only if it was fed an override
+  /// under an equal key in [embeddingKeys] (positions in [ids]); without a
+  /// key it is always fed again. A key promises that equal keys stand for
+  /// equal embeddings, such as one image's rows in one conversation.
+  ///
   /// Each token's arithmetic does not depend on how tokens are chunked, so
   /// the logits are the same as feeding [ids] from scratch.
   Future<int> prefill(
     List<int> ids, {
     Iterable<int> checkpoints = const [],
+    Map<int, Float32List> embeddingOverrides = const {},
+    Map<int, Object> embeddingKeys = const {},
   }) async {
     _checkOpen();
     if (ids.isEmpty) throw ArgumentError('empty prompt');
+    if (embeddingKeys.keys.any((p) => !embeddingOverrides.containsKey(p))) {
+      throw ArgumentError('every embedding key needs an override');
+    }
+    bool same(int i) {
+      if (!embeddingOverrides.containsKey(i)) return _history[i] == ids[i];
+      final key = embeddingKeys[i];
+      return key != null && _history[i] == -1 && _embeddingKeys[i] == key;
+    }
+
     var common = 0;
     final limit = math.min(_history.length, ids.length - 1);
-    while (common < limit && _history[common] == ids[common]) {
+    while (common < limit && same(common)) {
       common++;
     }
     if (common < length) {
@@ -473,7 +495,18 @@ final class Lfm3Model {
     }.toList()..sort();
     var at = common;
     for (final stop in stops) {
-      await forward(ids.sublist(at, stop), computeLogits: stop == ids.length);
+      await forward(
+        ids.sublist(at, stop),
+        computeLogits: stop == ids.length,
+        embeddingOverrides: {
+          for (final e in embeddingOverrides.entries)
+            if (e.key >= at && e.key < stop) e.key - at: e.value,
+        },
+        embeddingKeys: {
+          for (final e in embeddingKeys.entries)
+            if (e.key >= at && e.key < stop) e.key - at: e.value,
+        },
+      );
       await checkpoint();
       at = stop;
     }
@@ -593,6 +626,7 @@ final class Lfm3Model {
       }
       length = tokens.length;
       _history.addAll(tokens);
+      _embeddingKeys.addAll(List.filled(tokens.length, null));
       await checkpoint();
       return true;
     } on FormatException {
@@ -626,6 +660,7 @@ final class Lfm3Model {
     }
     length = position;
     _history.length = position;
+    _embeddingKeys.length = position;
     _checkpoints.removeWhere((p, _) => p > position);
   }
 
@@ -643,15 +678,20 @@ final class Lfm3Model {
   /// this call with projected multimodal features of [Lfm3Config.hiddenSize].
   /// Positions are relative to [tokens], not the current sequence length.
   /// Such positions are recorded as -1 in [history] so text-only [prefill]
-  /// cannot reuse state conditioned on a different image. To feed another
-  /// multimodal prompt, reset and submit its embeddings again.
+  /// cannot reuse state conditioned on a different image. [embeddingKeys]
+  /// names the embedding at override positions for a later [prefill], which
+  /// reuses them only under an equal key.
   Future<void> forward(
     List<int> tokens, {
     void Function(int slot, int first, Float32List rows, int count)? capture,
     bool computeLogits = true,
     Map<int, Float32List> embeddingOverrides = const {},
+    Map<int, Object> embeddingKeys = const {},
   }) async {
     _checkOpen();
+    if (embeddingKeys.keys.any((p) => !embeddingOverrides.containsKey(p))) {
+      throw ArgumentError('every embedding key needs an override');
+    }
     final overrides = <int, Float32List>{};
     for (final entry in embeddingOverrides.entries) {
       if (entry.key < 0 || entry.key >= tokens.length) {
@@ -673,6 +713,10 @@ final class Lfm3Model {
     _forwarding++;
     try {
       await _forward(tokens, capture, computeLogits, overrides);
+      _embeddingKeys.addAll([
+        for (var t = 0; t < tokens.length; t++)
+          overrides.containsKey(t) ? embeddingKeys[t] : null,
+      ]);
     } catch (_) {
       // A chunk that failed partway (a GPU command buffer the system
       // rejected, a worker isolate that died) may have advanced the conv

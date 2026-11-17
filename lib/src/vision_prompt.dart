@@ -97,16 +97,23 @@ final class VisionPrompt {
   final List<VisionTokenSpan> images;
   final int hiddenSize;
 
-  /// Resets the language model, then feeds the whole visual prompt. Each
+  /// Feeds the visual prompt and returns how many tokens were reused. Each
   /// entry in [projectedImages] must be the encoder/projector output for the
   /// corresponding image part, flattened as [span.count, hiddenSize].
-  /// All inputs are validated and copied before resetting model state.
+  /// All inputs are validated and copied before model state changes.
+  ///
+  /// Without [imageKeys] the model is reset and the whole prompt fed. With
+  /// one key per image, [Lfm3Model.prefill] reuses the longest prefix the
+  /// model already holds (or its latest checkpoint inside it), an image's
+  /// rows only where they were fed under an equal key: give an image the
+  /// same key only while its projected rows stay the same.
   /// The caller must load the matching VL language backbone, not text-chat
   /// weights. This low-level lab API does not load/check checkpoint identity.
-  Future<void> prefill(
+  Future<int> prefill(
     Lfm3Model model,
-    List<Float32List> projectedImages,
-  ) async {
+    List<Float32List> projectedImages, {
+    List<Object>? imageKeys,
+  }) async {
     if (model.isClosed) throw StateError('the model is closed');
     if (model.config.hiddenSize != hiddenSize) {
       throw ArgumentError('VL prompt and language hidden sizes differ');
@@ -116,7 +123,8 @@ final class VisionPrompt {
         ids.any((id) => id < 0 || id >= model.config.vocabSize)) {
       throw ArgumentError('visual prompt does not fit the language model');
     }
-    if (projectedImages.length != images.length) {
+    if (projectedImages.length != images.length ||
+        (imageKeys != null && imageKeys.length != images.length)) {
       throw ArgumentError('one projected tensor is required per image part');
     }
     final overrides = <int, Float32List>{};
@@ -140,8 +148,20 @@ final class VisionPrompt {
         );
       }
     }
-    await model.reset();
-    await model.forward(ids, embeddingOverrides: overrides);
+    if (imageKeys == null) {
+      await model.reset();
+      await model.forward(ids, embeddingOverrides: overrides);
+      return 0;
+    }
+    return model.prefill(
+      ids,
+      embeddingOverrides: overrides,
+      embeddingKeys: {
+        for (var i = 0; i < images.length; i++)
+          for (var row = 0; row < images[i].count; row++)
+            images[i].start + row: (imageKeys[i], row),
+      },
+    );
   }
 }
 
