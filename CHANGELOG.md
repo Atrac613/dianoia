@@ -30,6 +30,10 @@
   `LocalModel` and `LocalVisionModel` take a vector between replies
   through lab-only extensions (`setControlVector`, `controlVector`);
   `package:dianoia/dianoia.dart` is unchanged.
+  `tool/control_vector_eval.dart` (`ControlVectorEval`) measures one
+  configuration on refused, benign and reference-answer sets: refusal
+  openings, first-token KL, reply agreement and reference likelihood,
+  reporting counts and likelihoods only.
   See docs/control_vectors.md.
 
 ## 0.3.0

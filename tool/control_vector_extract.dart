@@ -4,8 +4,9 @@
 /// Usage: `dart run tool/control_vector_extract.dart <bundle> <a.txt> <b.txt>`
 ///        `--out=vector.safetensors [--min-separation=2] [--system=prompt]`
 ///        `[--threads=4] [--gpu]`
-/// Each non-empty line of a prompt file is one user turn, rendered through
-/// the chat template with the assistant's generation prompt (thinking off).
+/// Each non-empty line of a prompt file, or each `prompt` of a `.jsonl`
+/// file, is one user turn, rendered through the chat template with the
+/// assistant's generation prompt (thinking off).
 /// Runs on the CPU kernels, or with --gpu on the GPU (Metal or Vulkan).
 ///
 /// Prints per layer the direction's norm, the mean residual norm and their
@@ -214,10 +215,10 @@ Future<void> main(List<String> args) async {
   }
 }
 
-/// The non-empty lines of [path].
+/// The prompts of [path]: one per line in a text file, or the `prompt`
+/// fields of a `.jsonl` file (readEvalRows).
 List<String> _prompts(String path) => [
-  for (final line in File(path).readAsLinesSync())
-    if (line.trim().isNotEmpty) line.trim(),
+  for (final row in readEvalRows(path)) row.prompt,
 ];
 
 /// The bundle's Q4 or Q8 weights, on the CPU kernels or with [gpu] on the

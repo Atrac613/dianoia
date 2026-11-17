@@ -24,15 +24,11 @@ import 'dart:typed_data';
 
 import 'chat_template.dart';
 import 'control_vector.dart';
+import 'control_vector_eval.dart';
 import 'gpu.dart';
 import 'model.dart';
 import 'quant.dart';
 import 'tokenizer.dart';
-
-/// Replies that open with a refusal, in either apostrophe.
-final refusalOpening = RegExp(
-  r"^\s*(I can['’]t|I cannot|I['’]m sorry|I am sorry|I won['’]t)",
-);
 
 /// Runs the checks on each of [backends] (`false` the CPU kernels, `true`
 /// the GPU) for the bundle in [bundle] with [weights], and returns the
@@ -125,8 +121,8 @@ Future<Map<String, Object?>> benchmarkControlVector({
           final changed = tokenizer.decode(
             await reply(ids, vector, refusalTokens),
           );
-          if (refusalOpening.hasMatch(plain)) without++;
-          if (refusalOpening.hasMatch(changed)) withVector++;
+          if (opensWithRefusal(plain)) without++;
+          if (opensWithRefusal(changed)) withVector++;
         }
         result['refusals'] = {
           'prompts': refusalPrompts.length,
