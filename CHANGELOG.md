@@ -1,5 +1,16 @@
 ## Unreleased
 
+- `LocalVisionModel` quantizes the LFM3-VL vision encoder's linear weights
+  (BF16 in the checkpoint) to Q8 at load (`Lfm3VisionEncoder.load`'s
+  `quantize`) and runs their products on the GPU with a GPU language model,
+  otherwise in the native CPU kernels, instead of in Dart over float32.
+  This changes the encoder's outputs: on the official QAD Q4 bundle three
+  cards (Japanese and Latin OCR, a shapes photo) give the same answers as
+  before on the CPU and the GPU. On an M2 Max a 640x480 image (320 prompt
+  tokens) reaches its first token in 3.2-3.4 s instead of 19.5 s on the
+  GPU and 10.6 s instead of 23.7 s on the CPU, and peak memory drops from
+  1.1 to 0.6 GB (GPU) and 2.2 to 1.5 GB (CPU). Closing a vision model now
+  frees its encoder's native and GPU memory.
 - `Lfm3VisionEncoder.useGpu` moves the products of an encoder's native Q4
   or Q8 matrices (an mmproj GGUF's, as LFM3-Omni loads them) to the GPU
   through the new `GpuLinear`, keeping a second copy of those matrices in

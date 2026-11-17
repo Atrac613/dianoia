@@ -26,14 +26,40 @@ final class Lfm3VisionEncoder {
     Map<String, NativeMatrix> native = const {},
   ]) : _native = Map.of(native);
 
-  factory Lfm3VisionEncoder.load(String modelDir) {
+  /// Reads the vision/projector tensors of the checkpoint in [modelDir].
+  /// With [quantize], every linear weight but the patchifier's whose width
+  /// is a multiple of 32 is quantized to Q8 in native memory as it is read
+  /// (the native kernels must be loaded), so its products run in the native
+  /// kernels or, after [useGpu], on the GPU, at a quarter of float32's
+  /// memory. Quantizing changes the outputs; without it every weight stays
+  /// float32 on the Dart heap.
+  factory Lfm3VisionEncoder.load(String modelDir, {bool quantize = false}) {
     final c = Lfm3VlConfig.load(modelDir);
     final st = SafetensorsFile.open('$modelDir/model.safetensors');
+    final weights = <String, Float32List>{};
+    final native = <String, NativeMatrix>{};
     try {
-      return Lfm3VisionEncoder._(c, {
-        for (final e in lfm3VisionTensorShapes(c).entries)
-          e.key: st.readF32(e.key, e.value),
-      });
+      for (final e in lfm3VisionTensorShapes(c).entries) {
+        final values = st.readF32(e.key, e.value);
+        if (quantize &&
+            e.value.length == 2 &&
+            e.value[1] % 32 == 0 &&
+            !e.key.endsWith('patchifier.weight')) {
+          native[e.key] = NativeQ8Matrix.quantize(
+            values,
+            e.value[0],
+            e.value[1],
+          );
+        } else {
+          weights[e.key] = values;
+        }
+      }
+      return Lfm3VisionEncoder.fromWeights(c, weights, native: native);
+    } catch (_) {
+      for (final m in native.values) {
+        m.free();
+      }
+      rethrow;
     } finally {
       st.close();
     }

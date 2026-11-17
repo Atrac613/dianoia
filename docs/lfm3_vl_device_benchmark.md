@@ -2,8 +2,9 @@
 
 `vision-bench` and the device benchmark app use the same lab helper,
 `benchmarkVisionBundle`, exercising `LocalVisionModel.loadBundle`, image-file
-input and `VisionChatSession`. This measures the current CPU vision encoder
-with a quantized CPU or GPU language backbone. It does not change arithmetic.
+input and `VisionChatSession`. This measures the vision encoder (Q8 linears on
+the GPU with a GPU backbone, else on the CPU) with a quantized CPU or GPU
+language backbone. It does not change arithmetic.
 
 ## Desktop CLI
 

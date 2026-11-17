@@ -183,6 +183,8 @@ final class VisionChatRuntime {
     _requestCancel();
     final active = _active;
     if (active != null) await active.future;
+    // The encoder may hold native and GPU copies of its matrices.
+    encoder?.close();
     encoder = null;
     await model.close();
   }
