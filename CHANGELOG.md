@@ -1,5 +1,12 @@
 ## Unreleased
 
+- `Lfm3Model.forward` takes `meanwhile`, CPU work run while the last
+  chunk computes on the GPU (the GPU layer's new `lab_gpu_wait` lets a
+  command buffer be committed now and waited for later). Speech synthesis
+  and spoken replies decode each frame to audio that way while the frame is
+  fed back, with the same audio as before; `decodeSpeechReply`'s `feed`
+  gets the frame's decoding as `meanwhile`. On an iPhone 15 Pro Max int8
+  speech takes 1.05-1.10 times real time instead of 1.14.
 - Faster speech generation. `Lfm3AudioGenerator.load`'s `int8Inputs`
   quantizes the depth decoder's and codec's product inputs to int8 and uses
   the CPU's integer dot products, as the language model's CPU path does;

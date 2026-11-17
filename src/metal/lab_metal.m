@@ -596,6 +596,9 @@ static int gReady;  // lab_gpu_init succeeded
 // The command buffer being encoded, and its encoder.
 static id<MTLCommandBuffer> gCmd;
 static id<MTLComputeCommandEncoder> gEnc;
+// The last command buffer committed without waiting, until lab_gpu_wait.
+static id<MTLCommandBuffer> gPendingCmd;
+static int64_t finish_pending(id<MTLCommandBuffer> cb);
 
 static id<MTLComputePipelineState> pipeline(id<MTLLibrary> library, NSString* name) {
   NSError* error = nil;
@@ -883,6 +886,11 @@ void lab_metal_touch(int64_t y) {
 // retained per command buffer: gStrong keeps them alive.
 void lab_gpu_begin(void) {
   @autoreleasepool {
+    if (gPendingCmd != nil) {
+      id<MTLCommandBuffer> pending = gPendingCmd;
+      gPendingCmd = nil;
+      finish_pending(pending);
+    }
     gCmd = [gQueue commandBufferWithUnretainedReferences];
     gEnc = [gCmd computeCommandEncoder];
     gSplitMs = 0;
@@ -920,14 +928,32 @@ int64_t lab_gpu_commit(int64_t wait) {
     id<MTLCommandBuffer> cb = gCmd;
     gCmd = nil;
     [cb commit];
-    if (!wait) return 1;
-    [cb waitUntilCompleted];
-    gLastGpuMs = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0 + gSplitMs;
-    if (cb.status == MTLCommandBufferStatusError) {
-      NSLog(@"lab_metal: %@", cb.error);
-      return 0;
+    if (!wait) {
+      gPendingCmd = cb;
+      return 1;
     }
-    return gSplitFailed ? 0 : 1;
+    return finish_pending(cb);
+  }
+}
+
+// Waits for `cb` and books its GPU time; 0 if it failed (logged), else 1.
+static int64_t finish_pending(id<MTLCommandBuffer> cb) {
+  [cb waitUntilCompleted];
+  gLastGpuMs = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0 + gSplitMs;
+  if (cb.status == MTLCommandBufferStatusError) {
+    NSLog(@"lab_metal: %@", cb.error);
+    return 0;
+  }
+  return gSplitFailed ? 0 : 1;
+}
+
+// Waits for the command buffer lab_gpu_commit(0) left running. Returns 0
+// if it failed (logged), else 1, also when nothing is pending.
+int64_t lab_gpu_wait(void) {
+  @autoreleasepool {
+    id<MTLCommandBuffer> cb = gPendingCmd;
+    gPendingCmd = nil;
+    return cb == nil ? 1 : finish_pending(cb);
   }
 }
 

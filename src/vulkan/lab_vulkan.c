@@ -748,6 +748,16 @@ LAB_EXPORT int64_t lab_gpu_commit(int64_t wait) {
   return 1;
 }
 
+// Waits for a command buffer committed without waiting. Returns 0 if
+// waiting failed (logged), else 1, also when nothing is pending.
+LAB_EXPORT int64_t lab_gpu_wait(void) {
+  if (!wait_pending()) {
+    LOG("waiting for the GPU failed\n");
+    return 0;
+  }
+  return 1;
+}
+
 // Records one dispatch and the barrier after it, so the next dispatch sees
 // its writes.
 static void dispatch(int kind, VkPipeline pipe, const void* params, uint32_t bytes, uint32_t x,

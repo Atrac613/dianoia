@@ -220,10 +220,11 @@ Future<void> main(List<String> args) async {
       mode: mode,
       maxSlots: maxNew,
       seed: int.parse(options['seed'] ?? '0'),
-      feed: (id, embedding, {required logits}) => model.forward(
+      feed: (id, embedding, {required logits, meanwhile}) => model.forward(
         [id],
         computeLogits: logits,
         embeddingOverrides: {0: ?embedding},
+        meanwhile: meanwhile,
       ),
     );
     lap('decode_seconds');

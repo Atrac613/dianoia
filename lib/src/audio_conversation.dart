@@ -224,7 +224,12 @@ final class AudioConversationSession {
     }
   }
 
-  Future<void> _forward(List<_Slot> slots, {bool logits = true}) async {
+  /// [meanwhile] runs on the CPU during the last chunk (Lfm3Model.forward).
+  Future<void> _forward(
+    List<_Slot> slots, {
+    bool logits = true,
+    void Function()? meanwhile,
+  }) async {
     for (var at = 0; at < slots.length; at += model.maxChunk) {
       _check();
       final end = math.min(at + model.maxChunk, slots.length);
@@ -235,6 +240,7 @@ final class AudioConversationSession {
           for (var i = at; i < end; i++)
             if (slots[i].embedding != null) i - at: slots[i].embedding!,
         },
+        meanwhile: end == slots.length ? meanwhile : null,
       );
       await Future<void>.delayed(Duration.zero);
       _check();
@@ -338,9 +344,9 @@ final class AudioConversationSession {
         onText: onText,
         onAudio: onAudio,
         onSlot: onSlot,
-        feed: (id, embedding, {required logits}) async {
+        feed: (id, embedding, {required logits, meanwhile}) async {
           final slot = _Slot(id, embedding);
-          await _forward([slot], logits: logits);
+          await _forward([slot], logits: logits, meanwhile: meanwhile);
           pending.add(slot);
         },
       );
