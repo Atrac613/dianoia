@@ -9,6 +9,19 @@ import 'fake_translation.dart';
 
 Future<void> settle() => Future<void>.delayed(Duration.zero);
 
+class _InterruptedTranslation extends FakeTranslation {
+  @override
+  Future<String> translate(
+    String text,
+    String target, {
+    void Function(String)? onText,
+  }) {
+    if (text == 'First.') throw StateError('Backend unavailable');
+    if (text == 'Second.') return Future.value('');
+    return super.translate(text, target, onText: onText);
+  }
+}
+
 void main() {
   group('SentenceSplitter', () {
     final splitter = SentenceSplitter(maxLength: 40);
@@ -53,6 +66,15 @@ void main() {
       );
       expect(sentences, ['Done.', 'And the end']);
       expect(consumed, 'Done. And the end'.length);
+    });
+
+    test('splits a long sentence even if its end mark arrives at once', () {
+      const sentence =
+          'We kept talking about the release and the build and the tests.';
+      final (sentences, _) = splitter.take('$sentence Next', 0);
+      expect(sentences, hasLength(2));
+      expect(sentences.every((s) => s.length <= 40), isTrue);
+      expect(sentences.join(' '), sentence);
     });
   });
 
@@ -100,6 +122,37 @@ void main() {
       expect(translator.backendName, 'CPU');
       expect(translator.error, isNull);
     });
+
+    testWidgets('new words and reset cancel the sentence pause', (
+      tester,
+    ) async {
+      translator.update('The price is 3.');
+      await tester.pump(const Duration(seconds: 1));
+      translator.update('The price is 3.14');
+      await tester.pump(const Duration(seconds: 3));
+      expect(backend.requests, isEmpty);
+      translator.update('The price is 3.14.');
+      await translator.reset();
+      await tester.pump(const Duration(seconds: 3));
+      expect(backend.requests, isEmpty);
+    });
+
+    test(
+      'failed or empty translations do not block the next sentence',
+      () async {
+        final translator = LiveTranslator(_InterruptedTranslation());
+        addTearDown(translator.dispose);
+        translator.update('First.', flush: true);
+        await settle();
+        expect(translator.busy, isFalse);
+        expect(translator.segments.single.failed, isTrue);
+        translator.update('First. Second. Third.', flush: true);
+        await settle();
+        expect(translator.pending, 0);
+        expect(translator.segments[1].failed, isTrue);
+        expect(translator.segments.last.translation, '[Japanese] Third.');
+      },
+    );
 
     test('reset drops queued sentences and a late translation', () async {
       backend.hold = Completer<void>();

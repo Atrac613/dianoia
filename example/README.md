@@ -126,9 +126,10 @@ language under **Translate into** (Japanese, Chinese, Korean, French, Spanish
 or German) and tap **Start live translation**. LiveASR runs exactly as in live
 transcription; each English sentence it finishes is translated as text and
 shown under its source, while the sentence still being spoken appears in
-italics. A sentence is final once its end mark is followed by another word or
-by a context rollover; a long stretch without punctuation is cut at a word
-after 200 characters. **Stop live translation** translates the last sentence.
+italics. A sentence is final when its end mark is followed by another word
+or the recognized text stays unchanged for two seconds. A context rollover
+also finalizes the preceding text. Long sentences are split at word
+boundaries. **Stop live translation** translates any remaining text.
 Translations follow about a sentence behind the speech and may still arrive
 after stop. **Cancel recording**, backgrounding during capture or route exit
 discards the transcript and its translations.

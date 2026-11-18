@@ -91,8 +91,15 @@ void main() {
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
         await tester.pump();
         expect(controller.phase, AudioPhase.recording);
+        backend.liveText!('Hello there.');
+        await tester.pump(const Duration(seconds: 1));
+        expect(controller.translator.segments, isEmpty);
+        // LiveASR also emits updates when a chunk contains no new words.
+        backend.liveText!('Hello there.');
+        await tester.pump(const Duration(seconds: 1));
+        expect(controller.phase, AudioPhase.recording);
+        expect(controller.translator.segments.single.source, 'Hello there.');
         backend.liveText!('Hello there. How');
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
         await tester.pump();
         await tester.scrollUntilVisible(
           find.text('[Japanese] Hello there.'),
@@ -111,6 +118,10 @@ void main() {
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
         await tester.pumpAndSettle();
         expect(controller.phase, AudioPhase.ready);
+        expect(controller.translator.segments.map((s) => s.source), [
+          'Hello there.',
+          'How now?',
+        ]);
         await tester.scrollUntilVisible(
           find.text('[Japanese] How now?'),
           120,
