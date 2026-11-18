@@ -8,6 +8,11 @@ import 'support/gpu_host.dart';
 import 'support/vision_model_fixture.dart';
 
 void main() {
+  if (!NativeKernels.isAvailable) {
+    test('forward runs meanwhile', () {}, skip: 'requires native kernels');
+    return;
+  }
+
   late Directory root;
   setUpAll(() async {
     root = Directory.systemTemp.createTempSync('dianoia-meanwhile-');
@@ -60,9 +65,7 @@ void main() {
         await model.step(7);
         expect(model.length, ids.length + 1);
       },
-      skip: !NativeKernels.isAvailable
-          ? 'requires native kernels'
-          : gpu && !hostHasGpu
+      skip: gpu && !hostHasGpu
           ? noGpuSkip
           : gpu && !gpuStarts
           ? gpuDoesNotStartSkip
