@@ -28,6 +28,16 @@ decoder's sampling, one depth pass by stage, the codec and the language
 step), int8 and float in turn; `"profile_only": true` stops there, and
 `"threads"` sets the native threads.
 
+`"mode": "audio_input"` in `Documents/bench_config.json` benchmarks streaming
+ASR with a prepared speech bundle and a mono 16 kHz f32le file in Documents.
+Set `"bundle"`, `"clip"`, and optionally `"language"`, `"backend"`, and
+`"threads"`. It feeds 80 ms chunks at the file's playback rate and alternates
+Dart and native encoder attention. The report in
+`Documents/bench/audio-input-latest.json` includes per-chunk phase timings,
+the end-of-input to first-token delay, temperature state, and decoded IDs.
+Set `"compare_attention": false` to run native attention only, and
+`"native_downsampling": false` to measure the original Dart audio stem.
+
 `run_ios_control_vector.sh VECTOR PROMPTS [REFUSALS]` runs the app in its
 `control_vector` mode instead: a control vector on the phone's CPU and GPU
 against the same checks on this Mac (docs/control_vectors.md), written to

@@ -107,8 +107,13 @@ does:
   first frame, as upstream `_video_expansion` computes it. Times use Python's
   `.1f` formatting, ties to even (`formatOmniSeconds`).
 
-`OmniPrompt.prefill` validates and copies every row set before resetting the
-model, then feeds the prompt in chunks. `decodeSpeechReply` decodes the
+`OmniPrompt.prefill` validates and copies every row set before changing model
+state. The example's Omni chat and photo questions key each saved attachment
+so the model can reuse matching text and media rows across turns.
+`AudioConversationSession` also reuses matching state for committed speech
+turns, including the input and generated audio embeddings. If another task
+replaces the state, the next turn replays the missing prefix.
+`decodeSpeechReply` decodes the
 reply: greedy text, sampled speech frames and the six/twelve interleaving
 schedule. It is the same loop `AudioConversationSession` now uses.
 
@@ -146,6 +151,15 @@ dart run tool/audio_q4_converse.dart build/omni-reference out-dir q1.f32 q2.f32 
 `--max-image-tokens` and `--max-video-pixels` bound the vision work. An
 installed `OmniGgufSpec` bundle has the same layout and works with the same
 commands.
+
+The audio encoder runs the downsampler's stride-2 convolutions and
+sliding-window attention in C. On Apple platforms Accelerate computes the
+1×1 downsampling convolutions directly in the feature map's channel-major
+layout. With `--gpu`, Omni
+clip and soundtrack encoding and batch transcription also run their
+quantized linear products on the GPU. Chunked transcription and live
+recording keep the linear products on the CPU to avoid dispatch overhead
+on short chunks.
 
 Preparation verifies the pinned sizes and SHA-256 hashes, validates the audio
 encoder, generator and vision tensors in the mmproj, and only then converts

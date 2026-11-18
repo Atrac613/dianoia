@@ -30,6 +30,108 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+@Native<
+  Void Function(
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_audio_depthwise', isLeaf: true)
+external void _audioDepthwise(
+  Pointer<Float> x,
+  Pointer<Float> w,
+  Pointer<Float> bias,
+  Pointer<Float> y,
+  int channels,
+  int freq,
+  int time,
+  int first,
+);
+
+/// Stride-2 audio convolution in channel, frequency, time order.
+void nativeAudioDepthwise(
+  Float32List x,
+  Float32List w,
+  Float32List bias,
+  Float32List y, {
+  required int channels,
+  required int freq,
+  required int time,
+  required bool first,
+}) {
+  if (channels <= 0 ||
+      freq <= 0 ||
+      time <= 0 ||
+      x.length != (first ? 1 : channels) * freq * time ||
+      w.length != channels * 9 ||
+      bias.length != channels ||
+      y.length != channels * ((freq + 1) ~/ 2) * ((time + 1) ~/ 2)) {
+    throw ArgumentError('audio depthwise convolution: bad shapes');
+  }
+  _audioDepthwise(
+    x.address,
+    w.address,
+    bias.address,
+    y.address,
+    channels,
+    freq,
+    time,
+    first ? 1 : 0,
+  );
+}
+
+@Native<
+  Int64 Function(
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_audio_pointwise', isLeaf: true)
+external int _audioPointwise(
+  Pointer<Float> x,
+  Pointer<Float> w,
+  Pointer<Float> bias,
+  Pointer<Float> y,
+  int channels,
+  int positions,
+);
+
+/// Channel-major 1x1 convolution. Returns false without Accelerate.
+bool nativeAudioPointwise(
+  Float32List x,
+  Float32List w,
+  Float32List bias,
+  Float32List y, {
+  required int channels,
+  required int positions,
+}) {
+  if (channels <= 0 ||
+      positions <= 0 ||
+      x.length != channels * positions ||
+      y.length != x.length ||
+      w.length != channels * channels ||
+      bias.length != channels) {
+    throw ArgumentError('audio pointwise convolution: bad shapes');
+  }
+  return _audioPointwise(
+        x.address,
+        w.address,
+        bias.address,
+        y.address,
+        channels,
+        positions,
+      ) ==
+      1;
+}
+
 @Native<Pointer<Void> Function(Int64)>(symbol: 'lab_alloc', isLeaf: true)
 external Pointer<Void> _alloc(int bytes);
 
@@ -236,7 +338,7 @@ external void _attention(
 );
 
 /// Grouped-query attention of [n] tokens at positions [position], ... in C
-/// (src/c/lab_native.c, `lab_attention`), with the per-head
+/// (src/c/lab_native.c, `lab_attention`), with an optional per-head
 /// output gate. Shapes as in LayerShard: q and out [n, heads * headDim],
 /// keys and values [maxSeq, kvHeads * headDim] already holding this chunk,
 /// gate [n, heads] before the sigmoid. [window] 0 is full attention.
@@ -244,7 +346,7 @@ void nativeAttention(
   Float32List q,
   Float32List keys,
   Float32List values,
-  Float32List gate,
+  Float32List? gate,
   Float32List out, {
   required int n,
   required int position,
@@ -256,12 +358,30 @@ void nativeAttention(
   final kvDim = kvHeads * headDim;
   if (q.length < n * heads * headDim ||
       out.length < n * heads * headDim ||
-      gate.length < n * heads ||
+      (gate != null && gate.length < n * heads) ||
       keys.length < (position + n) * kvDim ||
       values.length < (position + n) * kvDim ||
       heads % kvHeads != 0 ||
       headDim % 4 != 0) {
     throw ArgumentError('native attention: bad shapes');
+  }
+  final threads = NativeKernels.instance.threads;
+  if (gate == null) {
+    _attention(
+      q.address,
+      keys.address,
+      values.address,
+      nullptr,
+      out.address,
+      n,
+      position,
+      heads,
+      kvHeads,
+      headDim,
+      window,
+      threads,
+    );
+    return;
   }
   _attention(
     q.address,
@@ -275,7 +395,7 @@ void nativeAttention(
     kvHeads,
     headDim,
     window,
-    NativeKernels.instance.threads,
+    threads,
   );
 }
 

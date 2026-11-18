@@ -465,6 +465,44 @@ final class Lfm3Model {
     Map<int, Float32List> embeddingOverrides = const {},
     Map<int, Object> embeddingKeys = const {},
   }) async {
+    final common = await restorePromptPrefix(
+      ids,
+      embeddingOverrides: embeddingOverrides,
+      embeddingKeys: embeddingKeys,
+    );
+    final stops = {
+      for (final p in checkpoints)
+        if (p > common && p < ids.length) p,
+      ids.length,
+    }.toList()..sort();
+    var at = common;
+    for (final stop in stops) {
+      await forward(
+        ids.sublist(at, stop),
+        computeLogits: stop == ids.length,
+        embeddingOverrides: {
+          for (final e in embeddingOverrides.entries)
+            if (e.key >= at && e.key < stop) e.key - at: e.value,
+        },
+        embeddingKeys: {
+          for (final e in embeddingKeys.entries)
+            if (e.key >= at && e.key < stop) e.key - at: e.value,
+        },
+      );
+      await checkpoint();
+      at = stop;
+    }
+    return common;
+  }
+
+  /// Keeps a matching prompt prefix or rewinds to a matching checkpoint for
+  /// callers that feed the rest themselves. Leaves at least the last token
+  /// to be fed. The embedding arguments follow [prefill]'s key rules.
+  Future<int> restorePromptPrefix(
+    List<int> ids, {
+    Map<int, Float32List> embeddingOverrides = const {},
+    Map<int, Object> embeddingKeys = const {},
+  }) async {
     _checkOpen();
     if (ids.isEmpty) throw ArgumentError('empty prompt');
     if (embeddingKeys.keys.any((p) => !embeddingOverrides.containsKey(p))) {
@@ -487,28 +525,6 @@ final class Lfm3Model {
           .fold(0, math.max);
       await _rewind(start);
       common = start;
-    }
-    final stops = {
-      for (final p in checkpoints)
-        if (p > common && p < ids.length) p,
-      ids.length,
-    }.toList()..sort();
-    var at = common;
-    for (final stop in stops) {
-      await forward(
-        ids.sublist(at, stop),
-        computeLogits: stop == ids.length,
-        embeddingOverrides: {
-          for (final e in embeddingOverrides.entries)
-            if (e.key >= at && e.key < stop) e.key - at: e.value,
-        },
-        embeddingKeys: {
-          for (final e in embeddingKeys.entries)
-            if (e.key >= at && e.key < stop) e.key - at: e.value,
-        },
-      );
-      await checkpoint();
-      at = stop;
     }
     return common;
   }

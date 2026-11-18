@@ -228,12 +228,19 @@ void main() {
         expect(session.turns, 1);
         final tokens = session.historyTokens;
         expect(session.retainedEmbeddingBytes, greaterThan(0));
+        await input(followup!);
+        expect(session.reusedTokens, greaterThan(0));
+        final reused = await session.finish(deferCommit: true);
+        session.cancel();
         // Standalone ASR/TTS may use the backbone between turns; replay restores it.
         await model.reset();
         await model.forward(tokenizer.encode('An unrelated task.'));
-        await input(followup!);
+        await input(followup);
+        expect(session.reusedTokens, 0);
         final reply = await session.finish(deferCommit: true);
         expect(reply.text.toLowerCase(), contains('seven'));
+        expect(reply.text, reused.text);
+        expect(reply.samples, orderedEquals(reused.samples));
         expect(reply.samples.every((v) => v.isFinite), isTrue);
         session.acceptReply();
         expect(session.turns, 2);

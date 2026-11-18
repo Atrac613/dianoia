@@ -120,6 +120,7 @@ Future<void> main(List<String> args) async {
   if (clips.isNotEmpty) {
     final encoder = Lfm3AudioEncoder.load(mmproj);
     try {
+      if (gpu) encoder.useGpu();
       if (encoder.config.variant != Lfm3SpeechVariant.omni) {
         throw StateError('$dir is not an LFM3-Omni directory');
       }
@@ -158,10 +159,14 @@ Future<void> main(List<String> args) async {
     int? tokens;
     if (clip.soundtrack case final pcm?) {
       final encoder = Lfm3AudioEncoder.load(mmproj);
-      final features = Lfm3AudioFrontend().extract(pcm, samplingRate: 16000);
-      soundtracks.add(encoder.encode(features));
-      tokens = features.encoderTokens;
-      encoder.close();
+      try {
+        if (gpu) encoder.useGpu();
+        final features = Lfm3AudioFrontend().extract(pcm, samplingRate: 16000);
+        soundtracks.add(encoder.encode(features));
+        tokens = features.encoderTokens;
+      } finally {
+        encoder.close();
+      }
       lap('soundtrack_encode_seconds');
     } else {
       soundtracks.add(null);

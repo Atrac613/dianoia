@@ -38,9 +38,9 @@ typedef OmniTurn = ({
 
 /// The turns of one conversation, kept in a worker. Every reply re-renders
 /// the whole conversation with the official template: earlier answers as
-/// text, images and spoken questions as their cached rows. So nothing is
-/// encoded twice, the reply mode may change between turns, and other tasks
-/// may use the backbone in between.
+/// text, images and spoken questions as their cached rows. Saved attachments
+/// have stable keys so matching language state can be reused, even when the
+/// reply is rendered again. Other tasks may use the backbone between turns.
 final class OmniConversation {
   OmniConversation(this.hiddenSize, {this.system});
 
@@ -51,7 +51,19 @@ final class OmniConversation {
   final String? system;
 
   final _turns = <OmniTurn>[];
+  final _mediaKeys = Expando<Object>();
   List<OmniTurn> get turns => List.unmodifiable(_turns);
+
+  Float32List _ownRows(Float32List rows) {
+    final owned = Float32List.fromList(rows).asUnmodifiableView();
+    _mediaKeys[owned] = Object();
+    return owned;
+  }
+
+  List<OmniImage> _ownImages(List<OmniImage> images) => List.unmodifiable([
+    for (final image in images)
+      (rows: _ownRows(image.rows), tokens: image.tokens),
+  ]);
 
   /// The messages for the next user turn, which carries [images] (in that
   /// order), a spoken question when [spoken], then [text].
@@ -125,6 +137,18 @@ final class OmniConversation {
     List<OmniImage> images = const [],
     Float32List? audio,
     required String answer,
+  }) => _add(
+    text: text,
+    images: _ownImages(images),
+    audio: audio == null ? null : _ownRows(audio),
+    answer: answer,
+  );
+
+  void _add({
+    String? text,
+    required List<OmniImage> images,
+    Float32List? audio,
+    required String answer,
   }) {
     if ((text == null || text.isEmpty) && images.isEmpty && audio == null) {
       throw ArgumentError('A turn needs text, an image or audio');
@@ -134,12 +158,7 @@ final class OmniConversation {
         throw ArgumentError('Image rows do not match its token count');
       }
     }
-    _turns.add((
-      text: text,
-      images: List.unmodifiable(images),
-      audio: audio,
-      answer: answer,
-    ));
+    _turns.add((text: text, images: images, audio: audio, answer: answer));
   }
 }
 
@@ -264,27 +283,39 @@ final class OmniResponder {
     }
     final speak = generator != null;
     final mode = speak ? AudioReplyMode.mixed : AudioReplyMode.text;
+    final ownedImages = chat._ownImages(images);
+    final ownedAudio = audio == null ? null : chat._ownRows(audio);
     final prompt = prepareOmniPrompt(
       chat.messages(
         speak: speak,
         text: text,
-        images: images,
-        spoken: audio != null,
+        images: ownedImages,
+        spoken: ownedAudio != null,
       ),
       tokenizer: tokenizer,
       config: config,
-      imageTokenCounts: chat.imageTokens(images),
-      audioTokenCounts: chat.audioTokens(audio),
+      imageTokenCounts: chat.imageTokens(ownedImages),
+      audioTokenCounts: chat.audioTokens(ownedAudio),
       mode: mode,
     );
     final maxSlots = speak ? 768 : 512;
     if (prompt.ids.length + maxSlots + 1 > model.maxSeq) {
       throw OmniContextFull(firstTurn: chat.turns.isEmpty);
     }
+    final imageRows = chat.imageRows(ownedImages);
+    final audioRows = chat.audio(ownedAudio);
     await prompt.prefill(
       model,
-      images: chat.imageRows(images),
-      audio: chat.audio(audio),
+      images: imageRows,
+      audio: audioRows,
+      mediaKeys: {
+        OmniMediaKind.image: [
+          for (final rows in imageRows) chat._mediaKeys[rows],
+        ],
+        OmniMediaKind.audio: [
+          for (final rows in audioRows) chat._mediaKeys[rows],
+        ],
+      },
     );
     check?.call();
     onPrefilled?.call();
@@ -312,10 +343,10 @@ final class OmniResponder {
     if (reply.text.isNotEmpty) {
       // An answer may spell a marker with ordinary tokens; replay it as
       // text so later turns still render.
-      chat.add(
+      chat._add(
         text: text,
-        images: images,
-        audio: audio,
+        images: ownedImages,
+        audio: ownedAudio,
         answer: plainPromptText(reply.text, tokenizer.addedTokenIn),
       );
     }

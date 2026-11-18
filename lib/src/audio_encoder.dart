@@ -8,11 +8,12 @@ import 'audio_features.dart';
 import 'audio_gguf.dart';
 import 'config.dart';
 import 'gguf.dart';
+import 'gpu.dart';
 import 'matmul.dart';
 import 'native.dart';
 import 'ops.dart';
 
-/// Synchronous CPU lab implementation for complete clips or streaming input.
+/// Synchronous lab implementation for complete clips or streaming input.
 ///
 /// Q4 weights retain their published blocks. Convolutions and norms stay F32.
 /// Matmul uses float inputs by default to isolate weight quantization from
@@ -24,9 +25,15 @@ final class Lfm3AudioEncoder {
     this._floats,
     this._matrices,
     this.int8Inputs,
+    this.nativeDownsampling,
   );
 
-  factory Lfm3AudioEncoder.load(String mmproj, {bool int8Inputs = false}) {
+  /// Set [nativeDownsampling] to false to compare with the Dart audio stem.
+  factory Lfm3AudioEncoder.load(
+    String mmproj, {
+    bool int8Inputs = false,
+    bool nativeDownsampling = true,
+  }) {
     if (!NativeKernels.isLoaded) NativeKernels.load(null);
     final file = GgufFile.open(mmproj);
     final matrices = <String, NativeQ4Matrix>{};
@@ -45,7 +52,13 @@ final class Lfm3AudioEncoder {
           floats[e.key] = file.f32(tensor);
         }
       }
-      return Lfm3AudioEncoder._(c, floats, matrices, int8Inputs);
+      return Lfm3AudioEncoder._(
+        c,
+        floats,
+        matrices,
+        int8Inputs,
+        nativeDownsampling,
+      );
     } catch (_) {
       for (final m in matrices.values) {
         m.free();
@@ -58,10 +71,39 @@ final class Lfm3AudioEncoder {
 
   final Lfm3AudioEncoderConfig config;
   final bool int8Inputs;
+  final bool nativeDownsampling;
   final Map<String, Float32List> _floats;
   final Map<String, NativeQ4Matrix> _matrices;
   final _streams = <Lfm3AudioEncoderStream>{};
+  GpuLinear? _gpu;
   bool _closed = false;
+
+  /// Copies quantized matrices to the GPU for their linear products.
+  /// Returns false where the GPU is unavailable or [int8Inputs] is enabled.
+  /// Call before starting streams and serialize GPU work across isolates
+  /// (see [GpuLinear]). Convolutions, norms and attention stay on the CPU.
+  bool useGpu() {
+    if (_closed) throw StateError('Audio encoder is closed');
+    if (_gpu != null) return true;
+    if (int8Inputs) return false;
+    if (_streams.isNotEmpty) {
+      throw StateError(
+        'Close the audio encoder streams before changing backend',
+      );
+    }
+    final gpu = GpuLinear.start();
+    if (gpu == null) return false;
+    try {
+      for (final e in _matrices.entries) {
+        gpu.upload(e.key, e.value);
+      }
+    } catch (_) {
+      gpu.dispose();
+      rethrow;
+    }
+    _gpu = gpu;
+    return true;
+  }
 
   /// Owned [features.encoderTokens, config.projectionSize] projected rows.
   /// [capture] receives owned copies of intermediate rows for parity checks.
@@ -143,6 +185,8 @@ final class Lfm3AudioEncoder {
     for (final stream in _streams.toList()) {
       stream.close();
     }
+    _gpu?.dispose();
+    _gpu = null;
     for (final m in _matrices.values) {
       m.free();
     }
@@ -151,9 +195,14 @@ final class Lfm3AudioEncoder {
   }
 
   Float32List _linear(String name, Float32List x, int n, {bool bias = false}) {
-    final matrix = _matrices['$name.weight']!;
+    final key = '$name.weight';
+    final matrix = _matrices[key]!;
     final out = Float32List(n * matrix.rows);
-    matrix.apply(x, out, n, int8Inputs: int8Inputs);
+    if (_gpu case final gpu?) {
+      gpu.apply(key, x, out, n);
+    } else {
+      matrix.apply(x, out, n, int8Inputs: int8Inputs);
+    }
     if (bias) {
       final b = _floats['$name.bias']!;
       for (var i = 0; i < out.length; i++) {
@@ -240,7 +289,44 @@ final class Lfm3AudioEncoder {
         : (Float32List(state.values.length + v.length)
             ..setAll(0, state.values)
             ..setAll(state.values.length, v));
-    final output = Float32List(n * h), scores = Float32List(prefix + n);
+    final output = Float32List(n * h);
+    if (NativeKernels.instance.attention && d % 4 == 0 && c.numHeads * d == h) {
+      nativeAttention(
+        q,
+        keys,
+        values,
+        null,
+        output,
+        n: n,
+        position: prefix,
+        heads: c.numHeads,
+        kvHeads: c.numKvHeads,
+        headDim: d,
+        window: c.window,
+      );
+    } else {
+      _dartAttention(q, keys, values, output, n, prefix);
+    }
+    final result = _linear('${p}attn_out', output, n);
+    if (state != null) {
+      final keep = math.min(c.window - 1, prefix + n) * kv;
+      state.keys = keys.sublist(keys.length - keep);
+      state.values = values.sublist(values.length - keep);
+    }
+    return result;
+  }
+
+  void _dartAttention(
+    Float32List q,
+    Float32List keys,
+    Float32List values,
+    Float32List output,
+    int n,
+    int prefix,
+  ) {
+    final c = config, h = c.hiddenSize, d = c.headDim;
+    final kv = c.numKvHeads * d;
+    final scores = Float32List(prefix + n);
     final scale = 1 / math.sqrt(d);
     for (var t = 0; t < n; t++) {
       final end = prefix + t;
@@ -273,13 +359,6 @@ final class Lfm3AudioEncoder {
         }
       }
     }
-    final result = _linear('${p}attn_out', output, n);
-    if (state != null) {
-      final keep = math.min(c.window - 1, prefix + n) * kv;
-      state.keys = keys.sublist(keys.length - keep);
-      state.values = values.sublist(values.length - keep);
-    }
-    return result;
   }
 
   Float32List _downsample(AudioFeatures features) {
@@ -291,26 +370,19 @@ final class Lfm3AudioEncoder {
       final w = _floats['a.conv1d.$i.weight']!,
           b = _floats['a.conv1d.$i.bias']!;
       final out = Float32List(ch * nf * nt);
-      for (var c = 0; c < ch; c++) {
-        for (var f = 0; f < nf; f++) {
-          for (var t = 0; t < nt; t++) {
-            var sum = 0.0;
-            for (var y = 0; y < 3; y++) {
-              final sy = 2 * f + y - 1;
-              if (sy < 0 || sy >= freq) continue;
-              for (var z = 0; z < 3; z++) {
-                final st = 2 * t + z - 1;
-                if (st >= 0 && st < time) {
-                  sum +=
-                      x[((i == 0 ? 0 : c) * freq + sy) * time + st] *
-                      w[(c * 3 + y) * 3 + z];
-                }
-              }
-            }
-            out[(c * nf + f) * nt + t] = sum;
-            out[(c * nf + f) * nt + t] += b[c];
-          }
-        }
+      if (nativeDownsampling) {
+        nativeAudioDepthwise(
+          x,
+          w,
+          b,
+          out,
+          channels: ch,
+          freq: freq,
+          time: time,
+          first: i == 0,
+        );
+      } else {
+        _dartDepthwise(x, w, b, out, freq, time, first: i == 0);
       }
       x = i == 0 ? out : _pointwise(out, nf, nt, i == 2 ? 3 : 6);
       for (var j = 0; j < x.length; j++) {
@@ -329,17 +401,63 @@ final class Lfm3AudioEncoder {
     return _linear('a.pre_encode.out', rows, time, bias: true);
   }
 
+  void _dartDepthwise(
+    Float32List x,
+    Float32List weights,
+    Float32List bias,
+    Float32List out,
+    int freq,
+    int time, {
+    required bool first,
+  }) {
+    final nf = (freq + 1) ~/ 2, nt = (time + 1) ~/ 2;
+    for (var c = 0; c < config.convChannels; c++) {
+      for (var f = 0; f < nf; f++) {
+        for (var t = 0; t < nt; t++) {
+          var sum = 0.0;
+          for (var y = 0; y < 3; y++) {
+            final sy = 2 * f + y - 1;
+            if (sy < 0 || sy >= freq) continue;
+            for (var z = 0; z < 3; z++) {
+              final st = 2 * t + z - 1;
+              if (st >= 0 && st < time) {
+                sum +=
+                    x[((first ? 0 : c) * freq + sy) * time + st] *
+                    weights[(c * 3 + y) * 3 + z];
+              }
+            }
+          }
+          final i = (c * nf + f) * nt + t;
+          out[i] = sum;
+          out[i] += bias[c];
+        }
+      }
+    }
+  }
+
   Float32List _pointwise(Float32List x, int freq, int time, int index) {
     final ch = config.convChannels, n = freq * time;
+    final weights = _floats['a.conv1d.$index.weight']!;
+    final bias = _floats['a.conv1d.$index.bias']!;
+    final result = Float32List(x.length);
+    if (nativeDownsampling &&
+        nativeAudioPointwise(
+          x,
+          weights,
+          bias,
+          result,
+          channels: ch,
+          positions: n,
+        )) {
+      return result;
+    }
     final input = Float32List(n * ch), output = Float32List(n * ch);
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < ch; c++) {
         input[r * ch + c] = x[c * n + r];
       }
     }
-    gemm(_floats['a.conv1d.$index.weight']!, input, output, ch, ch, n);
-    final bias = _floats['a.conv1d.$index.bias']!;
-    final result = Float32List(x.length);
+    gemm(weights, input, output, ch, ch, n);
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < ch; c++) {
         result[c * n + r] = output[r * ch + c] + bias[c];

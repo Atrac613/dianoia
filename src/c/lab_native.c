@@ -333,6 +333,53 @@ LAB_EXPORT int64_t lab_gemv_accelerate(const float* w, const float* x, float* y,
 #endif
 }
 
+// The audio stem's 3x3 stride-2 convolutions in [channel, frequency, time]
+// order. The first layer shares the single mel channel across filters.
+LAB_EXPORT void lab_audio_depthwise(const float* x, const float* w,
+                                    const float* bias, float* y, int64_t channels,
+                                    int64_t freq, int64_t time, int64_t first) {
+  const int64_t nf = (freq + 1) / 2, nt = (time + 1) / 2;
+  for (int64_t c = 0; c < channels; c++) {
+    const float* input = x + (first ? 0 : c * freq * time);
+    const float* filter = w + c * 9;
+    for (int64_t f = 0; f < nf; f++) {
+      for (int64_t t = 0; t < nt; t++) {
+        double sum = 0;
+        for (int64_t ky = 0; ky < 3; ky++) {
+          const int64_t sy = 2 * f + ky - 1;
+          if (sy < 0 || sy >= freq) continue;
+          for (int64_t kx = 0; kx < 3; kx++) {
+            const int64_t st = 2 * t + kx - 1;
+            if (st >= 0 && st < time)
+              sum += (double)input[sy * time + st] * filter[ky * 3 + kx];
+          }
+        }
+        // Dart rounds the product sum to float32 before adding the bias.
+        y[(c * nf + f) * nt + t] = (float)sum + bias[c];
+      }
+    }
+  }
+}
+
+// A 1x1 convolution is W[channels, channels] * X[channels, positions].
+// Accelerate consumes the channel-major feature map directly.
+LAB_EXPORT int64_t lab_audio_pointwise(const float* x, const float* w,
+                                        const float* bias, float* y,
+                                        int64_t channels, int64_t positions) {
+#ifdef __APPLE__
+  const int c = (int)channels, n = (int)positions;
+  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, c, n, c, 1.0f,
+              w, c, x, n, 0.0f, y, n);
+  for (int64_t row = 0; row < channels; row++) {
+    for (int64_t i = 0; i < positions; i++) y[row * positions + i] += bias[row];
+  }
+  return 1;
+#else
+  (void)x; (void)w; (void)bias; (void)y; (void)channels; (void)positions;
+  return 0;
+#endif
+}
+
 // ---------------------------------------------------------------- Q8
 //
 // llama.cpp's Q8_0 idea in a plain layout: per row, blocks of 32 weights
@@ -588,7 +635,7 @@ static void attend_one(const float* q, const float* keys, const float* values,
     scores[s - start] = e;
     sum += e;
   }
-  const float g = 1.0f / (1.0f + expf(-gate[t * heads + h])) / sum;
+  const float g = gate ? 1.0f / (1.0f + expf(-gate[t * heads + h])) / sum : 1.0f / sum;
   float* o = out + t * q_dim + h * hd;
 #ifdef LAB_NEON
   for (int64_t d = 0; d < hd; d += 4) {

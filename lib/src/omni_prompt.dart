@@ -174,18 +174,22 @@ final class OmniPrompt {
   final List<OmniMediaSpan> spans;
   final int hiddenSize;
 
-  /// Resets the language model and feeds the prompt in chunks. Each list
+  /// Feeds the prompt in chunks. Each list
   /// holds one item's projected rows, flattened as [rows, hiddenSize], in
   /// prompt order: [images], [audio] clips, [videos] (all frame groups in
   /// order) and the [soundtracks] of videos declared with one (null for the
-  /// others). Inputs are validated and copied before the model is reset.
-  /// Logits are computed for the last position only.
-  Future<void> prefill(
+  /// others). Inputs are validated and copied before changing model state.
+  /// Without [mediaKeys] this starts from an empty model. With keys, matching
+  /// prefix state can be reused, including media rows whose item's key matches.
+  /// Equal keys for the same kind must always identify equal projected rows.
+  /// Returns the reused token count. Logits are computed for the last position.
+  Future<int> prefill(
     Lfm3Model model, {
     List<Float32List> images = const [],
     List<Float32List> audio = const [],
     List<Float32List> videos = const [],
     List<Float32List?> soundtracks = const [],
+    Map<OmniMediaKind, List<Object?>>? mediaKeys,
   }) async {
     if (model.isClosed) throw StateError('the model is closed');
     if (model.config.hiddenSize != hiddenSize ||
@@ -212,6 +216,10 @@ final class OmniPrompt {
           'one projected tensor is required per ${kind.name}',
         );
       }
+      final keys = mediaKeys?[kind];
+      if (keys != null && keys.length != counts[kind]) {
+        throw ArgumentError('one key is required per ${kind.name}');
+      }
     }
     // One owned copy per item: the rows are views of it.
     final owned = <(OmniMediaKind, int), Float32List>{};
@@ -236,8 +244,10 @@ final class OmniPrompt {
       owned[key] = Float32List.fromList(source);
     }
     final rows = <int, Float32List>{};
+    final keys = <int, Object>{};
     for (final span in spans) {
       final values = owned[(span.kind, span.index)]!;
+      final key = mediaKeys?[span.kind]?[span.index];
       for (var row = 0; row < span.count; row++) {
         final at = (span.rowOffset + row) * hiddenSize;
         rows[span.start + row] = Float32List.sublistView(
@@ -245,7 +255,13 @@ final class OmniPrompt {
           at,
           at + hiddenSize,
         );
+        if (key != null) {
+          keys[span.start + row] = (span.kind, key, span.rowOffset + row);
+        }
       }
+    }
+    if (mediaKeys != null) {
+      return model.prefill(ids, embeddingOverrides: rows, embeddingKeys: keys);
     }
     await model.reset();
     for (var at = 0; at < ids.length; at += model.maxChunk) {
@@ -259,6 +275,7 @@ final class OmniPrompt {
         },
       );
     }
+    return 0;
   }
 
   int _count(OmniMediaKind kind) {
