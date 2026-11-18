@@ -59,61 +59,66 @@ void main() {
     expect(audio.phase, AudioPhase.ready);
   });
 
-  testWidgets('live translation shows each sentence with its translation', (
-    tester,
-  ) async {
-    final backend = TestAudioBackend(), mic = TestMicrophone();
-    final controller = AudioController(
-      backend: backend,
-      microphone: mic,
-      player: TestSpeechPlayer(),
-      translation: FakeTranslation(),
+  for (final model in SpeechModel.values) {
+    testWidgets(
+      '${model.name} live translation shows each sentence with its translation',
+      (tester) async {
+        final backend = TestAudioBackend(), mic = TestMicrophone();
+        final controller = AudioController(
+          model: model,
+          backend: backend,
+          microphone: mic,
+          player: TestSpeechPlayer(),
+          translation: FakeTranslation(),
+        );
+        addTearDown(controller.dispose);
+        await controller.load('/prepared');
+        await tester.pumpWidget(
+          MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+        );
+        await tester.tap(find.text('Transcription and TTS'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Live translation (English)').last);
+        await tester.pumpAndSettle();
+        expect(controller.task, AudioTask.liveTranslation);
+        expect(find.text('Translate into'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('Start live translation'),
+          120,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('Start live translation'));
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        expect(controller.phase, AudioPhase.recording);
+        backend.liveText!('Hello there. How');
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        await tester.scrollUntilVisible(
+          find.text('[Japanese] Hello there.'),
+          120,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('Hello there.'), findsOneWidget);
+        expect(find.text('How'), findsOneWidget);
+        mic.source!.add(Uint8List(32));
+        backend.finishing = Completer<String>()
+          ..complete('Hello there. How now?');
+        await tester.pump();
+        await tester.ensureVisible(find.text('Stop live translation'));
+        await tester.tap(find.text('Stop live translation'));
+        await tester.pump();
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pumpAndSettle();
+        expect(controller.phase, AudioPhase.ready);
+        await tester.scrollUntilVisible(
+          find.text('[Japanese] How now?'),
+          120,
+          scrollable: find.byType(Scrollable).first,
+        );
+      },
     );
-    addTearDown(controller.dispose);
-    await controller.load('/prepared');
-    await tester.pumpWidget(
-      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
-    );
-    await tester.tap(find.text('Transcription and TTS'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Live translation (English)').last);
-    await tester.pumpAndSettle();
-    expect(controller.task, AudioTask.liveTranslation);
-    expect(find.text('Translate into'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Start live translation'),
-      120,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Start live translation'));
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pump();
-    expect(controller.phase, AudioPhase.recording);
-    backend.liveText!('Hello there. How');
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pump();
-    await tester.scrollUntilVisible(
-      find.text('[Japanese] Hello there.'),
-      120,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Hello there.'), findsOneWidget);
-    expect(find.text('How'), findsOneWidget);
-    mic.source!.add(Uint8List(32));
-    backend.finishing = Completer<String>()..complete('Hello there. How now?');
-    await tester.pump();
-    await tester.ensureVisible(find.text('Stop live translation'));
-    await tester.tap(find.text('Stop live translation'));
-    await tester.pump();
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pumpAndSettle();
-    expect(controller.phase, AudioPhase.ready);
-    await tester.scrollUntilVisible(
-      find.text('[Japanese] How now?'),
-      120,
-      scrollable: find.byType(Scrollable).first,
-    );
-  });
+  }
 
   testWidgets('live translation follows new text until the reader scrolls up', (
     tester,
@@ -167,50 +172,54 @@ void main() {
     await tester.runAsync(controller.cancel);
   });
 
-  testWidgets('live mode displays text while recording and finalizes on stop', (
-    tester,
-  ) async {
-    final backend = TestAudioBackend(), mic = TestMicrophone();
-    final controller = AudioController(
-      backend: backend,
-      microphone: mic,
-      player: TestSpeechPlayer(),
+  for (final model in SpeechModel.values) {
+    testWidgets(
+      '${model.name} live mode displays text while recording and finalizes on stop',
+      (tester) async {
+        final backend = TestAudioBackend(), mic = TestMicrophone();
+        final controller = AudioController(
+          model: model,
+          backend: backend,
+          microphone: mic,
+          player: TestSpeechPlayer(),
+        );
+        addTearDown(controller.dispose);
+        await controller.load('/prepared');
+        await tester.pumpWidget(
+          MaterialApp(home: AudioTranscriptionPage(controller: controller)),
+        );
+        await tester.tap(find.text('Transcription and TTS'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Live transcription (English)').last);
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('Japanese is available after recording'),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(find.text('Start live transcription'));
+        await tester.tap(find.text('Start live transcription'));
+        await tester.pump();
+        backend.liveText!('The quick');
+        await tester.pump();
+        expect(controller.phase, AudioPhase.recording);
+        await tester.scrollUntilVisible(
+          find.text('The quick'),
+          120,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('The quick'), findsOneWidget);
+        mic.source!.add(Uint8List(32));
+        await tester.pump();
+        await tester.ensureVisible(find.text('Stop live transcription'));
+        await tester.tap(find.text('Stop live transcription'));
+        await tester.pump();
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pumpAndSettle();
+        expect(controller.phase, AudioPhase.ready);
+        expect(controller.transcript, 'Recognized speech.');
+      },
     );
-    addTearDown(controller.dispose);
-    await controller.load('/prepared');
-    await tester.pumpWidget(
-      MaterialApp(home: AudioTranscriptionPage(controller: controller)),
-    );
-    await tester.tap(find.text('Transcription and TTS'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Live transcription (English)').last);
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Japanese is available after recording'),
-      findsOneWidget,
-    );
-    await tester.ensureVisible(find.text('Start live transcription'));
-    await tester.tap(find.text('Start live transcription'));
-    await tester.pump();
-    backend.liveText!('The quick');
-    await tester.pump();
-    expect(controller.phase, AudioPhase.recording);
-    await tester.scrollUntilVisible(
-      find.text('The quick'),
-      120,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('The quick'), findsOneWidget);
-    mic.source!.add(Uint8List(32));
-    await tester.pump();
-    await tester.ensureVisible(find.text('Stop live transcription'));
-    await tester.tap(find.text('Stop live transcription'));
-    await tester.pump();
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pumpAndSettle();
-    expect(controller.phase, AudioPhase.ready);
-    expect(controller.transcript, 'Recognized speech.');
-  });
+  }
 
   testWidgets(
     'background discards a generating voice reply without automatic resume',

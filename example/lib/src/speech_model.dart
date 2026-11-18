@@ -4,8 +4,8 @@ import 'example_model.dart';
 import 'model_size.dart';
 
 /// The speech-capable models the audio preview can run. Both share the
-/// transcription, speech and voice conversation paths; Omni adds questions
-/// about photos, and LiveASR exists for LFM3-Audio only.
+/// transcription, speech, voice conversation and live modes. Omni also
+/// supports questions about photos.
 enum SpeechModel {
   audio,
   omni;
@@ -27,17 +27,15 @@ enum SpeechModel {
     omni => 'omni_source.json',
   };
 
-  bool get supportsLiveTranscription => this == audio;
   bool get supportsPhotoQuestions => this == omni;
 
   /// The same model in the text chat, opened from this model's screen.
   ExampleModel? get chatModel => this == omni ? ExampleModel.omni : null;
 
   String get summary => switch (this) {
-    audio => 'Voice conversation, transcription and TTS',
+    audio => 'Voice conversation, live transcription and translation, TTS',
     omni =>
-      'Questions about photos by voice or text, transcription, TTS '
-          'and voice conversation',
+      'Photo questions, voice conversation, live transcription and translation, TTS',
   };
 
   String get sizeLabel {

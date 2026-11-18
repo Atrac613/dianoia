@@ -88,10 +88,6 @@ void main() {
         );
         expect(recalled.text.toLowerCase(), contains('shape'));
         expect(recalled.turn, 2);
-        await expectLater(
-          backend.begin('English', live: true),
-          throwsStateError,
-        );
       } finally {
         await backend.close();
       }

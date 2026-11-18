@@ -244,10 +244,13 @@ message or question that spells a control token such as `<|im_end|>` is
 refused rather than tokenized as one.
 
 **Transcription and TTS** and **Voice conversation (English)** behave as in
-the audio preview, with Omni's prompt conventions and sampling. **Live
-transcription** is offered for LFM3-Audio only. A prepared research folder
-from `dart run tool/prepare_omni_q4.dart` can be chosen or sideloaded under
-the `LFM3-Omni-2B-Q4` folder, with the layout `language/`,
+the audio preview, with Omni's prompt conventions and sampling. Choose
+**Live transcription (English)** or **Live translation (English)** under
+**Audio mode** for the same live workflows. These modes use Omni's installed
+weights with LFM3-Audio's live protocol. The translator loads Omni's language
+backbone, so live translation needs no additional download. A prepared
+research folder from `dart run tool/prepare_omni_q4.dart` can be chosen or
+sideloaded under the `LFM3-Omni-2B-Q4` folder, with the layout `language/`,
 `mmproj-LFM3-Omni-2B-Q4_0.gguf`, `omni_config.json` and
 `processor_config.json`. See the [Omni notes](../docs/lfm3_omni_support.md).
 

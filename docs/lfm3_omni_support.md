@@ -11,10 +11,11 @@ GGUF**, through `lab.dart`, research tools and the Flutter example:
 - clip and streaming transcription (ASR), speech synthesis (TTS) and
   interleaved English voice conversation, through the LFM3-Audio APIs;
 - installation with `ModelStore` (`OmniGgufSpec.lfm3OmniQ4`);
-- an **Ask about a photo** mode in the example's Omni preview.
+- **Ask about a photo**, **Live transcription (English)** and
+  **Live translation (English)** modes in the example's Omni preview.
 
-Not implemented: multi-turn history for mixed media prompts, LiveASR (Omni
-publishes no live template), video in the example app, and a stable app API.
+Not implemented: general multi-turn history for mixed media prompts, video in
+the example app, and a stable app API.
 
 ## What Omni shares with Audio and VL
 
@@ -164,8 +165,12 @@ on short chunks.
 Preparation verifies the pinned sizes and SHA-256 hashes, validates the audio
 encoder, generator and vision tensors in the mmproj, and only then converts
 the language GGUF. `speechMmprojIn` picks the Omni mmproj when one is present.
-`audio_q4_live_transcribe.dart` refuses an Omni directory, because the Omni
-GGUF publishes no live-ASR template (`tokenizer.chat_template.asr`).
+`audio_q4_live_transcribe.dart` targets the LFM3-Audio live-ASR GGUF
+template (`tokenizer.chat_template.asr`). Liquid AI's
+[Omni Python implementation](https://huggingface.co/LiquidAI/LFM3-Omni-2B/blob/main/modeling_lfm3_omni.py)
+includes `transcribe_live()`. The example app uses the shared Dart LiveASR
+path with Omni's own encoder and language weights. In live translation mode,
+a CPU worker translates completed sentences using Omni's language weights.
 
 ## Validation so far
 
