@@ -1,4 +1,15 @@
-## Unreleased
+## 0.4.0
+
+- The Flutter example's Omni preview supports English live transcription and
+  live translation using the installed Omni model. In both speech previews,
+  live translation queues a punctuated sentence after two seconds without
+  new recognized text. It splits long sentences at word boundaries and
+  continues after a sentence fails to translate.
+- Omni photo questions, Omni image chat and voice conversations reuse the
+  language state for matching turns, including their saved media embeddings.
+- Native kernels accelerate audio attention and downsampling. Omni batch
+  transcription and mixed-media tools can also run the encoder's quantized
+  linear layers on the GPU. Live recording keeps those layers on the CPU.
 
 - The speech sampler orders each codebook's candidates with a stable merge
   sort of integer keys instead of a comparator sort of boxed scores, with

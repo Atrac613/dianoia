@@ -43,7 +43,7 @@ weights are downloaded only after that action and run on the device afterwards.
 | LFM3-1.7B, text and tools | `ModelSpec.lfm3Q4` | 1.07 GB | About 1.14 GB |
 | LFM3-VL-2B, text and images | `VisionGgufSpec.lfm3VlQadQ4` | 1.45 GB | About 1.54 GB |
 | LFM3-Audio-2B, transcription and speech | `AudioGgufSpec.lfm3AudioQ4` | 1.23 GB | About 1.30 GB |
-| LFM3-Omni-2B, photos, speech and video (experimental) | `OmniGgufSpec.lfm3OmniQ4` | 1.34 GB | About 1.41 GB |
+| LFM3-Omni-2B, photo questions, text chat and speech (experimental) | `OmniGgufSpec.lfm3OmniQ4` | 1.34 GB | About 1.41 GB |
 
 Sizes use decimal GB. Allow at least **5 GB free** for VL, **4 GB free** for
 Audio or **4.2 GB free** for Omni download and setup, including intermediate
@@ -70,6 +70,7 @@ Select **LFM3-Audio-2B Q4_0** and download the model, then choose an audio mode:
 | Transcription and TTS | Japanese / English; ASR also offers automatic detection | Record up to 30 seconds and transcribe after stopping; generate and play speech from text |
 | Voice conversation (English) | English | Record a question, receive text and speech, then record a follow-up using earlier turns as context |
 | Live transcription (English) | English | Show text during recording and continue until stopped, with no cumulative 30-second recording cap |
+| Live translation (English) | English to Japanese, Chinese, Korean, French, Spanish or German | Show sentence-by-sentence translations during recording. A punctuated sentence is queued once the next word arrives or the transcript stays unchanged for two seconds. |
 
 Voice conversation feeds audio directly to the model and generates interleaved
 text and speech. Reply text appears during generation; the complete speech
@@ -80,8 +81,9 @@ Live transcription updates roughly once per second of audio, plus processing
 time. Before about 30 seconds of audio per context, or earlier when its token
 budget requires it, the language context restarts while microphone capture and
 the audio encoder continue. Earlier text stays visible; continued text starts
-a new paragraph. **Stop live transcription** flushes the final audio. Capture
-stops with an error if inference cannot keep up with the one-second audio queue.
+a new paragraph. **Stop live transcription** flushes the final audio. Both live
+modes allow up to five seconds of queued audio. Other recording modes allow
+one second. Capture stops with an error if the queue limit is exceeded.
 
 **LFM3-Omni-2B Q4_0** opens the same preview with an extra **Ask about a
 photo** mode: choose a photo, then type a question or record one, and receive
@@ -128,9 +130,10 @@ scratch bit for bit. Warming the system prompt and tool catalog avoids feeding
 their tokens again. Recorded text workloads reached 0.3 s to the first token on
 a Pixel 8 and 0.56 s on an iPhone; latency depends on the prompt and hardware.
 
-VL conversations retain projected image features, but re-prefill the language
-prompt on each turn. macOS CPU/Metal image inference and physical iPhone image
-chat have been exercised; Android/Vulkan vision conversations remain unvalidated.
+VL follow-ups reuse projected image features and the language state for the
+matching conversation prefix. macOS CPU/Metal image inference and physical
+iPhone image chat have been exercised. Android/Vulkan vision conversations
+remain unvalidated.
 See the [image API guide](docs/vision_chat_api.md) and
 [device benchmark report](docs/lfm3_vl_iphone_validation_2026-11-01.md).
 
@@ -214,7 +217,7 @@ Future<void> describeImage(String modelsDirectory, String imagePath) async {
   }
   final model = await LocalVisionModel.loadBundle(
     store.bundlePath(spec),
-    maxImageTokens: 256, // Same CPU-work budget as the Flutter example.
+    maxImageTokens: 256, // Same image-token budget as the Flutter example.
   );
   try {
     final chat = model.chat(maxNewTokens: 128);
@@ -246,9 +249,10 @@ over white. HEIC, animation and video are not supported. `maxImageTokens` contro
 later model resizing, independently of the decode limits.
 
 `onProgress` reports new-image encoding stages, prompt prefill and generation.
-Text-only follow-ups reuse earlier image features. Return `false` from `onText`
-to keep a partial reply; `chat.cancel()` aborts a visual turn at a yield boundary
-and rolls back its draft. Context overflow also leaves prior history intact.
+Text-only follow-ups reuse earlier image features and matching language state.
+Return `false` from `onText` to keep a partial reply. `chat.cancel()` aborts a
+visual turn at a yield boundary and rolls back its draft. Context overflow also
+leaves prior history intact.
 See the [full image API guide](docs/vision_chat_api.md) for multiple images,
 interleaved messages, cancellation and image-budget details.
 
