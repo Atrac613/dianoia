@@ -30,6 +30,8 @@ Future<Map<String, Object?>> audioInputCheck(
   final durationUs = pcm.length * 1000000 ~/ sampleRate;
   final threads = (config['threads'] as num?)?.toInt() ?? 4;
   final gpu = config['backend'] != 'cpu';
+  final nativeDownsampling = config['native_downsampling'] != false;
+  final compareAttention = config['compare_attention'] != false;
   final output = File('$docs/bench/audio-input-latest.json');
   output.parent.createSync(recursive: true);
   final runs = <Map<String, Object?>>[];
@@ -41,6 +43,7 @@ Future<Map<String, Object?>> audioInputCheck(
     'chunk_ms': 80,
     'backend': gpu ? 'gpu' : 'cpu',
     'threads': threads,
+    'native_downsampling': nativeDownsampling,
     'runs': runs,
     'finished': false,
   };
@@ -58,18 +61,15 @@ Future<Map<String, Object?>> audioInputCheck(
   Lfm3AudioEncoder? encoder;
   try {
     final tokenizer = Lfm3Tokenizer.load('$dir/language');
-    final audioEncoder = encoder = Lfm3AudioEncoder.load(speechMmprojIn(dir));
+    final audioEncoder = encoder = Lfm3AudioEncoder.load(
+      speechMmprojIn(dir),
+      nativeDownsampling: nativeDownsampling,
+    );
     // Warm both paths, then alternate order to reduce warmup and thermal bias.
-    for (final (index, native) in [
-      false,
-      true,
-      false,
-      true,
-      true,
-      false,
-      false,
-      true,
-    ].indexed) {
+    final attentionModes = compareAttention
+        ? [false, true, false, true, true, false, false, true]
+        : [true, true, true, true];
+    for (final (index, native) in attentionModes.indexed) {
       NativeKernels.load(null, threads: threads, attention: native);
       final thermalBefore = GpuForward.thermalState;
       final frontend = Lfm3AudioFrontend().startStream();
@@ -139,7 +139,7 @@ Future<Map<String, Object?>> audioInputCheck(
         }
         runs.add({
           'native_attention': native,
-          'warmup': index < 2,
+          'warmup': index < (compareAttention ? 2 : 1),
           'thermal_before': thermalBefore,
           'thermal_after': GpuForward.thermalState,
           'end_to_first_token_us': firstTokenUs,

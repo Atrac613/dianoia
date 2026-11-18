@@ -25,9 +25,15 @@ final class Lfm3AudioEncoder {
     this._floats,
     this._matrices,
     this.int8Inputs,
+    this.nativeDownsampling,
   );
 
-  factory Lfm3AudioEncoder.load(String mmproj, {bool int8Inputs = false}) {
+  /// Set [nativeDownsampling] to false to compare with the Dart audio stem.
+  factory Lfm3AudioEncoder.load(
+    String mmproj, {
+    bool int8Inputs = false,
+    bool nativeDownsampling = true,
+  }) {
     if (!NativeKernels.isLoaded) NativeKernels.load(null);
     final file = GgufFile.open(mmproj);
     final matrices = <String, NativeQ4Matrix>{};
@@ -46,7 +52,13 @@ final class Lfm3AudioEncoder {
           floats[e.key] = file.f32(tensor);
         }
       }
-      return Lfm3AudioEncoder._(c, floats, matrices, int8Inputs);
+      return Lfm3AudioEncoder._(
+        c,
+        floats,
+        matrices,
+        int8Inputs,
+        nativeDownsampling,
+      );
     } catch (_) {
       for (final m in matrices.values) {
         m.free();
@@ -59,6 +71,7 @@ final class Lfm3AudioEncoder {
 
   final Lfm3AudioEncoderConfig config;
   final bool int8Inputs;
+  final bool nativeDownsampling;
   final Map<String, Float32List> _floats;
   final Map<String, NativeQ4Matrix> _matrices;
   final _streams = <Lfm3AudioEncoderStream>{};
@@ -357,26 +370,19 @@ final class Lfm3AudioEncoder {
       final w = _floats['a.conv1d.$i.weight']!,
           b = _floats['a.conv1d.$i.bias']!;
       final out = Float32List(ch * nf * nt);
-      for (var c = 0; c < ch; c++) {
-        for (var f = 0; f < nf; f++) {
-          for (var t = 0; t < nt; t++) {
-            var sum = 0.0;
-            for (var y = 0; y < 3; y++) {
-              final sy = 2 * f + y - 1;
-              if (sy < 0 || sy >= freq) continue;
-              for (var z = 0; z < 3; z++) {
-                final st = 2 * t + z - 1;
-                if (st >= 0 && st < time) {
-                  sum +=
-                      x[((i == 0 ? 0 : c) * freq + sy) * time + st] *
-                      w[(c * 3 + y) * 3 + z];
-                }
-              }
-            }
-            out[(c * nf + f) * nt + t] = sum;
-            out[(c * nf + f) * nt + t] += b[c];
-          }
-        }
+      if (nativeDownsampling) {
+        nativeAudioDepthwise(
+          x,
+          w,
+          b,
+          out,
+          channels: ch,
+          freq: freq,
+          time: time,
+          first: i == 0,
+        );
+      } else {
+        _dartDepthwise(x, w, b, out, freq, time, first: i == 0);
       }
       x = i == 0 ? out : _pointwise(out, nf, nt, i == 2 ? 3 : 6);
       for (var j = 0; j < x.length; j++) {
@@ -395,17 +401,63 @@ final class Lfm3AudioEncoder {
     return _linear('a.pre_encode.out', rows, time, bias: true);
   }
 
+  void _dartDepthwise(
+    Float32List x,
+    Float32List weights,
+    Float32List bias,
+    Float32List out,
+    int freq,
+    int time, {
+    required bool first,
+  }) {
+    final nf = (freq + 1) ~/ 2, nt = (time + 1) ~/ 2;
+    for (var c = 0; c < config.convChannels; c++) {
+      for (var f = 0; f < nf; f++) {
+        for (var t = 0; t < nt; t++) {
+          var sum = 0.0;
+          for (var y = 0; y < 3; y++) {
+            final sy = 2 * f + y - 1;
+            if (sy < 0 || sy >= freq) continue;
+            for (var z = 0; z < 3; z++) {
+              final st = 2 * t + z - 1;
+              if (st >= 0 && st < time) {
+                sum +=
+                    x[((first ? 0 : c) * freq + sy) * time + st] *
+                    weights[(c * 3 + y) * 3 + z];
+              }
+            }
+          }
+          final i = (c * nf + f) * nt + t;
+          out[i] = sum;
+          out[i] += bias[c];
+        }
+      }
+    }
+  }
+
   Float32List _pointwise(Float32List x, int freq, int time, int index) {
     final ch = config.convChannels, n = freq * time;
+    final weights = _floats['a.conv1d.$index.weight']!;
+    final bias = _floats['a.conv1d.$index.bias']!;
+    final result = Float32List(x.length);
+    if (nativeDownsampling &&
+        nativeAudioPointwise(
+          x,
+          weights,
+          bias,
+          result,
+          channels: ch,
+          positions: n,
+        )) {
+      return result;
+    }
     final input = Float32List(n * ch), output = Float32List(n * ch);
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < ch; c++) {
         input[r * ch + c] = x[c * n + r];
       }
     }
-    gemm(_floats['a.conv1d.$index.weight']!, input, output, ch, ch, n);
-    final bias = _floats['a.conv1d.$index.bias']!;
-    final result = Float32List(x.length);
+    gemm(weights, input, output, ch, ch, n);
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < ch; c++) {
         result[c * n + r] = output[r * ch + c] + bias[c];

@@ -152,7 +152,10 @@ dart run tool/audio_q4_converse.dart build/omni-reference out-dir q1.f32 q2.f32 
 installed `OmniGgufSpec` bundle has the same layout and works with the same
 commands.
 
-The audio encoder uses native sliding-window attention. With `--gpu`, Omni
+The audio encoder runs the downsampler's stride-2 convolutions and
+sliding-window attention in C. On Apple platforms Accelerate computes the
+1×1 downsampling convolutions directly in the feature map's channel-major
+layout. With `--gpu`, Omni
 clip and soundtrack encoding and batch transcription also run their
 quantized linear products on the GPU. Chunked transcription and live
 recording keep the linear products on the CPU to avoid dispatch overhead

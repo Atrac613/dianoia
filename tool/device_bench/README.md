@@ -35,6 +35,8 @@ Set `"bundle"`, `"clip"`, and optionally `"language"`, `"backend"`, and
 Dart and native encoder attention. The report in
 `Documents/bench/audio-input-latest.json` includes per-chunk phase timings,
 the end-of-input to first-token delay, temperature state, and decoded IDs.
+Set `"compare_attention": false` to run native attention only, and
+`"native_downsampling": false` to measure the original Dart audio stem.
 
 `run_ios_control_vector.sh VECTOR PROMPTS [REFUSALS]` runs the app in its
 `control_vector` mode instead: a control vector on the phone's CPU and GPU
