@@ -32,6 +32,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
+import 'audio_input_check.dart';
 import 'control_vector_check.dart';
 import 'gpu_sustained.dart';
 import 'lifecycle_check.dart';
@@ -96,6 +97,9 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   }
   if (config['mode'] == 'speech') {
     return speechCheck(config, docs, log);
+  }
+  if (config['mode'] == 'audio_input') {
+    return audioInputCheck(config, docs, log);
   }
   final bundle = config['bundle'] as String? ?? 'LFM3-1.7B-device';
   final weights = WeightFormat.values.byName(
