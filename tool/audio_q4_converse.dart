@@ -56,6 +56,7 @@ Future<void> main(List<String> args) async {
           stream = encoder.startStream();
       final watch = Stopwatch()..start();
       await session.begin();
+      final beginSeconds = watch.elapsedMicroseconds / 1e6;
       try {
         for (var at = 0; at < pcm.length; at += 1280) {
           await session.addProjected(
@@ -81,6 +82,8 @@ Future<void> main(List<String> args) async {
           'seconds': reply.seconds,
           'generated_slots': reply.generatedSlots,
           'history_tokens': reply.historyTokens,
+          'reused_tokens': session.reusedTokens,
+          'begin_seconds': beginSeconds,
           'retained_embedding_bytes': session.retainedEmbeddingBytes,
           'wall_seconds': watch.elapsedMicroseconds / 1e6,
           'wav': File(path).absolute.path,

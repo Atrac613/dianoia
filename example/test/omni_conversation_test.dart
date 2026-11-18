@@ -54,6 +54,11 @@ void main() {
     expect(chat.audioTokens(), [4]);
     expect(chat.imageRows(), [photo.rows]);
     expect(chat.imageTokens(), [3]);
+    photo.rows[0] = 7;
+    spoken[0] = 8;
+    expect(chat.imageRows().single[0], 0);
+    expect(chat.audio().single[0], 0);
+    expect(() => chat.audio().single[0] = 9, throwsUnsupportedError);
   });
 
   test('a chat keeps its system prompt and images from any turn', () {

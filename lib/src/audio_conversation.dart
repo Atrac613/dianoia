@@ -101,16 +101,19 @@ final class AudioConversationReply {
 }
 
 final class _Slot {
-  _Slot(this.id, [this.embedding]);
+  _Slot(this.id, [this.embedding])
+    : embeddingKey = embedding == null ? null : Object();
   final int id;
   final Float32List? embedding;
+  final Object? embeddingKey;
 }
 
 /// A bounded, transactional conversation on caller-owned language/generation
 /// models. Input is projected encoder rows. Completed turns retain exact audio
 /// input/output embeddings; no waveform or microphone recording is retained.
-/// Begin replays committed slots, so other operations may use the backbone
-/// between turns. Use the backbone exclusively throughout begin/add/finish.
+/// Begin reuses matching language state and replays slots when necessary, so
+/// other operations may use the backbone between turns. Use the backbone
+/// exclusively throughout begin/add/finish.
 final class AudioConversationSession {
   AudioConversationSession(this.model, this.tokenizer, this.generator) {
     if (model.config.hiddenSize != generator.hiddenSize) {
@@ -146,6 +149,10 @@ final class AudioConversationSession {
   int get turns => _turns;
   int _turns = 0;
   int get historyTokens => _history.length;
+
+  /// The prompt slots reused by the last successful [begin].
+  int get reusedTokens => _reusedTokens;
+  int _reusedTokens = 0;
   int get retainedEmbeddingBytes =>
       _history.fold(0, (n, s) => n + (s.embedding?.lengthInBytes ?? 0));
   int _id(String marker) {
@@ -183,6 +190,7 @@ final class AudioConversationSession {
     _history.clear();
     _candidate = null;
     _turns = 0;
+    _reusedTokens = 0;
   }
 
   void close() {
@@ -190,6 +198,7 @@ final class AudioConversationSession {
     cancel();
     _history.clear();
     _turns = 0;
+    _reusedTokens = 0;
   }
 
   /// A deferred reply enters history only after its receiver accepts it.
@@ -240,6 +249,9 @@ final class AudioConversationSession {
           for (var i = at; i < end; i++)
             if (slots[i].embedding != null) i - at: slots[i].embedding!,
         },
+        embeddingKeys: {
+          for (var i = at; i < end; i++) i - at: ?slots[i].embeddingKey,
+        },
         meanwhile: end == slots.length ? meanwhile : null,
       );
       await Future<void>.delayed(Duration.zero);
@@ -273,8 +285,18 @@ final class AudioConversationSession {
     _rows = 0;
     final pending = _pending = [..._history, ...head];
     try {
-      await model.reset();
-      await _forward(pending, logits: false);
+      final overrides = {
+        for (var i = 0; i < _history.length; i++) i: ?pending[i].embedding,
+      };
+      final reused = await model.restorePromptPrefix(
+        [for (final slot in pending) slot.id],
+        embeddingOverrides: overrides,
+        embeddingKeys: {
+          for (final i in overrides.keys) i: pending[i].embeddingKey!,
+        },
+      );
+      await _forward(pending.sublist(reused), logits: false);
+      _reusedTokens = reused;
     } catch (_) {
       _pending = null;
       rethrow;
@@ -355,6 +377,8 @@ final class AudioConversationSession {
           'Model returned no complete spoken reply. Please try again.',
         );
       }
+      await model.checkpoint();
+      _check();
       if (pending.last.id != _id('<|im_end|>')) {
         pending.add(_Slot(_id('<|im_end|>')));
       }

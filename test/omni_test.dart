@@ -484,6 +484,79 @@ void main() {
     expect(() => dequantizeQ4_0(block, 64), throwsArgumentError);
   });
 
+  test(
+    'Omni reuses image and audio rows and invalidates changed media',
+    () async {
+      final root = Directory.systemTemp.createTempSync('dianoia-omni-prefix-');
+      addTearDown(() => root.deleteSync(recursive: true));
+      await prepareVisionFixture(root);
+      final dir = '${root.path}/backbone';
+      writeSyntheticTokenizer(dir, additionalSpecials: _speechSpecials);
+      final tokenizer = Lfm3Tokenizer.load(dir);
+      final config = Lfm3VlConfig.load('${root.path}/model');
+      final model = await Lfm3Model.load(
+        dir,
+        maxSeq: 256,
+        maxChunk: 8,
+        weights: WeightFormat.q8,
+        q8CachePath: '$dir/lfm3-q8.cache',
+      );
+      addTearDown(model.close);
+      final history = [
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'image'},
+            {'type': 'audio'},
+          ],
+        },
+      ];
+      OmniPrompt prepare(List<Map<String, Object?>> messages) =>
+          prepareOmniPrompt(
+            messages,
+            tokenizer: tokenizer,
+            config: config,
+            imageTokenCounts: [3],
+            audioTokenCounts: [2],
+          );
+      final first = prepare(history);
+      final followup = prepare([
+        ...history,
+        {'role': 'assistant', 'content': 'Yes'},
+        {'role': 'user', 'content': 'Why?'},
+      ]);
+      final image = Float32List(3 * 32)..[0] = 1;
+      final audio = Float32List(2 * 32)..[0] = 2;
+      final keys = {
+        OmniMediaKind.image: [Object()],
+        OmniMediaKind.audio: [Object()],
+      };
+      Future<int> feed(OmniPrompt prompt) => prompt.prefill(
+        model,
+        images: [image],
+        audio: [audio],
+        mediaKeys: keys,
+      );
+
+      expect(await feed(first), 0);
+      final reused = await feed(followup);
+      final audioSpan = followup.spans.last;
+      expect(reused, greaterThanOrEqualTo(audioSpan.start + audioSpan.count));
+      final logits = Float32List.fromList(model.logits);
+      await followup.prefill(model, images: [image], audio: [audio]);
+      expect(model.logits, orderedEquals(logits));
+
+      await feed(first);
+      keys[OmniMediaKind.audio] = [Object()];
+      audio[0] = -2;
+      expect(await feed(followup), lessThanOrEqualTo(audioSpan.start));
+      final changed = Float32List.fromList(model.logits);
+      await followup.prefill(model, images: [image], audio: [audio]);
+      expect(model.logits, orderedEquals(changed));
+    },
+    skip: NativeKernels.isAvailable ? false : 'requires native kernels',
+  );
+
   test('vision weights load from an mmproj like the imported bundle', () async {
     if (!NativeKernels.isAvailable) {
       markTestSkipped('requires native kernels');

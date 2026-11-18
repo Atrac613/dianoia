@@ -107,8 +107,13 @@ does:
   first frame, as upstream `_video_expansion` computes it. Times use Python's
   `.1f` formatting, ties to even (`formatOmniSeconds`).
 
-`OmniPrompt.prefill` validates and copies every row set before resetting the
-model, then feeds the prompt in chunks. `decodeSpeechReply` decodes the
+`OmniPrompt.prefill` validates and copies every row set before changing model
+state. The example's Omni chat and photo questions key each saved attachment
+so the model can reuse matching text and media rows across turns.
+`AudioConversationSession` also reuses matching state for committed speech
+turns, including the input and generated audio embeddings. If another task
+replaces the state, the next turn replays the missing prefix.
+`decodeSpeechReply` decodes the
 reply: greedy text, sampled speech frames and the six/twelve interleaving
 schedule. It is the same loop `AudioConversationSession` now uses.
 
