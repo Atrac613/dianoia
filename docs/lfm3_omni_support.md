@@ -152,6 +152,12 @@ dart run tool/audio_q4_converse.dart build/omni-reference out-dir q1.f32 q2.f32 
 installed `OmniGgufSpec` bundle has the same layout and works with the same
 commands.
 
+The audio encoder uses native sliding-window attention. With `--gpu`, Omni
+clip and soundtrack encoding and batch transcription also run their
+quantized linear products on the GPU. Chunked transcription and live
+recording keep the linear products on the CPU to avoid dispatch overhead
+on short chunks.
+
 Preparation verifies the pinned sizes and SHA-256 hashes, validates the audio
 encoder, generator and vision tensors in the mmproj, and only then converts
 the language GGUF. `speechMmprojIn` picks the Omni mmproj when one is present.

@@ -8,11 +8,12 @@ import 'audio_features.dart';
 import 'audio_gguf.dart';
 import 'config.dart';
 import 'gguf.dart';
+import 'gpu.dart';
 import 'matmul.dart';
 import 'native.dart';
 import 'ops.dart';
 
-/// Synchronous CPU lab implementation for complete clips or streaming input.
+/// Synchronous lab implementation for complete clips or streaming input.
 ///
 /// Q4 weights retain their published blocks. Convolutions and norms stay F32.
 /// Matmul uses float inputs by default to isolate weight quantization from
@@ -61,7 +62,35 @@ final class Lfm3AudioEncoder {
   final Map<String, Float32List> _floats;
   final Map<String, NativeQ4Matrix> _matrices;
   final _streams = <Lfm3AudioEncoderStream>{};
+  GpuLinear? _gpu;
   bool _closed = false;
+
+  /// Copies quantized matrices to the GPU for their linear products.
+  /// Returns false where the GPU is unavailable or [int8Inputs] is enabled.
+  /// Call before starting streams and serialize GPU work across isolates
+  /// (see [GpuLinear]). Convolutions, norms and attention stay on the CPU.
+  bool useGpu() {
+    if (_closed) throw StateError('Audio encoder is closed');
+    if (_gpu != null) return true;
+    if (int8Inputs) return false;
+    if (_streams.isNotEmpty) {
+      throw StateError(
+        'Close the audio encoder streams before changing backend',
+      );
+    }
+    final gpu = GpuLinear.start();
+    if (gpu == null) return false;
+    try {
+      for (final e in _matrices.entries) {
+        gpu.upload(e.key, e.value);
+      }
+    } catch (_) {
+      gpu.dispose();
+      rethrow;
+    }
+    _gpu = gpu;
+    return true;
+  }
 
   /// Owned [features.encoderTokens, config.projectionSize] projected rows.
   /// [capture] receives owned copies of intermediate rows for parity checks.
@@ -143,6 +172,8 @@ final class Lfm3AudioEncoder {
     for (final stream in _streams.toList()) {
       stream.close();
     }
+    _gpu?.dispose();
+    _gpu = null;
     for (final m in _matrices.values) {
       m.free();
     }
@@ -151,9 +182,14 @@ final class Lfm3AudioEncoder {
   }
 
   Float32List _linear(String name, Float32List x, int n, {bool bias = false}) {
-    final matrix = _matrices['$name.weight']!;
+    final key = '$name.weight';
+    final matrix = _matrices[key]!;
     final out = Float32List(n * matrix.rows);
-    matrix.apply(x, out, n, int8Inputs: int8Inputs);
+    if (_gpu case final gpu?) {
+      gpu.apply(key, x, out, n);
+    } else {
+      matrix.apply(x, out, n, int8Inputs: int8Inputs);
+    }
     if (bias) {
       final b = _floats['$name.bias']!;
       for (var i = 0; i < out.length; i++) {
@@ -240,7 +276,44 @@ final class Lfm3AudioEncoder {
         : (Float32List(state.values.length + v.length)
             ..setAll(0, state.values)
             ..setAll(state.values.length, v));
-    final output = Float32List(n * h), scores = Float32List(prefix + n);
+    final output = Float32List(n * h);
+    if (NativeKernels.instance.attention && d % 4 == 0 && c.numHeads * d == h) {
+      nativeAttention(
+        q,
+        keys,
+        values,
+        null,
+        output,
+        n: n,
+        position: prefix,
+        heads: c.numHeads,
+        kvHeads: c.numKvHeads,
+        headDim: d,
+        window: c.window,
+      );
+    } else {
+      _dartAttention(q, keys, values, output, n, prefix);
+    }
+    final result = _linear('${p}attn_out', output, n);
+    if (state != null) {
+      final keep = math.min(c.window - 1, prefix + n) * kv;
+      state.keys = keys.sublist(keys.length - keep);
+      state.values = values.sublist(values.length - keep);
+    }
+    return result;
+  }
+
+  void _dartAttention(
+    Float32List q,
+    Float32List keys,
+    Float32List values,
+    Float32List output,
+    int n,
+    int prefix,
+  ) {
+    final c = config, h = c.hiddenSize, d = c.headDim;
+    final kv = c.numKvHeads * d;
+    final scores = Float32List(prefix + n);
     final scale = 1 / math.sqrt(d);
     for (var t = 0; t < n; t++) {
       final end = prefix + t;
@@ -273,13 +346,6 @@ final class Lfm3AudioEncoder {
         }
       }
     }
-    final result = _linear('${p}attn_out', output, n);
-    if (state != null) {
-      final keep = math.min(c.window - 1, prefix + n) * kv;
-      state.keys = keys.sublist(keys.length - keep);
-      state.values = values.sublist(values.length - keep);
-    }
-    return result;
   }
 
   Float32List _downsample(AudioFeatures features) {

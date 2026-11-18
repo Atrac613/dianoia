@@ -236,7 +236,7 @@ external void _attention(
 );
 
 /// Grouped-query attention of [n] tokens at positions [position], ... in C
-/// (src/c/lab_native.c, `lab_attention`), with the per-head
+/// (src/c/lab_native.c, `lab_attention`), with an optional per-head
 /// output gate. Shapes as in LayerShard: q and out [n, heads * headDim],
 /// keys and values [maxSeq, kvHeads * headDim] already holding this chunk,
 /// gate [n, heads] before the sigmoid. [window] 0 is full attention.
@@ -244,7 +244,7 @@ void nativeAttention(
   Float32List q,
   Float32List keys,
   Float32List values,
-  Float32List gate,
+  Float32List? gate,
   Float32List out, {
   required int n,
   required int position,
@@ -256,12 +256,30 @@ void nativeAttention(
   final kvDim = kvHeads * headDim;
   if (q.length < n * heads * headDim ||
       out.length < n * heads * headDim ||
-      gate.length < n * heads ||
+      (gate != null && gate.length < n * heads) ||
       keys.length < (position + n) * kvDim ||
       values.length < (position + n) * kvDim ||
       heads % kvHeads != 0 ||
       headDim % 4 != 0) {
     throw ArgumentError('native attention: bad shapes');
+  }
+  final threads = NativeKernels.instance.threads;
+  if (gate == null) {
+    _attention(
+      q.address,
+      keys.address,
+      values.address,
+      nullptr,
+      out.address,
+      n,
+      position,
+      heads,
+      kvHeads,
+      headDim,
+      window,
+      threads,
+    );
+    return;
   }
   _attention(
     q.address,
@@ -275,7 +293,7 @@ void nativeAttention(
     kvHeads,
     headDim,
     window,
-    NativeKernels.instance.threads,
+    threads,
   );
 }
 

@@ -8,6 +8,7 @@ import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
 
 import 'support/gguf_fixture.dart';
+import 'support/gpu_host.dart';
 
 void main() {
   final supported = NativeKernels.isAvailable;
@@ -110,6 +111,13 @@ void main() {
       throwsStateError,
     );
   }, skip: supported ? false : 'native kernels unavailable');
+
+  test('GPU encoder products match the official Torch stages', () {
+    final encoder = Lfm3AudioEncoder.load(path);
+    addTearDown(encoder.close);
+    expect(encoder.useGpu(), isTrue);
+    compare(encoder, oracle);
+  }, skip: supported && gpuStarts ? false : gpuDoesNotStartSkip);
 
   test('validates all tensor shapes and Q4 types before loading matrices', () {
     final variants = [

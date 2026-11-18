@@ -588,7 +588,7 @@ static void attend_one(const float* q, const float* keys, const float* values,
     scores[s - start] = e;
     sum += e;
   }
-  const float g = 1.0f / (1.0f + expf(-gate[t * heads + h])) / sum;
+  const float g = gate ? 1.0f / (1.0f + expf(-gate[t * heads + h])) / sum : 1.0f / sum;
   float* o = out + t * q_dim + h * hd;
 #ifdef LAB_NEON
   for (int64_t d = 0; d < hd; d += 4) {
