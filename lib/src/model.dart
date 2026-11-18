@@ -681,12 +681,19 @@ final class Lfm3Model {
   /// cannot reuse state conditioned on a different image. [embeddingKeys]
   /// names the embedding at override positions for a later [prefill], which
   /// reuses them only under an equal key.
+  ///
+  /// [meanwhile] runs once, on the CPU, while the last chunk computes on the
+  /// GPU (after the whole call on the CPU path), for work that does not
+  /// depend on this pass, such as decoding audio already generated. It must
+  /// not use the GPU or this model. If it throws, the pass still completes
+  /// and the error is rethrown.
   Future<void> forward(
     List<int> tokens, {
     void Function(int slot, int first, Float32List rows, int count)? capture,
     bool computeLogits = true,
     Map<int, Float32List> embeddingOverrides = const {},
     Map<int, Object> embeddingKeys = const {},
+    void Function()? meanwhile,
   }) async {
     _checkOpen();
     if (embeddingKeys.keys.any((p) => !embeddingOverrides.containsKey(p))) {
@@ -711,13 +718,38 @@ final class Lfm3Model {
     }
     if (tokens.isNotEmpty) _hasHiddenState = false;
     _forwarding++;
+    Object? meanwhileError;
+    StackTrace? meanwhileTrace;
+    var ran = false;
+    void guarded() {
+      ran = true;
+      try {
+        meanwhile!();
+      } catch (e, s) {
+        meanwhileError = e;
+        meanwhileTrace = s;
+      }
+    }
+
     try {
-      await _forward(tokens, capture, computeLogits, overrides);
+      await _forward(
+        tokens,
+        capture,
+        computeLogits,
+        overrides,
+        meanwhile == null ? null : guarded,
+      );
       _embeddingKeys.addAll([
         for (var t = 0; t < tokens.length; t++)
           overrides.containsKey(t) ? embeddingKeys[t] : null,
       ]);
-    } catch (_) {
+      // The CPU path, or no tokens: the work runs after the pass.
+      if (meanwhile != null && !ran) guarded();
+      if (meanwhileError case final e?) {
+        Error.throwWithStackTrace(e, meanwhileTrace!);
+      }
+    } on Object catch (e) {
+      if (identical(e, meanwhileError)) rethrow;
       // A chunk that failed partway (a GPU command buffer the system
       // rejected, a worker isolate that died) may have advanced the conv
       // histories and KV rows without [length] and [history]: forget the
@@ -740,6 +772,7 @@ final class Lfm3Model {
     void Function(int slot, int first, Float32List rows, int count)? capture,
     bool computeLogits,
     Map<int, Float32List> overrides,
+    void Function()? meanwhile,
   ) async {
     final gpu = _gpu;
     if (gpu != null) {
@@ -759,6 +792,7 @@ final class Lfm3Model {
           length,
           withLogits: computeLogits && start + n == tokens.length,
           capture: capture != null,
+          meanwhile: start + n == tokens.length ? meanwhile : null,
         );
         if (capture != null) {
           for (var slot = 0; slot <= config.numLayers; slot++) {

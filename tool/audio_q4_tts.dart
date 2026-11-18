@@ -1,6 +1,7 @@
 /// Generate speech without opening audio devices. Output is an ordinary WAV.
 /// Usage: `dart run tool/audio_q4_tts.dart <prepared-dir> <text> <output.wav>`
 ///        [--language=ja] [--voice=female] [--seed=0] [--max-frames=375] [--gpu]
+///        [--int8-inputs] (faster speech, no longer the float arithmetic)
 library;
 
 import 'dart:convert';
@@ -10,10 +11,12 @@ import 'package:dianoia/lab.dart';
 
 Future<void> main(List<String> args) async {
   final pos = <String>[], options = <String, String>{};
-  var gpu = false;
+  var gpu = false, int8 = false;
   for (final arg in args) {
     if (arg == '--gpu') {
       gpu = true;
+    } else if (arg == '--int8-inputs') {
+      int8 = true;
     } else if (arg.startsWith('--') && arg.contains('=')) {
       final at = arg.indexOf('=');
       options[arg.substring(2, at)] = arg.substring(at + 1);
@@ -37,7 +40,10 @@ Future<void> main(List<String> args) async {
   }
   final dir = pos[0];
   NativeKernels.load(null);
-  final generator = Lfm3AudioGenerator.load(speechMmprojIn(dir));
+  final generator = Lfm3AudioGenerator.load(
+    speechMmprojIn(dir),
+    int8Inputs: int8,
+  );
   Lfm3Model? model;
   StreamSubscription<ProcessSignal>? interrupt;
   try {

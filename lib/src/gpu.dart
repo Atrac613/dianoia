@@ -113,6 +113,10 @@ external void _begin();
 @Native<Int64 Function(Int64)>(symbol: 'lab_gpu_commit')
 external int _commit(int wait);
 
+// Not a leaf: it blocks until the GPU finishes.
+@Native<Int64 Function()>(symbol: 'lab_gpu_wait')
+external int _waitGpu();
+
 @Native<
   Void Function(
     Int64,
@@ -994,11 +998,17 @@ final class GpuForward {
   /// already in [residual]: every layer, and with [withLogits] the final
   /// norm and LM head of the last token into [logits]. With [capture], the
   /// residual stream is copied after every layer (see [captured]).
+  ///
+  /// With [meanwhile] the command buffer is committed without waiting, then
+  /// [meanwhile] runs on the CPU while the GPU computes, and the pass waits
+  /// for the GPU afterwards, also when [meanwhile] throws. It must not use
+  /// the GPU.
   void forward(
     int n,
     int position, {
     required bool withLogits,
     required bool capture,
+    void Function()? meanwhile,
   }) {
     if (_disposed) throw StateError('the GPU forward pass is disposed');
     if (n < 1 || n > maxChunk) throw ArgumentError('chunk of $n tokens');
@@ -1169,7 +1179,18 @@ final class GpuForward {
       dispatched += 2;
     }
     encodeMicros += sw.elapsedMicroseconds;
-    _finish();
+    if (meanwhile == null) {
+      _finish();
+    } else {
+      if (_commit(0) != 1) throw StateError('GPU command buffer failed');
+      try {
+        meanwhile();
+      } finally {
+        final ok = _waitGpu() == 1;
+        gpuMicros += (_lastGpuMs() * 1000).round();
+        if (!ok) throw StateError('GPU command buffer failed');
+      }
+    }
     calls++;
     tokens += n;
     dispatches += dispatched;

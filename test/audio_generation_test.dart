@@ -143,6 +143,124 @@ void main() {
         );
       },
     );
+    test('int8 inputs stay close to the float products', () {
+      final q = Lfm3AudioGenerator.load(
+        '${temp.path}/mmproj.gguf',
+        int8Inputs: true,
+      );
+      addTearDown(q.close);
+      expect(g.int8Inputs, isFalse);
+      expect(q.int8Inputs, isTrue);
+      final h = Float32List.fromList([for (var i = 0; i < 32; i++) i / 16 - 1]);
+      final codes = [3, -1, 7, -1, 0, -1, 1, -1, 2, -1, 5, -1];
+      final exact = g.depthLogits(h, codes), fast = q.depthLogits(h, codes);
+      var num = 0.0, den = 0.0;
+      for (var i = 0; i < exact.length; i++) {
+        expect(fast[i].isFinite, isTrue);
+        num += (fast[i] - exact[i]) * (fast[i] - exact[i]);
+        den += exact[i] * exact[i];
+      }
+      expect(math.sqrt(num / den), lessThan(0.05));
+      final frame = q.sampleFrame(h, math.Random(1));
+      expect(frame.every((c) => c >= 0 && c < q.vocabSize), isTrue);
+      final stream = q.startCodecStream();
+      addTearDown(stream.close);
+      final audio = [for (final c in frame) c == q.eosCode ? 0 : c];
+      expect(stream.add(audio).every((x) => x.isFinite), isTrue);
+    });
+    test('sampling matches the reference sort-based sampler', () {
+      // The sampler as first written: boxed scores and a full comparator
+      // sort, repeated from the published schedule.
+      List<int> reference(
+        Float32List hidden,
+        math.Random random,
+        double temperature,
+        int topK,
+        double penalty,
+        List<List<int>> history,
+      ) {
+        final v = g.vocabSize;
+        final order = List.generate(g.codebooks, (i) => i)..shuffle(random);
+        final codes = List.filled(g.codebooks, -1);
+        for (var pass = 0; pass < 3; pass++) {
+          final logits = g.depthLogits(hidden, codes);
+          for (final cb in order.skip(pass * 4).take(4)) {
+            final seen = {for (final f in history) f[cb]};
+            final scores = List<double>.generate(v, (i) {
+              final s = logits[cb * v + i];
+              return seen.contains(i) ? (s < 0 ? s * penalty : s / penalty) : s;
+            });
+            final sorted = List.generate(v, (i) => i)
+              ..sort((a, b) {
+                final c = scores[b].compareTo(scores[a]);
+                return c == 0 ? a.compareTo(b) : c;
+              });
+            if (temperature == 0) {
+              codes[cb] = sorted.first;
+              continue;
+            }
+            final limit = math.min(topK, v), top = scores[sorted.first];
+            final probs = [
+              for (final i in sorted.take(limit))
+                math.exp((scores[i] - top) / temperature),
+            ];
+            var pick = random.nextDouble() * probs.fold(0.0, (a, b) => a + b);
+            codes[cb] = sorted[limit - 1];
+            for (var i = 0; i < limit; i++) {
+              pick -= probs[i];
+              if (pick <= 0) {
+                codes[cb] = sorted[i];
+                break;
+              }
+            }
+          }
+        }
+        return codes;
+      }
+
+      for (final (seed, temperature, topK, penalty) in [
+        (1, 0.4, g.vocabSize, 1.2),
+        (2, 0.0, g.vocabSize, 1.2),
+        (3, 1.0, 5, 1.0),
+        (4, 2.0, 1, 3.0),
+      ]) {
+        final a = <List<int>>[], b = <List<int>>[];
+        final ra = math.Random(seed), rb = math.Random(seed);
+        for (var i = 0; i < 12; i++) {
+          final h = Float32List.fromList([
+            for (var j = 0; j < 32; j++) math.sin(i + j * 0.7) * 2,
+          ]);
+          a.add(
+            g.sampleFrame(
+              h,
+              ra,
+              temperature: temperature,
+              topK: topK,
+              repetitionPenalty: penalty,
+              history: a,
+            ),
+          );
+          b.add(reference(h, rb, temperature, topK, penalty, b));
+          expect(a.last, b.last, reason: 'seed $seed frame $i');
+        }
+      }
+    });
+
+    test('depth logits for some codebooks equal the full rows', () {
+      final h = Float32List.fromList([for (var i = 0; i < 32; i++) i / 16 - 1]);
+      final codes = [3, -1, 7, -1, 0, -1, 1, -1, 2, -1, 5, -1];
+      final full = g.depthLogits(h, codes);
+      final some = g.depthLogits(h, codes, only: [9, 2, 4, 2]);
+      final v = g.vocabSize;
+      for (var cb = 0; cb < g.codebooks; cb++) {
+        final expected = [2, 4, 9].contains(cb)
+            ? full.sublist(cb * v, (cb + 1) * v)
+            : Float32List(v);
+        expect(some.sublist(cb * v, (cb + 1) * v), orderedEquals(expected));
+      }
+      expect(() => g.depthLogits(h, codes, only: [12]), throwsArgumentError);
+      expect(() => g.depthLogits(h, codes, only: [-1]), throwsArgumentError);
+    });
     test('sampling is seeded, reveals all codebooks and validates options', () {
       final h = Float32List(32);
       final a = g.sampleFrame(h, math.Random(1)),

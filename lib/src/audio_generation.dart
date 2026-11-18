@@ -16,10 +16,10 @@ final class _Matrix {
   final int rows, cols;
   final NativeQ4Matrix? native;
   final Float32List? values;
-  Float32List apply(Float32List x, int n) {
+  Float32List apply(Float32List x, int n, {bool int8Inputs = false}) {
     final out = Float32List(n * rows);
     if (native != null) {
-      native!.apply(x, out, n, int8Inputs: false);
+      native!.apply(x, out, n, int8Inputs: int8Inputs);
     } else {
       gemm(values!, x, out, rows, cols, n);
     }
@@ -100,7 +100,8 @@ final class _GraphState {
 }
 
 /// Published generation weights only; does not load the ASR encoder.
-/// All matrix blocks are retained exactly, with float activation inputs.
+/// All matrix blocks are retained exactly. Their products take float
+/// activation inputs unless [int8Inputs].
 final class Lfm3AudioGenerator {
   Lfm3AudioGenerator._(
     this._depth,
@@ -115,9 +116,17 @@ final class Lfm3AudioGenerator {
     this._heads,
     this.variant,
     this.sampling,
+    this.int8Inputs,
   );
 
-  factory Lfm3AudioGenerator.load(String mmproj) {
+  /// Loads the generation weights of [mmproj]. With [int8Inputs] the depth
+  /// decoder's and codec's Q4 products quantize their inputs to int8 per
+  /// block of 32 and use the CPU's integer dot products, as the language
+  /// model's CPU path does: speech generates about 1.4 times faster, and its
+  /// arithmetic is no longer the float reference's, so sampled codes and the
+  /// waveform differ (depth logits by about 1.4% relative L2). The output
+  /// heads, products of one row, keep float inputs.
+  factory Lfm3AudioGenerator.load(String mmproj, {bool int8Inputs = false}) {
     if (!NativeKernels.isLoaded) NativeKernels.load(null);
     final file = GgufFile.open(mmproj);
     final matrices = <String, _Matrix>{};
@@ -290,6 +299,7 @@ final class Lfm3AudioGenerator {
         heads,
         variant,
         sampling,
+        int8Inputs,
       );
     } catch (_) {
       for (final m in [...matrices.values, ...heads]) {
@@ -316,6 +326,10 @@ final class Lfm3AudioGenerator {
   final Map<String, _Matrix> _matrices;
   final List<_Matrix> _heads;
   final _streams = <LiquidCodecStream>{};
+
+  /// Whether the depth decoder's and codec's products take int8 inputs
+  /// (see [Lfm3AudioGenerator.load]).
+  final bool int8Inputs;
   bool _closed = false;
   void _open() {
     if (_closed) throw StateError('Audio generator is closed');
@@ -337,7 +351,7 @@ final class Lfm3AudioGenerator {
 
   Float32List _linear(String name, Float32List x, int n, {bool bias = false}) {
     final m = _matrices['$name.weight']!;
-    final out = m.apply(x, n);
+    final out = m.apply(x, n, int8Inputs: int8Inputs);
     if (bias) {
       final b = _floats['$name.bias']!;
       for (var i = 0; i < out.length; i++) {
@@ -493,10 +507,13 @@ final class Lfm3AudioGenerator {
 
   /// One MaskGIT pass: -1 marks a masked codebook, others are known codes.
   /// Returns [codebooks, vocabSize] logits. No random sampling occurs here.
+  /// With [only], just those codebooks' rows are computed and the others
+  /// stay zero: each row's arithmetic is the same either way.
   Float32List depthLogits(
     Float32List hidden,
     List<int> codes, {
     void Function(String, Float32List)? capture,
+    Iterable<int>? only,
   }) {
     _open();
     if (hidden.length != hiddenSize ||
@@ -504,6 +521,10 @@ final class Lfm3AudioGenerator {
         codes.length != codebooks ||
         codes.any((c) => c < -1 || c >= vocabSize)) {
       throw ArgumentError('invalid depth input');
+    }
+    final rows = only?.toSet() ?? {for (var cb = 0; cb < codebooks; cb++) cb};
+    if (rows.any((cb) => cb < 0 || cb >= codebooks)) {
+      throw ArgumentError('invalid depth codebooks');
     }
     final h = _depth.h;
     final input = _linear('a.gen.code.proj_in', hidden, 1, bias: true);
@@ -519,7 +540,7 @@ final class Lfm3AudioGenerator {
     capture?.call('embedding', Float32List.fromList(output));
     final logits = Float32List(codebooks * vocabSize),
         norms = _floats['a.gen.code.head_norm.weight']!;
-    for (var cb = 0; cb < codebooks; cb++) {
+    for (final cb in rows) {
       final row = Float32List.fromList(output.sublist(cb * h, (cb + 1) * h));
       final norm = _norm(
         row,
@@ -603,46 +624,123 @@ final class Lfm3AudioGenerator {
     final order = List.generate(codebooks, (i) => i)..shuffle(random);
     final codes = List.filled(codebooks, -1);
     for (var pass = 0; pass < 3; pass++) {
-      final logits = depthLogits(hidden, codes);
-      for (final cb in order.skip(pass * 4).take(4)) {
-        final seen = {for (final frame in history) frame[cb]};
-        final scores = List<double>.generate(vocabSize, (v) {
-          var score = logits[cb * vocabSize + v];
-          if (seen.contains(v)) {
-            score = score < 0
-                ? score * repetitionPenalty
-                : score / repetitionPenalty;
+      // Each pass samples four codebooks: only their heads are needed.
+      final sampled = order.skip(pass * 4).take(4).toList();
+      final logits = depthLogits(hidden, codes, only: sampled);
+      for (final cb in sampled) {
+        codes[cb] = _sampleCodebook(
+          logits,
+          cb,
+          history,
+          random,
+          temperature,
+          topK,
+          repetitionPenalty,
+        );
+      }
+    }
+    return codes;
+  }
+
+  /// Samples codebook [cb] from its row of [logits], penalizing codes seen
+  /// in [history]. Candidates are ordered by score, highest first, ties by
+  /// the lower code (double.compareTo's order, so -0.0 below 0.0); with a
+  /// temperature the top [topK] are weighted by exp((score - max) / t),
+  /// summed and walked in that order. A stable merge sort of integer keys
+  /// gives that order without boxing scores or calling a comparator.
+  int _sampleCodebook(
+    Float32List logits,
+    int cb,
+    List<List<int>> history,
+    math.Random random,
+    double temperature,
+    int topK,
+    double repetitionPenalty,
+  ) {
+    final n = vocabSize;
+    final seen = Uint8List(n);
+    for (final frame in history) {
+      seen[frame[cb]] = 1;
+    }
+    final scores = _scores.length == n ? _scores : (_scores = Float64List(n));
+    for (var v = 0; v < n; v++) {
+      var score = logits[cb * n + v].toDouble();
+      if (seen[v] == 1) {
+        score = score < 0
+            ? score * repetitionPenalty
+            : score / repetitionPenalty;
+      }
+      if (!score.isFinite) throw StateError('nonfinite depth logits');
+      scores[v] = score;
+    }
+    if (temperature == 0) {
+      var best = 0;
+      for (var v = 1; v < n; v++) {
+        if (scores[v].compareTo(scores[best]) > 0) best = v;
+      }
+      return best;
+    }
+    final order = _order(scores);
+    final limit = math.min(topK, n), maxScore = scores[order[0]];
+    final probs = Float64List(limit);
+    var total = 0.0;
+    for (var i = 0; i < limit; i++) {
+      probs[i] = math.exp((scores[order[i]] - maxScore) / temperature);
+    }
+    for (var i = 0; i < limit; i++) {
+      total = total + probs[i];
+    }
+    var pick = random.nextDouble() * total;
+    for (var i = 0; i < limit; i++) {
+      pick -= probs[i];
+      if (pick <= 0) return order[i];
+    }
+    return order[limit - 1];
+  }
+
+  Float64List _scores = Float64List(0);
+
+  /// The codes of [scores] from the highest score to the lowest, ties by
+  /// the lower code.
+  static Int32List _order(Float64List scores) {
+    final n = scores.length;
+    final bits = Int64List.view(Float64List.fromList(scores).buffer);
+    var keys = Int64List(n), codes = Int32List(n);
+    for (var v = 0; v < n; v++) {
+      final b = bits[v];
+      // double.compareTo's total order as signed integers, then reversed.
+      keys[v] = ~(b >= 0 ? b : b ^ 0x7FFFFFFFFFFFFFFF);
+      codes[v] = v;
+    }
+    var keys2 = Int64List(n), codes2 = Int32List(n);
+    for (var width = 1; width < n; width *= 2) {
+      for (var lo = 0; lo < n; lo += 2 * width) {
+        final mid = math.min(lo + width, n), hi = math.min(lo + 2 * width, n);
+        var i = lo, j = mid, k = lo;
+        while (i < mid && j < hi) {
+          if (keys[j] < keys[i]) {
+            keys2[k] = keys[j];
+            codes2[k++] = codes[j++];
+          } else {
+            keys2[k] = keys[i];
+            codes2[k++] = codes[i++];
           }
-          return score;
-        });
-        if (scores.any((v) => !v.isFinite)) {
-          throw StateError('nonfinite depth logits');
         }
-        final sorted = List.generate(vocabSize, (i) => i)
-          ..sort((a, b) {
-            final cmp = scores[b].compareTo(scores[a]);
-            return cmp == 0 ? a.compareTo(b) : cmp;
-          });
-        if (temperature == 0) {
-          codes[cb] = sorted.first;
-          continue;
+        while (i < mid) {
+          keys2[k] = keys[i];
+          codes2[k++] = codes[i++];
         }
-        final limit = math.min(topK, vocabSize),
-            maxScore = scores[sorted.first];
-        final probs = [
-          for (final i in sorted.take(limit))
-            math.exp((scores[i] - maxScore) / temperature),
-        ];
-        var pick = random.nextDouble() * probs.fold(0.0, (a, b) => a + b);
-        codes[cb] = sorted[limit - 1];
-        for (var i = 0; i < limit; i++) {
-          pick -= probs[i];
-          if (pick <= 0) {
-            codes[cb] = sorted[i];
-            break;
-          }
+        while (j < hi) {
+          keys2[k] = keys[j];
+          codes2[k++] = codes[j++];
         }
       }
+      final tk = keys;
+      keys = keys2;
+      keys2 = tk;
+      final tc = codes;
+      codes = codes2;
+      codes2 = tc;
     }
     return codes;
   }

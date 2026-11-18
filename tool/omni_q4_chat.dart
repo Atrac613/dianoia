@@ -5,6 +5,7 @@
 ///        `[--system=prompt] [--mode=text|audio|mixed] [--out=reply.wav]`
 ///        `[--video=clip.mp4 [--soundtrack] [--max-video-pixels=N]]`
 ///        `[--gpu] [--max-image-tokens=N] [--max-new-tokens=N] [--seed=0]`
+///        `[--int8-inputs]` (faster speech, no longer the float arithmetic)
 /// Audio clips are mono 16 kHz f32le PCM. Videos are decoded with ffmpeg
 /// (research only); --soundtrack also feeds the video's audio, interleaved
 /// with its frame groups. Parts are ordered: video, images, audio, then
@@ -32,12 +33,14 @@ Float32List _pcm(String path) {
 Future<void> main(List<String> args) async {
   final images = <String>[], clips = <String>[], positional = <String>[];
   final options = <String, String>{};
-  var gpu = false, soundtrack = false;
+  var gpu = false, soundtrack = false, int8 = false;
   for (final arg in args) {
     if (arg == '--gpu') {
       gpu = true;
     } else if (arg == '--soundtrack') {
       soundtrack = true;
+    } else if (arg == '--int8-inputs') {
+      int8 = true;
     } else if (arg.startsWith('--image=')) {
       images.add(arg.substring(8));
     } else if (arg.startsWith('--audio=')) {
@@ -190,7 +193,7 @@ Future<void> main(List<String> args) async {
   final maxNew = int.parse(options['max-new-tokens'] ?? '768');
   final generator = mode == AudioReplyMode.text
       ? null
-      : Lfm3AudioGenerator.load(mmproj);
+      : Lfm3AudioGenerator.load(mmproj, int8Inputs: int8);
   final model = await Lfm3Model.load(
     '$dir/language',
     maxSeq: prompt.ids.length + maxNew + 1,
@@ -217,10 +220,11 @@ Future<void> main(List<String> args) async {
       mode: mode,
       maxSlots: maxNew,
       seed: int.parse(options['seed'] ?? '0'),
-      feed: (id, embedding, {required logits}) => model.forward(
+      feed: (id, embedding, {required logits, meanwhile}) => model.forward(
         [id],
         computeLogits: logits,
         embeddingOverrides: {0: ?embedding},
+        meanwhile: meanwhile,
       ),
     );
     lap('decode_seconds');

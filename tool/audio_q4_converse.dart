@@ -1,5 +1,6 @@
 /// Voice conversation without opening audio devices. Input: mono 16 kHz f32le.
 /// `dart run tool/audio_q4_converse.dart <prepared-dir> <out-dir> <clip.f32>... [--gpu]`
+/// `[--int8-inputs]` (faster speech, no longer the float arithmetic)
 library;
 
 import 'dart:convert';
@@ -9,7 +10,8 @@ import 'package:dianoia/lab.dart';
 
 Future<void> main(List<String> args) async {
   final gpu = args.contains('--gpu');
-  final pos = args.where((a) => a != '--gpu').toList();
+  final int8 = args.contains('--int8-inputs');
+  final pos = args.where((a) => a != '--gpu' && a != '--int8-inputs').toList();
   if (pos.length < 3) {
     throw ArgumentError(
       'usage: audio_q4_converse.dart <prepared-dir> <out-dir> <clip.f32>... [--gpu]',
@@ -17,7 +19,10 @@ Future<void> main(List<String> args) async {
   }
   final dir = pos[0], out = Directory(pos[1])..createSync(recursive: true);
   NativeKernels.load(null);
-  final generator = Lfm3AudioGenerator.load(speechMmprojIn(dir));
+  final generator = Lfm3AudioGenerator.load(
+    speechMmprojIn(dir),
+    int8Inputs: int8,
+  );
   final encoder = Lfm3AudioEncoder.load(speechMmprojIn(dir));
   Lfm3Model? model;
   AudioConversationSession? session;

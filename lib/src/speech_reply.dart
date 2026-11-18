@@ -35,7 +35,10 @@ final class SpeechReply {
 /// text), so `model.logits` and `model.lastHiddenState` describe the first
 /// slot. [feed] forwards one generated slot — a token, or `<|audio_out|>`
 /// with its feedback embedding — and computes logits when asked; callers use
-/// it to record history. [check] may throw to cancel between slots.
+/// it to record history. When it gets `meanwhile`, decoding the frame just
+/// sampled to audio, it should pass it to [Lfm3Model.forward] so the codec
+/// runs on the CPU while the GPU computes; if it does not call it, the reply
+/// runs it after [feed]. [check] may throw to cancel between slots.
 ///
 /// Follows the upstream schedule: greedy text slots, sampled speech frames,
 /// six/twelve alternation in interleaved mode, and a frame with any EOS code
@@ -51,6 +54,7 @@ Future<SpeechReply> decodeSpeechReply({
     int id,
     Float32List? embedding, {
     required bool logits,
+    void Function()? meanwhile,
   })
   feed,
   Lfm3AudioGenerator? generator,
@@ -114,7 +118,7 @@ Future<SpeechReply> decodeSpeechReply({
       check?.call();
       late final int token;
       Float32List? embedding;
-      List<int>? codes;
+      List<int>? codes, decode;
       if (state.nextIsAudio) {
         final g = generator!;
         codes = g.sampleFrame(model.lastHiddenState, random, history: history);
@@ -129,7 +133,7 @@ Future<SpeechReply> decodeSpeechReply({
           }
           frames++;
           history.add(codes);
-          emit(codec!.add(codes));
+          decode = codes;
         }
         state.acceptAudio(eos: eos);
         token = audioOut;
@@ -155,7 +159,19 @@ Future<SpeechReply> decodeSpeechReply({
       }
       check?.call();
       onSlot?.call(token, codes == null ? null : List.unmodifiable(codes));
-      await feed(token, embedding, logits: !state.finished);
+      var decoded = false;
+      void decodeFrame() {
+        decoded = true;
+        emit(codec!.add(decode!));
+      }
+
+      await feed(
+        token,
+        embedding,
+        logits: !state.finished,
+        meanwhile: decode == null ? null : decodeFrame,
+      );
+      if (decode != null && !decoded) decodeFrame();
       generated++;
     }
     if (!state.finished) {

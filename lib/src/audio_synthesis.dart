@@ -172,13 +172,16 @@ final class AudioSynthesizer {
         frames++;
         onCodes?.call(List.unmodifiable(codes));
         _check();
-        emit(codec.add(codes));
-        _check();
         if (i + 1 < maxFrames) {
+          // The codec decodes this frame on the CPU while the GPU feeds it
+          // back to the language model.
           await model.forward(
             [output],
             embeddingOverrides: {0: generator.feedback(codes)},
+            meanwhile: () => emit(codec.add(codes)),
           );
+        } else {
+          emit(codec.add(codes));
         }
         await Future<void>.delayed(Duration.zero);
         _check();

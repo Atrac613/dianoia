@@ -1,5 +1,29 @@
 ## Unreleased
 
+- The speech sampler orders each codebook's candidates with a stable merge
+  sort of integer keys instead of a comparator sort of boxed scores, with
+  the same order and arithmetic, so the same codes: a frame's sampling takes
+  24 ms instead of 28 on an M2 Max. On a cool iPhone 15 Pro Max int8 speech
+  now generates at 1.00-1.03 times real time.
+- `Lfm3Model.forward` takes `meanwhile`, CPU work run while the last
+  chunk computes on the GPU (the GPU layer's new `lab_gpu_wait` lets a
+  command buffer be committed now and waited for later). Speech synthesis
+  and spoken replies decode each frame to audio that way while the frame is
+  fed back, with the same audio as before; `decodeSpeechReply`'s `feed`
+  gets the frame's decoding as `meanwhile`. On an iPhone 15 Pro Max int8
+  speech takes 1.05-1.10 times real time instead of 1.14.
+- Faster speech generation. `Lfm3AudioGenerator.load`'s `int8Inputs`
+  quantizes the depth decoder's and codec's product inputs to int8 and uses
+  the CPU's integer dot products, as the language model's CPU path does;
+  the example app and the `--int8-inputs` flag of the audio and Omni tools
+  use it. Speech then differs from the float reference (depth logits by
+  about 1.4% relative L2); English and Japanese test sentences synthesized
+  with it transcribe back to the same text. On an M2 Max speech generates
+  at 0.6 times real time instead of 0.87; on an iPhone 15 Pro Max at 1.14
+  times real time instead of 1.7-3.0 (the device bench's new `speech`
+  mode). The depth decoder also applies
+  only the output heads of the four codebooks each pass samples, which
+  leaves every frame unchanged.
 - Image conversations reuse language state between turns. `Lfm3Model`'s
   `prefill` and `forward` take `embeddingKeys` for embedding overrides, and
   `prefill` reuses an override position only where it was fed under an

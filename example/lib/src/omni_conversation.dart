@@ -297,11 +297,12 @@ final class OmniResponder {
       maxSlots: maxSlots,
       check: check,
       onText: onText,
-      feed: (id, embedding, {required logits}) async {
+      feed: (id, embedding, {required logits, meanwhile}) async {
         await model.forward(
           [id],
           computeLogits: logits,
           embeddingOverrides: {0: ?embedding},
+          meanwhile: meanwhile,
         );
         // A timer, not a microtask: it lets a stop or cancel arrive.
         await Future<void>.delayed(Duration.zero);
