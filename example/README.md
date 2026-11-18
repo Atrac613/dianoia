@@ -118,7 +118,7 @@ continues until you stop. The language context restarts at audio-block
 boundaries before about 30 seconds per context, or earlier if its token budget
 would be exceeded. The microphone, frontend and audio encoder keep their
 streaming states. Text already shown is retained, with continued text in a new
-paragraph. The one-second queue/backpressure limit remains in effect. No full
+paragraph. Both live modes allow up to five seconds of queued audio. No full
 microphone recording is saved or retained.
 
 For live translation, select **Live translation (English)**, choose a target
@@ -173,10 +173,10 @@ interruption or playback error. Generated speech stays on the device; the
 preview does not upload it or provide permanent recording/export storage.
 
 `record` supplies mono PCM16 at 16 kHz. The UI converts it to owned 80 ms float
-chunks and permits only one inference request in flight. A one-second queue
-limit stops/discards capture if the worker cannot keep up; samples are never
-silently dropped. Models, hashing, encoding and incremental prefill live in a
-worker isolate. Its lifetime shares a gate with text/VL workers so a model
+chunks and permits only one inference request in flight. Capture stops and is
+discarded if queued audio exceeds five seconds in a live mode or one second
+in another recording mode. Models, hashing, encoding and incremental prefill
+live in a worker isolate. It shares a gate with text/VL workers so a model
 switch waits for the previous isolate to release GPU resources and exit.
 
 Platform setup follows the [record 7.1.2 guide](https://pub.dev/packages/record/versions/7.1.2):
@@ -224,25 +224,23 @@ JPEG or HEIC photo, then either type a question and tap **Ask in text**, or tap
 **Record question**, speak, and **Stop and reply**; a typed question is sent
 along with a recording. With **Spoken reply** on, the answer is interleaved
 text and speech and plays after generation; otherwise it is text. The photo
-is reduced to at most 256 image tokens and encoded on the CPU once, which
-takes a few seconds. Ask again (**Follow up in text** or another recording)
-to continue: every question re-renders the whole conversation with the
-official template, replaying the photo's encoded rows, earlier spoken
-questions and earlier answers as text, so follow-ups skip the image encoder
-and the **Spoken reply** setting may change between them. A new photo or
-**New conversation** starts over; a conversation that no longer fits the
-context asks for a new one.
+is reduced to at most 256 image tokens and encoded once. The vision encoder's
+matrix products run on the GPU when the language model uses it. Ask again
+(**Follow up in text** or another recording) to continue. Follow-ups reuse
+the encoded photo, earlier spoken questions and the language state for the
+matching conversation prefix. You can change **Spoken reply** between turns.
+A new photo or **New conversation** starts over. If the conversation exceeds
+the model's context, start a new one.
 
 **Text chat** in the title bar opens the same bundle in the text chat used
 by the other language models. Model workers run one at a time, so the
 preview's worker closes first and loads the model again when you come back.
 In the chat, type messages, attach a PNG, JPEG or HEIC image to
-any of them, stop a reply, or start a new chat. Replies are text only. Like
-photo questions, every message re-renders the whole conversation, replaying
-earlier images from their encoded rows, so an image is encoded once. The chat
-and the preview share one installed bundle and one sideload folder. A typed
-message or question that spells a control token such as `<|im_end|>` is
-refused rather than tokenized as one.
+any of them, stop a reply, or start a new chat. Replies are text only. The chat
+encodes each attached image once and reuses the encoded rows and matching
+language state on follow-ups. The chat and the preview share one installed
+bundle and one sideload folder. The app rejects typed messages and questions
+that contain control tokens such as `<|im_end|>`.
 
 **Transcription and TTS** and **Voice conversation (English)** behave as in
 the audio preview, with Omni's prompt conventions and sampling. Choose
@@ -375,11 +373,10 @@ retains source downloads for the next attempt. QAD uses a separate model ID
 and directory from PTQ Q4 and Q8 installations.
 
 Camera photos are downscaled by the model processor to an example-specific
-budget of 256 image tokens. The library default remains 1024; this smaller
-budget reduces the work of the current CPU reference vision encoder, with
-less fine detail available for small text. Before the first reply token, the
-chat shows image reading, encoder-stage progress, and reply preparation. An
-empty model response is reported as an error instead of leaving a spinner.
+budget of 256 image tokens. The library default is 1024. The smaller budget
+reduces encoder work and may lose fine detail in small text. Before the first
+reply token, the chat shows image reading, encoder-stage progress, and reply
+preparation. The chat reports an error if the model returns an empty response.
 
 The VL chat's **Attach image** button opens the native file picker for one
 PNG, JPEG or HEIC image (up to 32 MiB). HEIC and HEIF photos, the iPhone
