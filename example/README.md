@@ -126,9 +126,10 @@ language under **Translate into** (Japanese, Chinese, Korean, French, Spanish
 or German) and tap **Start live translation**. LiveASR runs exactly as in live
 transcription; each English sentence it finishes is translated as text and
 shown under its source, while the sentence still being spoken appears in
-italics. A sentence is final once its end mark is followed by another word or
-by a context rollover; a long stretch without punctuation is cut at a word
-after 200 characters. **Stop live translation** translates the last sentence.
+italics. A sentence is final when its end mark is followed by another word
+or the recognized text stays unchanged for two seconds. A context rollover
+also finalizes the preceding text. Long sentences are split at word
+boundaries. **Stop live translation** translates any remaining text.
 Translations follow about a sentence behind the speech and may still arrive
 after stop. **Cancel recording**, backgrounding during capture or route exit
 discards the transcript and its translations.
@@ -244,10 +245,13 @@ message or question that spells a control token such as `<|im_end|>` is
 refused rather than tokenized as one.
 
 **Transcription and TTS** and **Voice conversation (English)** behave as in
-the audio preview, with Omni's prompt conventions and sampling. **Live
-transcription** is offered for LFM3-Audio only. A prepared research folder
-from `dart run tool/prepare_omni_q4.dart` can be chosen or sideloaded under
-the `LFM3-Omni-2B-Q4` folder, with the layout `language/`,
+the audio preview, with Omni's prompt conventions and sampling. Choose
+**Live transcription (English)** or **Live translation (English)** under
+**Audio mode** for the same live workflows. These modes use Omni's installed
+weights with LFM3-Audio's live protocol. The translator loads Omni's language
+backbone, so live translation needs no additional download. A prepared
+research folder from `dart run tool/prepare_omni_q4.dart` can be chosen or
+sideloaded under the `LFM3-Omni-2B-Q4` folder, with the layout `language/`,
 `mmproj-LFM3-Omni-2B-Q4_0.gguf`, `omni_config.json` and
 `processor_config.json`. See the [Omni notes](../docs/lfm3_omni_support.md).
 

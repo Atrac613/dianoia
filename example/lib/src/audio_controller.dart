@@ -150,10 +150,7 @@ final class AudioController extends ChangeNotifier {
 
   void setTask(AudioTask value) {
     if (phase != AudioPhase.ready || _closing != null) return;
-    if (((value == AudioTask.liveTranscription ||
-                value == AudioTask.liveTranslation) &&
-            !model.supportsLiveTranscription) ||
-        (value == AudioTask.photoQuestion && !model.supportsPhotoQuestions)) {
+    if (value == AudioTask.photoQuestion && !model.supportsPhotoQuestions) {
       return;
     }
     if (_task != value) {

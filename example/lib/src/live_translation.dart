@@ -33,8 +33,7 @@ const translationTargets = [
   'German',
 ];
 
-/// One finished sentence of the transcript and its translation, which is
-/// null until it arrives and partial while it streams.
+/// One finished sentence of the transcript and its streamed translation.
 final class TranslatedSegment {
   TranslatedSegment(this.source);
   final String source;
@@ -47,15 +46,19 @@ final class TranslatedSegment {
 /// LiveASR appends to its transcript and only the end of the last word can
 /// still grow, so a sentence is final once its end mark is followed by
 /// another word, or by the line break LiveASR adds when it restarts a
-/// language context. A long stretch without punctuation is cut at a word
-/// boundary so the translation does not stall.
+/// language context. A caller can also finalize a punctuated tail after a
+/// pause. Long sentences are cut at word boundaries to fit the translator.
 final class SentenceSplitter {
   SentenceSplitter({this.maxLength = 200});
 
   /// Characters after which an unpunctuated stretch is cut at a space.
   final int maxLength;
 
-  static final _end = RegExp(r'''[.!?…。！？]["')\]]*(?=\s+\S)|\n''');
+  static const _terminator = r'''[.!?…。！？]["'’”\])]*''';
+  static final _end = RegExp('$_terminator${r'(?=\s+\S)|\n'}');
+  static final _trailingEnd = RegExp('$_terminator${r'$'}');
+
+  bool endsSentence(String text) => _trailingEnd.hasMatch(text);
 
   /// The sentences of [text] after offset [from] that are final, and the
   /// offset after them. With [flush] the rest of the text is final too.
@@ -68,15 +71,19 @@ final class SentenceSplitter {
       start = end;
     }
 
+    void cutLong(int end) {
+      while (end - start > maxLength) {
+        final cut = text.lastIndexOf(' ', start + maxLength);
+        if (cut <= start) break;
+        add(cut);
+      }
+    }
+
     for (final match in _end.allMatches(text, start)) {
+      cutLong(match.end);
       add(match.end);
     }
-    while (text.length - start > maxLength) {
-      // Only a space followed by more text marks a whole word.
-      final cut = text.lastIndexOf(' ', start + maxLength);
-      if (cut <= start) break;
-      add(cut);
-    }
+    cutLong(text.length);
     if (flush) add(text.length);
     return (sentences, start);
   }
@@ -90,6 +97,7 @@ final class LiveTranslator extends ChangeNotifier {
     : _splitter = splitter ?? SentenceSplitter();
   final TranslationBackend _backend;
   final SentenceSplitter _splitter;
+  static const _sentencePause = Duration(seconds: 2);
 
   String target = translationTargets.first;
 
@@ -100,9 +108,11 @@ final class LiveTranslator extends ChangeNotifier {
   List<TranslatedSegment> get segments => List.unmodifiable(_segments);
   final _queue = ListQueue<TranslatedSegment>();
   Future<void>? _translating, _loading;
+  Timer? _pause;
+  String _latest = '';
   String? _loadedFrom;
   int _consumed = 0, _epoch = 0;
-  bool _disposed = false;
+  bool _closed = false, _disposed = false;
 
   bool get busy => _translating != null;
 
@@ -146,6 +156,8 @@ final class LiveTranslator extends ChangeNotifier {
   /// Forgets the earlier transcript and its translations.
   Future<void> reset() async {
     _epoch++;
+    _pause?.cancel();
+    _latest = '';
     _segments.clear();
     _queue.clear();
     _consumed = 0;
@@ -157,22 +169,31 @@ final class LiveTranslator extends ChangeNotifier {
     if (running != null) await _backend.cancel();
   }
 
-  /// Takes the new final sentences of [transcript]; with [flush] (after the
-  /// recording stopped) its last sentence as well.
+  /// Takes new final sentences and settles a punctuated tail after a pause
+  /// in recognized text. With [flush], takes the whole tail immediately.
   void update(String transcript, {bool flush = false}) {
+    if (_closed) return;
+    if (!flush && transcript == _latest) return;
+    _pause?.cancel();
+    _latest = transcript;
     final (sentences, consumed) = _splitter.take(
       transcript,
       _consumed,
       flush: flush,
     );
     _consumed = consumed;
+    if (!flush && _splitter.endsSentence(unfinished(transcript))) {
+      _pause = Timer(_sentencePause, () => update(transcript, flush: true));
+    }
     if (sentences.isEmpty) return;
     for (final sentence in sentences) {
       final segment = TranslatedSegment(sentence);
       _segments.add(segment);
       _queue.add(segment);
     }
-    _translating ??= _drain(_epoch);
+    // Publish the drain before a backend can synchronously notify or throw.
+    final epoch = _epoch;
+    _translating ??= Future.microtask(() => _drain(epoch));
     _notify();
   }
 
@@ -181,7 +202,7 @@ final class LiveTranslator extends ChangeNotifier {
       while (_queue.isNotEmpty && epoch == _epoch && !_disposed) {
         final segment = _queue.removeFirst();
         try {
-          final text = await _backend.translate(
+          final result = await _backend.translate(
             segment.source,
             target,
             onText: (text) {
@@ -191,8 +212,12 @@ final class LiveTranslator extends ChangeNotifier {
             },
           );
           if (epoch != _epoch) return;
+          final text = result.trim();
+          if (text.isEmpty) {
+            throw StateError('The translator returned no text');
+          }
           segment
-            ..translation = text.trim()
+            ..translation = text
             ..done = true;
         } catch (e) {
           if (epoch != _epoch) return;
@@ -213,8 +238,11 @@ final class LiveTranslator extends ChangeNotifier {
 
   /// Stops translating and closes the model's worker.
   Future<void> close() async {
+    _closed = true;
     _epoch++;
+    _pause?.cancel();
     _queue.clear();
+    _translating = null;
     await _backend.close();
   }
 

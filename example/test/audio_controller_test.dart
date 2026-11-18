@@ -331,9 +331,7 @@ void main() {
       expect(omni.phase, AudioPhase.ready);
     });
 
-    test('live transcription is offered only for LFM3-Audio', () {
-      omni.setTask(AudioTask.liveTranscription);
-      expect(omni.task, AudioTask.transcription);
+    test('photo questions are offered only for LFM3-Omni', () {
       audio.setTask(AudioTask.photoQuestion);
       expect(audio.task, AudioTask.transcription);
     });
@@ -397,21 +395,6 @@ void main() {
     tearDown(() async {
       await live.close();
       live.dispose();
-    });
-
-    test('is offered only for LFM3-Audio', () async {
-      final omni = AudioController(
-        model: SpeechModel.omni,
-        backend: backend,
-        microphone: mic,
-        player: player,
-        translation: translation,
-      );
-      await omni.load('/prepared');
-      omni.setTask(AudioTask.liveTranslation);
-      expect(omni.task, AudioTask.transcription);
-      await omni.close();
-      omni.dispose();
     });
 
     test(

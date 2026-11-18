@@ -233,8 +233,7 @@ class AudioTranscriptionView extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Experimental · '
-                    '${a.model.supportsLiveTranscription ? 'Live transcription continues until stopped. Other recording modes allow' : 'Recordings allow'} '
-                    'up to 30 seconds. '
+                    'Live modes continue until stopped. Other recording modes allow up to 30 seconds. '
                     '${a.model.supportsPhotoQuestions ? 'Ask about a photo by voice or text, or enter' : 'Or enter'} '
                     'text to generate speech. '
                     '${a.model.supportsPhotoQuestions ? 'Audio and photos stay' : 'Audio stays'} on this device. '
@@ -338,16 +337,14 @@ class AudioTranscriptionView extends StatelessWidget {
                         value: AudioTask.conversation,
                         child: Text('Voice conversation (English)'),
                       ),
-                      if (a.model.supportsLiveTranscription)
-                        const DropdownMenuItem(
-                          value: AudioTask.liveTranscription,
-                          child: Text('Live transcription (English)'),
-                        ),
-                      if (a.model.supportsLiveTranscription)
-                        const DropdownMenuItem(
-                          value: AudioTask.liveTranslation,
-                          child: Text('Live translation (English)'),
-                        ),
+                      const DropdownMenuItem(
+                        value: AudioTask.liveTranscription,
+                        child: Text('Live transcription (English)'),
+                      ),
+                      const DropdownMenuItem(
+                        value: AudioTask.liveTranslation,
+                        child: Text('Live translation (English)'),
+                      ),
                     ],
                     onChanged: ready ? (value) => a.setTask(value!) : null,
                   ),

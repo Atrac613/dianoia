@@ -535,9 +535,6 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                   1) {
                 throw ArgumentError('Choose one audio input mode');
               }
-              if (liveInput && !kind.supportsLiveTranscription) {
-                throw UnsupportedError('LiveASR needs LFM3-Audio');
-              }
               if (recordingQuestion) {
                 // Rows are kept until the question is asked.
               } else if (liveInput) {
@@ -545,6 +542,8 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                     options['language'] != 'English') {
                   throw ArgumentError('LiveASR supports English only');
                 }
+                // Both bundles use the same LiveASR protocol with their own
+                // encoder and language weights.
                 live = await Lfm3LiveTranscriber.start(
                   model!,
                   tokenizer!,
@@ -571,6 +570,7 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                   hiddenSize: encoder!.config.projectionSize,
                   language: options['language'] as String?,
                   reservedTokens: _maxTranscriptTokens,
+                  variant: encoder!.config.variant,
                 );
               }
               check(version);
