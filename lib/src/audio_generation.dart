@@ -628,44 +628,119 @@ final class Lfm3AudioGenerator {
       final sampled = order.skip(pass * 4).take(4).toList();
       final logits = depthLogits(hidden, codes, only: sampled);
       for (final cb in sampled) {
-        final seen = {for (final frame in history) frame[cb]};
-        final scores = List<double>.generate(vocabSize, (v) {
-          var score = logits[cb * vocabSize + v];
-          if (seen.contains(v)) {
-            score = score < 0
-                ? score * repetitionPenalty
-                : score / repetitionPenalty;
+        codes[cb] = _sampleCodebook(
+          logits,
+          cb,
+          history,
+          random,
+          temperature,
+          topK,
+          repetitionPenalty,
+        );
+      }
+    }
+    return codes;
+  }
+
+  /// Samples codebook [cb] from its row of [logits], penalizing codes seen
+  /// in [history]. Candidates are ordered by score, highest first, ties by
+  /// the lower code (double.compareTo's order, so -0.0 below 0.0); with a
+  /// temperature the top [topK] are weighted by exp((score - max) / t),
+  /// summed and walked in that order. A stable merge sort of integer keys
+  /// gives that order without boxing scores or calling a comparator.
+  int _sampleCodebook(
+    Float32List logits,
+    int cb,
+    List<List<int>> history,
+    math.Random random,
+    double temperature,
+    int topK,
+    double repetitionPenalty,
+  ) {
+    final n = vocabSize;
+    final seen = Uint8List(n);
+    for (final frame in history) {
+      seen[frame[cb]] = 1;
+    }
+    final scores = _scores.length == n ? _scores : (_scores = Float64List(n));
+    for (var v = 0; v < n; v++) {
+      var score = logits[cb * n + v].toDouble();
+      if (seen[v] == 1) {
+        score = score < 0
+            ? score * repetitionPenalty
+            : score / repetitionPenalty;
+      }
+      if (!score.isFinite) throw StateError('nonfinite depth logits');
+      scores[v] = score;
+    }
+    if (temperature == 0) {
+      var best = 0;
+      for (var v = 1; v < n; v++) {
+        if (scores[v].compareTo(scores[best]) > 0) best = v;
+      }
+      return best;
+    }
+    final order = _order(scores);
+    final limit = math.min(topK, n), maxScore = scores[order[0]];
+    final probs = Float64List(limit);
+    var total = 0.0;
+    for (var i = 0; i < limit; i++) {
+      probs[i] = math.exp((scores[order[i]] - maxScore) / temperature);
+    }
+    for (var i = 0; i < limit; i++) {
+      total = total + probs[i];
+    }
+    var pick = random.nextDouble() * total;
+    for (var i = 0; i < limit; i++) {
+      pick -= probs[i];
+      if (pick <= 0) return order[i];
+    }
+    return order[limit - 1];
+  }
+
+  Float64List _scores = Float64List(0);
+
+  /// The codes of [scores] from the highest score to the lowest, ties by
+  /// the lower code.
+  static Int32List _order(Float64List scores) {
+    final n = scores.length;
+    final bits = Int64List.view(Float64List.fromList(scores).buffer);
+    var keys = Int64List(n), codes = Int32List(n);
+    for (var v = 0; v < n; v++) {
+      final b = bits[v];
+      // double.compareTo's total order as signed integers, then reversed.
+      keys[v] = ~(b >= 0 ? b : b ^ 0x7FFFFFFFFFFFFFFF);
+      codes[v] = v;
+    }
+    var keys2 = Int64List(n), codes2 = Int32List(n);
+    for (var width = 1; width < n; width *= 2) {
+      for (var lo = 0; lo < n; lo += 2 * width) {
+        final mid = math.min(lo + width, n), hi = math.min(lo + 2 * width, n);
+        var i = lo, j = mid, k = lo;
+        while (i < mid && j < hi) {
+          if (keys[j] < keys[i]) {
+            keys2[k] = keys[j];
+            codes2[k++] = codes[j++];
+          } else {
+            keys2[k] = keys[i];
+            codes2[k++] = codes[i++];
           }
-          return score;
-        });
-        if (scores.any((v) => !v.isFinite)) {
-          throw StateError('nonfinite depth logits');
         }
-        final sorted = List.generate(vocabSize, (i) => i)
-          ..sort((a, b) {
-            final cmp = scores[b].compareTo(scores[a]);
-            return cmp == 0 ? a.compareTo(b) : cmp;
-          });
-        if (temperature == 0) {
-          codes[cb] = sorted.first;
-          continue;
+        while (i < mid) {
+          keys2[k] = keys[i];
+          codes2[k++] = codes[i++];
         }
-        final limit = math.min(topK, vocabSize),
-            maxScore = scores[sorted.first];
-        final probs = [
-          for (final i in sorted.take(limit))
-            math.exp((scores[i] - maxScore) / temperature),
-        ];
-        var pick = random.nextDouble() * probs.fold(0.0, (a, b) => a + b);
-        codes[cb] = sorted[limit - 1];
-        for (var i = 0; i < limit; i++) {
-          pick -= probs[i];
-          if (pick <= 0) {
-            codes[cb] = sorted[i];
-            break;
-          }
+        while (j < hi) {
+          keys2[k] = keys[j];
+          codes2[k++] = codes[j++];
         }
       }
+      final tk = keys;
+      keys = keys2;
+      keys2 = tk;
+      final tc = codes;
+      codes = codes2;
+      codes2 = tc;
     }
     return codes;
   }

@@ -1,5 +1,10 @@
 ## Unreleased
 
+- The speech sampler orders each codebook's candidates with a stable merge
+  sort of integer keys instead of a comparator sort of boxed scores, with
+  the same order and arithmetic, so the same codes: a frame's sampling takes
+  24 ms instead of 28 on an M2 Max. On a cool iPhone 15 Pro Max int8 speech
+  now generates at 1.00-1.03 times real time.
 - `Lfm3Model.forward` takes `meanwhile`, CPU work run while the last
   chunk computes on the GPU (the GPU layer's new `lab_gpu_wait` lets a
   command buffer be committed now and waited for later). Speech synthesis
