@@ -1,10 +1,19 @@
-/// The subset of LFM3's config.json the engine implements.
+/// The subset of a text model's config.json the engine implements.
+///
+/// The engine runs one family of decoder layers: a mixer (a gated short
+/// convolution or grouped-query attention with QK-norm and RoPE) and a
+/// SwiGLU FFN, each behind an RMSNorm and optionally followed by another
+/// (sandwich norms). [TextModelConfig.architecture] names the checkpoint
+/// family whose config.json and tensor names were read.
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
 enum LayerType { conv, fullAttention, slidingAttention }
+
+/// The checkpoint families the engine reads.
+enum ModelArchitecture { lfm3 }
 
 final class RopeSpec {
   const RopeSpec(this.theta, this.partialRotaryFactor);
@@ -15,8 +24,12 @@ final class RopeSpec {
   final double partialRotaryFactor;
 }
 
-final class Lfm3Config {
-  Lfm3Config._({
+/// Older name of [TextModelConfig], from when LFM3 was the only family.
+typedef Lfm3Config = TextModelConfig;
+
+final class TextModelConfig {
+  TextModelConfig._({
+    required this.architecture,
     required this.hiddenSize,
     required this.intermediateSize,
     required this.numHeads,
@@ -30,18 +43,19 @@ final class Lfm3Config {
     required this.fullRope,
     required this.slidingRope,
     required this.sandwichNorm,
-    required this.eosTokenId,
+    required this.attentionOutputGate,
+    required this.eosTokenIds,
   });
 
-  factory Lfm3Config.load(String modelDir) {
-    return Lfm3Config.fromJson(
+  factory TextModelConfig.load(String modelDir) {
+    return TextModelConfig.fromJson(
       jsonDecode(File('$modelDir/config.json').readAsStringSync())
           as Map<String, Object?>,
     );
   }
 
   /// Parses a standalone text configuration, including a VL text_config.
-  factory Lfm3Config.fromJson(Map<String, Object?> json) {
+  factory TextModelConfig.fromJson(Map<String, Object?> json) {
     T field<T>(String key) {
       final value = json[key];
       if (value is! T) {
@@ -88,7 +102,8 @@ final class Lfm3Config {
     }
 
     final eos = json['eos_token_id'];
-    return Lfm3Config._(
+    return TextModelConfig._(
+      architecture: ModelArchitecture.lfm3,
       hiddenSize: field<int>('hidden_size'),
       intermediateSize: field<int>('intermediate_size'),
       numHeads: field<int>('num_attention_heads'),
@@ -102,10 +117,14 @@ final class Lfm3Config {
       fullRope: ropeFor('full_attention'),
       slidingRope: ropeFor('sliding_attention'),
       sandwichNorm: field<bool>('use_sandwich_norm'),
-      eosTokenId: eos is List ? eos.first as int : eos as int,
+      attentionOutputGate: true,
+      eosTokenIds: List.unmodifiable(
+        eos is List ? eos.cast<int>() : [eos as int],
+      ),
     );
   }
 
+  final ModelArchitecture architecture;
   final int hiddenSize;
   final int intermediateSize;
   final int numHeads;
@@ -119,7 +138,18 @@ final class Lfm3Config {
   final RopeSpec fullRope;
   final RopeSpec slidingRope;
   final bool sandwichNorm;
-  final int eosTokenId;
+
+  /// Whether attention layers scale each head's output by
+  /// sigmoid(gate_proj(x)) before o_proj.
+  final bool attentionOutputGate;
+
+  /// Tokens that end a reply, the first being config.json's own.
+  final List<int> eosTokenIds;
+
+  /// The first of [eosTokenIds].
+  int get eosTokenId => eosTokenIds.first;
+
+  bool isEos(int token) => eosTokenIds.contains(token);
 
   int get numLayers => layerTypes.length;
   int get kvDim => numKvHeads * headDim;

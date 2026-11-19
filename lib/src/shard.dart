@@ -124,7 +124,7 @@ final class LayerShard {
     if ((q8Cache != null || q8Built != null) && shards != 1) {
       throw ArgumentError('the Q8 cache holds whole matrices: one shard only');
     }
-    final c = Lfm3Config.load(modelDir);
+    final c = TextModelConfig.load(modelDir);
     final h = c.hiddenSize;
     final hd = c.headDim;
     final group = c.numHeads ~/ c.numKvHeads;
@@ -348,7 +348,7 @@ final class LayerShard {
     }
   }
 
-  final Lfm3Config config;
+  final TextModelConfig config;
   final int maxSeq;
   final int maxChunk;
   final List<_ConvShard?> _conv;

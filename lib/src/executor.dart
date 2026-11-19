@@ -147,7 +147,7 @@ final class PooledExecutor implements LayerExecutor {
   }) async {
     final replies = ReceivePort();
     final pool = PooledExecutor._(
-      Lfm3Config.load(modelDir),
+      TextModelConfig.load(modelDir),
       workers,
       replies,
       maxChunk,
@@ -205,7 +205,7 @@ final class PooledExecutor implements LayerExecutor {
     return pool;
   }
 
-  final Lfm3Config _config;
+  final TextModelConfig _config;
   final int _shards;
   final ReceivePort _replies;
   final int _maxChunk;

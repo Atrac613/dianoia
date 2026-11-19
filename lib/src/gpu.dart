@@ -400,7 +400,7 @@ final class GpuForward {
   factory GpuForward.create({
     String? libPath,
     required String modelDir,
-    required Lfm3Config config,
+    required TextModelConfig config,
     required Q8Cache cache,
     required int maxSeq,
     required int maxChunk,
@@ -738,7 +738,7 @@ final class GpuForward {
   int get weightSegments => _segments;
   int _segments = 0;
 
-  final Lfm3Config config;
+  final TextModelConfig config;
   final int maxSeq;
 
   /// Most tokens one [forward] call takes.

@@ -94,7 +94,7 @@ void importVlBackbone(String modelDir, String outDir) {
 }
 
 /// Canonical language tensor names and shapes, shared by import and packing.
-Map<String, List<int>> lfm3LanguageTensorShapes(Lfm3Config c) {
+Map<String, List<int>> lfm3LanguageTensorShapes(TextModelConfig c) {
   final h = c.hiddenSize;
   final shapes = <String, List<int>>{
     'model.embed_tokens.weight': [c.vocabSize, h],
@@ -161,7 +161,7 @@ void writeVlBackboneIdentity(String modelDir, String backboneDir) {
 /// Each native allocation is released immediately after it is written.
 void buildVlBackboneCache(String backboneDir, {required WeightFormat weights}) {
   if (!weights.isNative) throw ArgumentError('expected Q8 or Q4');
-  final shapes = lfm3LanguageTensorShapes(Lfm3Config.load(backboneDir));
+  final shapes = lfm3LanguageTensorShapes(TextModelConfig.load(backboneDir));
   final tensors = <String, (String, List<int>)>{};
   for (final e in shapes.entries.where((e) => e.value.length == 2)) {
     final name =

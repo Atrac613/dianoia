@@ -53,7 +53,7 @@ Future<void> packVlBundle(
   if (!weights.isNative) throw ArgumentError('VL packing needs Q8 or Q4');
   validateVlBackbone(modelDir, backboneDir);
   final config = Lfm3VlConfig.load(modelDir);
-  final text = Lfm3Config.load(backboneDir);
+  final text = TextModelConfig.load(backboneDir);
   final processor = Lfm3ImageProcessor.load(modelDir);
   if (processor.patchSize != config.vision.patchSize ||
       processor.mergeSize != config.vision.spatialMergeSize ||
@@ -273,7 +273,7 @@ Future<void> validateVlBundle(String directory) async {
   }
   validateVlBackbone(directory, '$directory/language');
   if (manifest.inputEmbedding == 'bf16') {
-    final c = Lfm3Config.load('$directory/language');
+    final c = TextModelConfig.load('$directory/language');
     final st = SafetensorsFile.open('$directory/language/model.safetensors');
     try {
       _checkTensor(
@@ -299,7 +299,7 @@ Future<void> validateVlBundle(String directory) async {
     } finally {
       st.close();
     }
-    final c = Lfm3Config.load(language);
+    final c = TextModelConfig.load(language);
     final cache = Q8Cache.open(
       '$language/lfm3-${manifest.weights}.cache',
       Q8Cache.keyFor(language, weights: manifest.weights),

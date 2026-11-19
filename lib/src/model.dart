@@ -104,7 +104,7 @@ final class Lfm3Model {
         '--weights=${weights.name} runs in one isolate; use --workers=0',
       );
     }
-    final c = Lfm3Config.load(modelDir);
+    final c = TextModelConfig.load(modelDir);
     final h = c.hiddenSize;
     final st = SafetensorsFile.open('$modelDir/model.safetensors');
     final List<_LayerNorms> norms;
@@ -255,7 +255,7 @@ final class Lfm3Model {
   static (MappedFile, Uint16List)? _mapEmbedding(
     String modelDir,
     SafetensorsFile st,
-    Lfm3Config c,
+    TextModelConfig c,
   ) {
     if (!NativeKernels.isLoaded) return null;
     final info = st.tensors['model.embed_tokens.weight'];
@@ -270,7 +270,7 @@ final class Lfm3Model {
     );
   }
 
-  final Lfm3Config config;
+  final TextModelConfig config;
   final int maxSeq;
 
   /// Largest number of tokens [forward] pushes through the layers at once.
@@ -691,7 +691,7 @@ final class Lfm3Model {
   /// size starting at position `first`. With [computeLogits] the last
   /// token's logits are left in [logits].
   /// [embeddingOverrides] replaces token lookup at zero-based positions in
-  /// this call with projected multimodal features of [Lfm3Config.hiddenSize].
+  /// this call with projected multimodal features of [TextModelConfig.hiddenSize].
   /// Positions are relative to [tokens], not the current sequence length.
   /// Such positions are recorded as -1 in [history] so text-only [prefill]
   /// cannot reuse state conditioned on a different image. [embeddingKeys]

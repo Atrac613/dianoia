@@ -21,7 +21,7 @@ void main() {
       root = Directory.systemTemp.createTempSync('dianoia-local-cv-');
       await prepareVisionFixture(root);
       backbone = '${root.path}/backbone';
-      final c = Lfm3Config.load(backbone);
+      final c = TextModelConfig.load(backbone);
       final random = math.Random(7);
       vector = ControlVector(
         {

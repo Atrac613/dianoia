@@ -268,7 +268,7 @@ final class _RawMatrix implements CachedMatrix {
 List<String> importGguf(String ggufPath, String hfDir, String outDir) {
   final gguf = GgufFile.open(ggufPath);
   try {
-    final c = Lfm3Config.load(hfDir);
+    final c = TextModelConfig.load(hfDir);
     final h = c.hiddenSize, f = c.intermediateSize, hd = c.headDim;
     if (gguf.metadata['general.architecture'] != 'lfm3' ||
         gguf.metadata['lfm3.block_count'] != c.numLayers) {
@@ -435,7 +435,7 @@ Float32List _dequantizeQ4(CachedMatrix m) {
 /// rows; empty if [hfDir] has no model.safetensors.
 List<String> _compare(
   String hfDir,
-  Lfm3Config c,
+  TextModelConfig c,
   Map<String, Float32List Function()> imported,
 ) {
   final path = '$hfDir/model.safetensors';

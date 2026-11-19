@@ -55,7 +55,7 @@ final class Lfm3VlConfig {
     fields.requireValue('tie_word_embeddings', true);
     fields.requireValue('projector_bias', true);
     fields.requireValue('projector_hidden_act', 'gelu');
-    final text = Lfm3Config.fromJson(fields.get('text_config'));
+    final text = TextModelConfig.fromJson(fields.get('text_config'));
     final vision = Lfm3VisionConfig._parse(fields.get('vision_config'));
     final downsample = fields.positiveInt('downsample_factor');
     if (downsample != vision.spatialMergeSize) {
@@ -86,7 +86,7 @@ final class Lfm3VlConfig {
     );
   }
 
-  final Lfm3Config text;
+  final TextModelConfig text;
   final Lfm3VisionConfig vision;
   final int imageTokenId, videoTokenId, visionStartTokenId, visionEndTokenId;
   final int downsampleFactor, projectorHiddenSize;
