@@ -5,7 +5,9 @@
 On-device text, tool calling, image chat and experimental audio in Dart.
 dianoia runs **LFM3-1.7B** for text and tools, **LFM3-VL-2B** for image
 conversations, and **LFM3-Audio-2B Q4_0** for transcription, speech synthesis
-and English voice conversation.
+and English voice conversation. **Qwen3** dense checkpoints (0.6B and 1.7B
+checked) run for text, tools and thinking, quantized on the device from the
+official BF16 weights ([Qwen3 support](docs/qwen3_support.md)).
 
 Dart owns the tokenizer, chat template, graph and conversation state. Native
 code provides quantized CPU kernels and the Metal/Vulkan language backend.
@@ -44,6 +46,7 @@ weights are downloaded only after that action and run on the device afterwards.
 | Model | Preset | Download | After setup |
 |---|---|---:|---:|
 | LFM3-1.7B, text and tools | `ModelSpec.lfm3Q4` | 1.07 GB | About 1.14 GB |
+| Qwen3-0.6B, text and tools | `TextCheckpointSpec.qwen3_0_6bQ8` | 1.51 GB | About 0.99 GB |
 | LFM3-VL-2B, text and images | `VisionGgufSpec.lfm3VlQadQ4` | 1.45 GB | About 1.54 GB |
 | LFM3-Audio-2B, transcription and speech | `AudioGgufSpec.lfm3AudioQ4` | 1.23 GB | About 1.30 GB |
 | LFM3-Omni-2B, photo questions, text chat and speech (experimental) | `OmniGgufSpec.lfm3OmniQ4` | 1.34 GB | About 1.41 GB |
@@ -187,6 +190,11 @@ removed. `isInstalled` checks its recorded source identity against the requested
 QAD pins; `loadBundle` verifies every runtime payload before loading. Existing
 QAD installs without the source record require explicit removal and reinstallation.
 
+Qwen3 publishes no Q4_0 build that dianoia imports, so
+`TextCheckpointSpec` downloads the official BF16 safetensors and quantizes
+them on the device: `TextCheckpointSpec.qwen3_0_6bQ8` needs about 4.5 GB free
+during setup and keeps 0.99 GB.
+
 Other VL installation paths use the same store API:
 
 | Input | API | Preparation |
@@ -292,6 +300,24 @@ Future<void> textChat(
 }
 ```
 
+Qwen3 installs and loads the same way (`TextCheckpointSpec.qwen3_0_6bQ8`).
+Its replies are better sampled than greedy, and it can reason before
+answering:
+
+```dart
+final chat = model.chat(
+  tools: tools,
+  enableThinking: true, // off by default: a direct answer
+  sampling: SamplingParams.qwen3Thinking, // greedy by default
+);
+final turn = await chat.send({'role': 'user', 'content': 'What is 17 * 23?'});
+print(turn.reply.reasoning); // the thinking, separated from the answer
+print(turn.reply.content);
+```
+
+Tool calls parse into the same `ToolCall`s for both families; Qwen3's JSON
+argument values that are not strings arrive as their JSON text.
+
 `send` throws `ContextLengthExceeded` once the prompt outgrows the model context
 (2048 tokens by default), preserving the conversation. `chat.clear()` starts over.
 The library parses tool calls; the app executes the tools and supplies results.
@@ -334,6 +360,16 @@ dart run dianoia import-gguf --gguf=LFM3-1.7B-QAD-Q4_0.gguf \
   --model=path/to/LFM3-1.7B --out=path/to/LFM3-1.7B-QAD-Q4
 ```
 
+A Qwen3 checkpoint from Hugging Face is renamed into the engine's layout,
+quantized on first load and packed:
+
+```bash
+dart run dianoia import-hf --model=path/to/Qwen3-0.6B --out=build/qwen3
+dart run dianoia ask --model=build/qwen3 --weights=q8 --gpu --think \
+  --temperature=0.6 --top-k=20 --top-p=0.95 --prompt="What is 17 * 23?"
+dart run dianoia pack --model=build/qwen3 --out=build/qwen3-bundle --weights=q8
+```
+
 For an installed portable VL bundle:
 
 ```bash
@@ -345,7 +381,7 @@ dart run dianoia vision-bench --bundle=path/to/vl-bundle --image=photo.jpg \
 | Commands | Purpose |
 |---|---|
 | `ask`, `toolbench`, `chatbench` | Text/tool chat and latency checks |
-| `import-gguf`, `pack` | Import or package a text runtime bundle |
+| `import-gguf`, `import-hf`, `pack` | Import or package a text runtime bundle |
 | `import-vl-backbone`, `pack-vl` | Prepare a BF16 VL backbone and portable Q8/Q4 bundle |
 | `vision-run` | Raw-RGB vision inference and reference dumps |
 | `vision-bench` | Verified load, image decoding, fresh/follow-up latency and process memory |
