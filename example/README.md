@@ -166,7 +166,11 @@ and TTS are mutually exclusive. Route exit/backgrounding stops speech, and
 returning never restarts it.
 
 Generation uses the same loaded language backbone plus lazily loaded
-Depthformer/LiquidCodec weights in the worker. Playback uses
+Depthformer/LiquidCodec weights in the worker. The worker builds its
+`AudioSynthesizer` with the `lab.dart` constructor so that transcription,
+conversation and speech share one backbone. An app that only needs speech can
+use `AudioSynthesizer.load` from `package:dianoia/dianoia.dart`, which opens
+the installed bundle by itself. Playback uses
 [audioplayers 6.8.1](https://pub.dev/packages/audioplayers/versions/6.8.1) with a
 private temporary local WAV. The file is removed after completion, stop,
 interruption or playback error. Generated speech stays on the device; the
@@ -188,7 +192,8 @@ macOS compilation, simulated microphone/lifecycle tests and real Q4 worker
 inference are validated. Physical microphone capture, mobile builds and device
 audio-session behavior remain unvalidated. Speech playback is implemented but
 has not been manually listened to or tested on a physical device. The preview
-has no full-duplex voice mode or stable public audio session API. `AudioConversationSession` is available through `lab.dart`. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
+has no full-duplex voice mode or stable public audio session API. Text-to-speech
+is part of the app API; `AudioConversationSession` is available through `lab.dart`. The [TTS UI validation record](../docs/validation/lfm3-audio-example-tts-2026-11-02.md)
 records automated checks; device playback and recording remain manual checks.
 The [Audio download validation record](../docs/validation/lfm3-audio-download-2026-11-02.md)
 covers installation, cancellation, Range resume and real-model worker loading.
