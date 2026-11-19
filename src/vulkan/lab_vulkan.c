@@ -134,6 +134,9 @@ static const uint32_t kSwiglu[] =
 static const uint32_t kCopy[] =
 #include "copy.inc"
     ;
+static const uint32_t kAdd[] =
+#include "add.inc"
+    ;
 static const uint32_t kSteer[] =
 #include "steer.inc"
     ;
@@ -170,7 +173,8 @@ enum {
 // them).
 enum { kKindGemvQ8, kKindGemmQ8, kKindGemvQ4, kKindGemmQ4, kKindRmsNorm, kKindHeadNormRope,
        kKindConv, kKindAttention, kKindSwiglu, kKindCopy, kKindQuantize, kKindGemmQ8I8,
-       kKindGemmQ4I8, kKindGemvQ8I8, kKindGemvQ4I8, kKindGemvQ8I8Vec, kKindSteer, kKinds };
+       kKindGemmQ4I8, kKindGemvQ8I8, kKindGemvQ4I8, kKindGemvQ8I8Vec, kKindSteer, kKindAdd,
+       kKinds };
 
 // Rows per subgroup the decode GEMVs are built for (a specialization
 // constant); lab_gpu_set_decode_rows picks one.
@@ -192,7 +196,7 @@ static VkPhysicalDeviceProperties gProperties;
 static VkDeviceSize gMaxBuffer, gHeapSize;
 static VkPipelineLayout gLayout;
 static VkPipeline gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gRmsNorm, gHeadNormRope, gConv,
-    gAttention, gSwiglu, gCopy, gSteer, gQuantize, gGemmQ8I8, gGemmQ4I8;
+    gAttention, gSwiglu, gCopy, gAdd, gSteer, gQuantize, gGemmQ8I8, gGemmQ4I8;
 static const uint32_t kDecodeRows[] = {1, 2, 4};
 static VkPipeline gGemvQ4I8[3], gGemvQ8I8[3][3];
 static VkPipeline gGemvQ8I8Vec[3][3];
@@ -455,6 +459,7 @@ LAB_EXPORT int64_t lab_gpu_init(void) {
   PIPELINE(gAttention, kAttention);
   PIPELINE(gSwiglu, kSwiglu);
   PIPELINE(gCopy, kCopy);
+  PIPELINE(gAdd, kAdd);
   PIPELINE(gSteer, kSteer);
   if (gIntDot) {
     PIPELINE(gQuantize, kQuantize);
@@ -934,16 +939,17 @@ typedef struct {
   uint64_t q, keys, values, gate, out;
   uint32_t position, window, heads, hd, kvDim, group;
   float scale;
-  uint32_t pad;
+  uint32_t gated;
 } AttentionParams;
 
+// A negative `gate` leaves heads ungated; the shader then never reads it.
 LAB_EXPORT void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate,
                                       int64_t out, int64_t position, int64_t n, int64_t heads,
                                       int64_t kvHeads, int64_t hd, int64_t window) {
   const AttentionParams p = {at(q, 0),
                              at(keys, 0),
                              at(values, 0),
-                             at(gate, 0),
+                             gate >= 0 ? at(gate, 0) : 0,
                              at(out, 0),
                              (uint32_t)position,
                              (uint32_t)window,
@@ -952,7 +958,7 @@ LAB_EXPORT void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, i
                              (uint32_t)(kvHeads * hd),
                              (uint32_t)(heads / kvHeads),
                              (float)(1.0 / sqrt((double)hd)),
-                             0};
+                             gate >= 0 ? 1u : 0u};
   dispatch(kKindAttention, gAttention, &p, sizeof p, (uint32_t)heads, (uint32_t)n);
   wrote(out);
 }
@@ -977,6 +983,14 @@ LAB_EXPORT void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, in
                                  int64_t count) {
   const CopyParams p = {at(src, srcOffset), at(dst, dstOffset), (uint32_t)count, 0};
   dispatch(kKindCopy, gCopy, &p, sizeof p, groups(count, 256), 1);
+  wrote(dst);
+}
+
+// dst[dstOffset ...] += src[srcOffset ...], `count` floats.
+LAB_EXPORT void lab_gpu_enc_add(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOffset,
+                                int64_t count) {
+  const CopyParams p = {at(src, srcOffset), at(dst, dstOffset), (uint32_t)count, 0};
+  dispatch(kKindAdd, gAdd, &p, sizeof p, groups(count, 256), 1);
   wrote(dst);
 }
 

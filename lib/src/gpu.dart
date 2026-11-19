@@ -285,6 +285,12 @@ external void _swiglu(int g, int u, int count);
 )
 external void _copy(int src, int srcOffset, int dst, int dstOffset, int count);
 
+@Native<Void Function(Int64, Int64, Int64, Int64, Int64)>(
+  symbol: 'lab_gpu_enc_add',
+  isLeaf: true,
+)
+external void _add(int src, int srcOffset, int dst, int dstOffset, int count);
+
 @Native<Void Function(Int64, Int64, Int64, Int64, Int64, Int64, Int64, Double)>(
   symbol: 'lab_gpu_enc_steer',
   isLeaf: true,
@@ -352,8 +358,10 @@ final class _Layer {
     required this.w2,
   });
 
-  /// Byte offsets of the norm weights in the small-tensor buffer.
-  final int operatorNorm, postOperatorNorm, ffnNorm, postFfnNorm;
+  /// Byte offsets of the norm weights in the small-tensor buffer; the
+  /// post norms are null without sandwich norms.
+  final int operatorNorm, ffnNorm;
+  final int? postOperatorNorm, postFfnNorm;
   final _Matrix w1, w3, w2;
 
   // Conv layers.
@@ -407,10 +415,8 @@ final class GpuForward {
   }) {
     if (libPath != null) DynamicLibrary.open(libPath);
     if (_init() != 1) throw StateError('the GPU is unavailable');
-    if (!config.sandwichNorm || config.convKernel > 16) {
-      throw UnsupportedError(
-        'the GPU path implements sandwich norms and conv kernels up to 16',
-      );
+    if (config.convKernel > 16) {
+      throw UnsupportedError('the GPU path implements conv kernels up to 16');
     }
     // Attention keeps one score per key in threadgroup memory, next to the
     // kernel's own 128 bytes of scratch.
@@ -541,6 +547,7 @@ final class GpuForward {
     'gemv_q4_i8',
     'gemv_q8_i8_vec',
     'steer',
+    'add',
   ];
 
   /// Rows per subgroup (SIMD group on Metal) of the decode kernels: 1, 2 or
@@ -825,11 +832,13 @@ final class GpuForward {
         final f = '${p}feed_forward.';
         final layer = _Layer(
           operatorNorm: place(st.readF32('${p}operator_norm.weight', [h])),
-          postOperatorNorm: place(
-            st.readF32('${p}post_operator_norm.weight', [h]),
-          ),
+          postOperatorNorm: c.sandwichNorm
+              ? place(st.readF32('${p}post_operator_norm.weight', [h]))
+              : null,
           ffnNorm: place(st.readF32('${p}ffn_norm.weight', [h])),
-          postFfnNorm: place(st.readF32('${p}post_ffn_norm.weight', [h])),
+          postFfnNorm: c.sandwichNorm
+              ? place(st.readF32('${p}post_ffn_norm.weight', [h]))
+              : null,
           w1: matrix('${f}w1', c.intermediateSize, h),
           w3: matrix('${f}w3', c.intermediateSize, h),
           w2: matrix('${f}w2', h, c.intermediateSize),
@@ -848,7 +857,9 @@ final class GpuForward {
             ..q = matrix('${a}q_proj', c.numHeads * hd, h)
             ..k = matrix('${a}k_proj', c.kvDim, h)
             ..v = matrix('${a}v_proj', c.kvDim, h)
-            ..gate = matrix('${a}gate_proj', c.numHeads, h)
+            ..gate = c.attentionOutputGate
+                ? matrix('${a}gate_proj', c.numHeads, h)
+                : null
             ..o = matrix('${a}o_proj', h, c.numHeads * hd)
             ..qNorm = place(st.readF32('${a}q_norm.weight', [hd]))
             ..kNorm = place(st.readF32('${a}k_norm.weight', [hd]))
@@ -1054,6 +1065,17 @@ final class GpuForward {
       dispatched++;
     }
 
+    // Adds the sublayer output in _m to the residual stream, through the
+    // post norm [w] where the layer has sandwich norms.
+    void residual(int? w) {
+      if (w != null) {
+        norm(_m, w, _x, accumulate: true);
+      } else {
+        _add(_m.handle, 0, _x.handle, 0, n * h);
+        dispatched++;
+      }
+    }
+
     void snapshot(int slot) {
       _copy(_x.handle, 0, _capture.handle, slot * maxChunk * h * 4, n * h);
       dispatched++;
@@ -1110,7 +1132,7 @@ final class GpuForward {
         matmul(l.q!, _a, _q.handle);
         matmul(l.k!, _a, l.keys, rows);
         matmul(l.v!, _a, l.values, rows);
-        matmul(l.gate!, _a, _gate.handle);
+        if (l.gate case final gate?) matmul(gate, _a, _gate.handle);
         headNormRope(
           _q.handle,
           0,
@@ -1124,7 +1146,7 @@ final class GpuForward {
           _q.handle,
           l.keys,
           l.values,
-          _gate.handle,
+          l.gate == null ? -1 : _gate.handle,
           _attnOut.handle,
           position,
           n,
@@ -1136,7 +1158,7 @@ final class GpuForward {
         dispatched++;
         matmul(l.o!, _attnOut, _m.handle);
       }
-      norm(_m, l.postOperatorNorm, _x, accumulate: true);
+      residual(l.postOperatorNorm);
 
       norm(_x, l.ffnNorm, _a);
       matmul(l.w1, _a, _g.handle);
@@ -1144,7 +1166,7 @@ final class GpuForward {
       _swiglu(_g.handle, _u.handle, n * c.intermediateSize);
       dispatched++;
       matmul(l.w2, _g, _m.handle);
-      norm(_m, l.postFfnNorm, _x, accumulate: true);
+      residual(l.postFfnNorm);
       // The residual leaving layer i is complete: steer it before the
       // capture, the next layer and the LM head read it.
       if (steering != null && steering.layers[i]) {

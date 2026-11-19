@@ -425,13 +425,14 @@ struct AttentionParams {
   uint kv_dim;
   uint group;     // query heads per KV head
   float scale;
+  uint gated;     // 0: no output gate (the gate buffer is not read)
 };
 
 // Causal attention of n tokens whose keys and values are already cached,
 // one threadgroup per (head, token): scores against the keys the token may
 // see (one SIMD group per key, lanes across head_dim), softmax, the
 // weighted sum of values (one thread per dimension), and the per-head
-// output gate sigmoid(gate). Scores live in threadgroup memory, which the
+// output gate sigmoid(gate) unless p.gated is 0. Scores live in threadgroup memory, which the
 // host sizes for the last token's keys.
 //
 // A thread's time here is the latency of its loads, one key after another,
@@ -501,7 +502,7 @@ kernel void attention(device const float* q [[buffer(0)]],
   }
   // group_sum's barriers also publish the exponentials written above.
   sum = group_sum(sum, scratch, simd, lane, simds);
-  const float g = 1.0f / (1.0f + exp(-gate[group.y * p.heads + head]));
+  const float g = p.gated ? 1.0f / (1.0f + exp(-gate[group.y * p.heads + head])) : 1.0f;
   for (uint d = tid; d < p.hd; d += threads) {
     device const float* v = values + (ulong)start * p.kv_dim + kvo + d;
     float acc = 0.0f;
@@ -515,7 +516,7 @@ kernel void attention(device const float* q [[buffer(0)]],
       for (uint j = 0; j < ATTENTION_KEYS; j++) acc += weight[j] * value[j];
     }
     for (; i < count; i++) acc += scores[i] * v[(ulong)i * p.kv_dim];
-    out[qo + d] = (acc / sum) * g;
+    out[qo + d] = p.gated ? (acc / sum) * g : acc / sum;
   }
 }
 
@@ -561,6 +562,15 @@ kernel void steer(device float* x [[buffer(0)]],
   for (uint j = tid; j < p.cols; j += threads) xr[j] = xr[j] - c * v[j];
 }
 
+// dst += src, element by element: the residual add of a layer without
+// sandwich norms.
+kernel void add_f32(device const float* src [[buffer(0)]],
+                    device float* dst [[buffer(1)]],
+                    constant uint& count [[buffer(2)]],
+                    uint i [[thread_position_in_grid]]) {
+  if (i < count) dst[i] = dst[i] + src[i];
+}
+
 kernel void copy_f32(device const float* src [[buffer(0)]],
                      device float* dst [[buffer(1)]],
                      constant uint& count [[buffer(2)]],
@@ -575,7 +585,7 @@ static id<MTLCommandQueue> gQueue;
 static __unsafe_unretained id<MTLComputePipelineState> gGemvQ8Rows[2], gGemvQ4Rows[2];
 static id<MTLComputePipelineState> gDecodePipelines[4];  // keeps them alive
 static id<MTLComputePipelineState> gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gTouch, gRmsNorm, gHeadNormRope, gConv,
-    gAttention, gSwiglu, gCopy, gSteer;
+    gAttention, gSwiglu, gCopy, gSteer, gAdd;
 static double gLastGpuMs;
 static const NSUInteger kRowsPerGroup = 8;
 static const NSUInteger kGemmTokens = 8, kGemmRows = 4;
@@ -642,9 +652,10 @@ int64_t lab_gpu_init(void) {
     gSwiglu = pipeline(library, @"swiglu");
     gCopy = pipeline(library, @"copy_f32");
     gSteer = pipeline(library, @"steer");
+    gAdd = pipeline(library, @"add_f32");
     gReady = gGemvQ8Rows[0] && gGemvQ8Rows[1] && gGemvQ4Rows[0] && gGemvQ4Rows[1] && gGemvQ8 &&
              gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv &&
-             gAttention && gSwiglu && gCopy && gSteer;
+             gAttention && gSwiglu && gCopy && gSteer && gAdd;
     return gReady;
   }
 }
@@ -767,7 +778,8 @@ enum {
   kKindSwiglu = 8,
   kKindCopy = 9,
   kKindSteer = 16,
-  kKinds = 17
+  kKindAdd = 17,
+  kKinds = 18
 };
 static int gProfiling;
 static double gKindMs[kKinds];
@@ -1085,11 +1097,12 @@ void lab_gpu_enc_conv(int64_t bcx, int64_t weight, int64_t weightOffset, int64_t
 typedef struct {
   uint32_t position, window, heads, hd, kvDim, group;
   float scale;
+  uint32_t gated;
 } AttentionParams;
 
 // Attention of n tokens at positions position, ... over their KV cache;
 // `window` 0 reads every earlier position, otherwise the last `window`
-// including the token's own.
+// including the token's own. A negative `gate` leaves heads ungated.
 void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate, int64_t out,
                              int64_t position, int64_t n, int64_t heads, int64_t kvHeads,
                              int64_t hd, int64_t window) {
@@ -1101,12 +1114,14 @@ void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate
                              (uint32_t)hd,
                              (uint32_t)(kvHeads * hd),
                              (uint32_t)(heads / kvHeads),
-                             (float)(1.0 / sqrt((double)hd))};
+                             (float)(1.0 / sqrt((double)hd)),
+                             gate >= 0 ? 1u : 0u};
   [gEnc setComputePipelineState:gAttention];
   [gEnc setBuffer:gTable[q] offset:0 atIndex:0];
   [gEnc setBuffer:gTable[keys] offset:0 atIndex:1];
   [gEnc setBuffer:gTable[values] offset:0 atIndex:2];
-  [gEnc setBuffer:gTable[gate] offset:0 atIndex:3];
+  // Ungated, the kernel never reads index 3; any buffer fills the slot.
+  [gEnc setBuffer:gTable[gate >= 0 ? gate : q] offset:0 atIndex:3];
   [gEnc setBuffer:gTable[out] offset:0 atIndex:4];
   [gEnc setBytes:&p length:sizeof p atIndex:5];
   [gEnc setThreadgroupMemoryLength:((NSUInteger)keysOfLast * 4 + 15) / 16 * 16 atIndex:0];
@@ -1136,6 +1151,19 @@ void lab_gpu_enc_copy(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOf
   [gEnc dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1)
       threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
   profiled(kKindCopy);
+}
+
+// dst[dstOffset ...] += src[srcOffset ...], `count` floats.
+void lab_gpu_enc_add(int64_t src, int64_t srcOffset, int64_t dst, int64_t dstOffset,
+                     int64_t count) {
+  const uint32_t n = (uint32_t)count;
+  [gEnc setComputePipelineState:gAdd];
+  [gEnc setBuffer:gTable[src] offset:(NSUInteger)srcOffset atIndex:0];
+  [gEnc setBuffer:gTable[dst] offset:(NSUInteger)dstOffset atIndex:1];
+  [gEnc setBytes:&n length:sizeof n atIndex:2];
+  [gEnc dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1)
+      threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  profiled(kKindAdd);
 }
 
 typedef struct {
