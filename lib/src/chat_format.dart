@@ -8,6 +8,7 @@ library;
 
 import 'chat_template.dart';
 import 'config.dart';
+import 'qwen3_chat_format.dart';
 import 'tool_calls.dart';
 
 abstract interface class ChatFormat {
@@ -49,7 +50,5 @@ final class Lfm3ChatFormat implements ChatFormat {
 ChatFormat chatFormatFor(TextModelConfig config) =>
     switch (config.architecture) {
       ModelArchitecture.lfm3 => const Lfm3ChatFormat(),
-      ModelArchitecture.qwen3 => throw UnsupportedError(
-        'no chat format for Qwen3 yet',
-      ),
+      ModelArchitecture.qwen3 => const Qwen3ChatFormat(),
     };

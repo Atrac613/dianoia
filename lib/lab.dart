@@ -38,6 +38,7 @@ export 'src/native.dart';
 export 'src/ops.dart';
 export 'src/q8_cache.dart';
 export 'src/quant.dart';
+export 'src/qwen3_chat_format.dart';
 export 'src/safetensors.dart';
 export 'src/shard.dart';
 export 'src/tokenizer.dart';
