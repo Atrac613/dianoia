@@ -175,15 +175,18 @@ void _loadNative(Map<String, String> flags, {bool needed = false}) {
   );
 }
 
-/// --q8-cache=PATH for --weights=q8 or q4; defaults to `lfm3-<weights>.cache`
-/// in the model directory, and --q8-cache=none quantizes on every start.
+/// --q8-cache=PATH for --weights=q8 or q4; defaults to the model's
+/// `<architecture>-<weights>.cache` (`lfm3-q8.cache`, say) in the model
+/// directory, and --q8-cache=none quantizes on every start.
 String? _q8CachePath(
   Map<String, String> flags,
   String modelDir,
   WeightFormat weights,
 ) {
   if (!weights.isNative) return null;
-  final path = flags['q8-cache'] ?? '$modelDir/lfm3-${weights.name}.cache';
+  final path =
+      flags['q8-cache'] ??
+      '$modelDir/${quantizedCacheName(TextModelConfig.load(modelDir), weights)}';
   return path == 'none' ? null : path;
 }
 
@@ -585,45 +588,7 @@ Future<int> _pack(Map<String, String> flags) async {
   final outDir = require('out');
   _loadNative(flags, needed: true);
   final weights = WeightFormat.values.byName(flags['weights'] ?? 'q8');
-  if (!weights.isNative) throw ArgumentError('pack needs --weights=q8 or q4');
-  final cachePath = _q8CachePath(flags, modelDir, weights)!;
-  final cache =
-      Q8Cache.open(
-        cachePath,
-        Q8Cache.keyFor(modelDir, weights: weights.name),
-      ) ??
-      (throw StateError(
-        'no ${weights.name} cache for $modelDir: run with --weights=${weights.name}',
-      ));
-  Directory(outDir).createSync(recursive: true);
-  for (final name in ['config.json', 'tokenizer.json']) {
-    File('$modelDir/$name').copySync('$outDir/$name');
-  }
-  final generation = File('$modelDir/generation_config.json');
-  if (generation.existsSync()) {
-    generation.copySync('$outDir/generation_config.json');
-  }
-  final st = SafetensorsFile.open('$modelDir/model.safetensors');
-  try {
-    // Matrices live in the cache, except that the embedding is also read as
-    // bf16 rows for token lookup.
-    st.writeSubset(
-      '$outDir/model.safetensors',
-      (name, info) =>
-          info.shape.length != 2 || name == 'model.embed_tokens.weight',
-    );
-  } finally {
-    st.close();
-  }
-  // The cache key fingerprints the safetensors header, so it changes.
-  Q8Cache.write(
-    '$outDir/lfm3-${weights.name}.cache',
-    Q8Cache.keyFor(outDir, weights: weights.name),
-    {
-      for (final (name, rows, cols) in cache.shapes)
-        name: cache.matrix(name, rows, cols)!,
-    },
-  );
+  packTextBundle(modelDir, outDir, weights);
   var bytes = 0;
   for (final f in Directory(outDir).listSync().whereType<File>()) {
     bytes += f.lengthSync();

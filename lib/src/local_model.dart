@@ -64,8 +64,10 @@ final class LocalModel {
   Future<void> close() => _model.close();
 
   /// Loads the model bundle in [dir]: `config.json`, `tokenizer.json`,
-  /// `model.safetensors` and the quantized weights, `lfm3-q4.cache` (from
-  /// `dianoia import-gguf`) or `lfm3-q8.cache` (from `dianoia pack`).
+  /// `model.safetensors` and the quantized weights, named by architecture
+  /// and format (`lfm3-q4.cache` from `dianoia import-gguf`,
+  /// `qwen3-q8.cache` from `dianoia pack`, and so on). [ModelStore]
+  /// installs such bundles.
   ///
   /// With [InferenceBackend.auto] a GPU that cannot run the model (none, or
   /// without the features the kernels need) leaves it on the CPU kernels.

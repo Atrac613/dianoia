@@ -42,6 +42,7 @@ export 'src/qwen3_chat_format.dart';
 export 'src/safetensors.dart';
 export 'src/sampler.dart';
 export 'src/shard.dart';
+export 'src/text_bundle.dart';
 export 'src/tokenizer.dart';
 export 'src/vision_config.dart';
 export 'src/vision_backbone.dart';

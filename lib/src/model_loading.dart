@@ -10,6 +10,8 @@ import 'local_model.dart' show InferenceBackend;
 import 'model.dart';
 import 'native.dart';
 import 'quant.dart';
+import 'config.dart';
+import 'text_bundle.dart';
 
 /// Loads the native kernels with [threads] native threads unless they are
 /// loaded already, failing clearly where none were built.
@@ -38,7 +40,8 @@ Future<TextModel> openLanguageBundle(
     dir,
     maxSeq: contextLength,
     weights: weights,
-    q8CachePath: '$dir/lfm3-${weights.name}.cache',
+    q8CachePath:
+        '$dir/${quantizedCacheName(TextModelConfig.load(dir), weights)}',
     gpu: gpu,
   );
 
@@ -56,17 +59,27 @@ Future<TextModel> openLanguageBundle(
 }
 
 /// The weights the bundle in [dir] holds: Q4 if it has a Q4 cache, Q8 if
-/// it has a Q8 one.
+/// it has a Q8 one (`lfm3-q4.cache`, `qwen3-q8.cache` and so on).
 WeightFormat bundleWeights(String dir) {
+  if (!File('$dir/config.json').existsSync()) {
+    throw ArgumentError.value(
+      dir,
+      'dir',
+      'holds no model bundle (config.json); make one with '
+          '`dianoia import-gguf` or `dianoia pack`',
+    );
+  }
+  final config = TextModelConfig.load(dir);
   for (final weights in [WeightFormat.q4, WeightFormat.q8]) {
-    if (File('$dir/lfm3-${weights.name}.cache').existsSync()) {
+    if (File('$dir/${quantizedCacheName(config, weights)}').existsSync()) {
       return weights;
     }
   }
   throw ArgumentError.value(
     dir,
     'dir',
-    'holds no quantized weights (lfm3-q4.cache or lfm3-q8.cache); make '
-        'them with `dianoia import-gguf` or `dianoia pack`',
+    'holds no quantized weights (${quantizedCacheName(config, WeightFormat.q4)} '
+        'or ${quantizedCacheName(config, WeightFormat.q8)}); make them with '
+        '`dianoia import-gguf` or `dianoia pack`',
   );
 }

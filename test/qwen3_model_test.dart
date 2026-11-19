@@ -8,9 +8,10 @@ import 'dart:typed_data';
 import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
 
+import 'support/synthetic_tokenizer.dart';
 import 'support/synthetic_vision.dart';
 
-const _h = 32, _hd = 8, _heads = 4, _kvHeads = 2, _layers = 2, _vocab = 64;
+const _h = 32, _hd = 8, _heads = 4, _kvHeads = 2, _layers = 2, _vocab = 272;
 
 String _writeQwen3(Directory root) {
   final hf = Directory('${root.path}/hf')..createSync();
@@ -57,6 +58,7 @@ String _writeQwen3(Directory root) {
     shapes,
     bf16: true,
   );
+  writeSyntheticTokenizer(hf.path);
   final out = '${root.path}/model';
   importHfCheckpoint(hf.path, out);
   return out;
@@ -100,4 +102,29 @@ void main() {
     expect(model.logits, orderedEquals(reused));
     expect(reused.any((v) => v != 0), isTrue);
   });
+
+  test('builds a Q8 bundle that LocalModel opens', () async {
+    final bundle = '${root.path}/bundle';
+    await buildTextBundle(
+      '${root.path}/hf',
+      bundle,
+      stagingDir: '${root.path}/staging',
+      weights: WeightFormat.q8,
+    );
+    expect(Directory('${root.path}/staging').existsSync(), isFalse);
+    expect(File('$bundle/qwen3-q8.cache').existsSync(), isTrue);
+    expect(File('$bundle/lfm3-q8.cache').existsSync(), isFalse);
+    final local = await LocalModel.load(
+      bundle,
+      backend: InferenceBackend.cpu,
+      contextLength: 64,
+      threads: 2,
+    );
+    addTearDown(local.close);
+    final turn = await local.chat(maxNewTokens: 3).send({
+      'role': 'user',
+      'content': 'hi',
+    });
+    expect(turn.generatedTokens, greaterThan(0));
+  }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');
 }
