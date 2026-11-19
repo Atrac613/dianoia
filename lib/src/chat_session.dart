@@ -141,6 +141,11 @@ final class ChatSession {
   /// Returning false ends the reply there, which is then stored as it
   /// stands. An asynchronous [onText] lets the caller's event loop run
   /// between tokens, so that a request to stop can arrive.
+  /// [suppressedTokens] are never generated in this reply, for example
+  /// `<tool_call>` when the caller offers no tools and the model would
+  /// otherwise still start a call it cannot run. Greedy decoding picks the
+  /// best token outside the set; the end-of-sequence token is never
+  /// suppressed. An empty set leaves decoding unchanged.
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
   /// Observer work, [onText]'s included, counts in the generation timings.
@@ -152,10 +157,11 @@ final class ChatSession {
     Map<String, Object?> message, {
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
+    Set<int> suppressedTokens = const {},
   }) async {
     beginModelUse(model);
     try {
-      return await _send(message, onLogits, onText);
+      return await _send(message, onLogits, onText, suppressedTokens);
     } finally {
       endModelUse(model);
     }
@@ -165,7 +171,9 @@ final class ChatSession {
     Map<String, Object?> message,
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
+    Set<int> suppressedTokens,
   ) async {
+    final suppressed = {...suppressedTokens}..remove(model.config.eosTokenId);
     final ids = promptIds([...messages, message]);
     if (ids.length >= model.maxSeq) {
       throw ContextLengthExceeded(ids.length, model.maxSeq);
@@ -191,7 +199,7 @@ final class ChatSession {
       ..start();
     try {
       while (gen.length < maxNew && model.history.length < model.maxSeq) {
-        final next = _argmax(model.logits);
+        final next = greedyToken(model.logits, suppressed: suppressed);
         if (next == model.config.eosTokenId) break;
         gen.add(next);
         await model.step(next);
@@ -233,11 +241,15 @@ final class ChatSession {
     return true;
   }
 
-  static int _argmax(Float32List v) {
-    var best = 0;
-    for (var i = 1; i < v.length; i++) {
-      if (v[i] > v[best]) best = i;
+  /// The index of the largest of [logits] outside [suppressed]; the first
+  /// one on a tie.
+  static int greedyToken(Float32List logits, {Set<int> suppressed = const {}}) {
+    var best = -1;
+    for (var i = 0; i < logits.length; i++) {
+      if (suppressed.contains(i)) continue;
+      if (best < 0 || logits[i] > logits[best]) best = i;
     }
+    if (best < 0) throw StateError('every token is suppressed');
     return best;
   }
 }

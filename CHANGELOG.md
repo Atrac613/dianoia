@@ -1,3 +1,12 @@
+## 0.4.1
+
+- `ChatSession.send` takes `suppressedTokens`, token IDs greedy decoding
+  never picks in that reply. A caller that offers no tools can suppress
+  `<tool_call>`: LFM3 otherwise often starts a call after tool results even
+  when asked for a final answer. The end-of-sequence token is never
+  suppressed, and an empty set decodes as before.
+  `ChatSession.greedyToken` is the selection rule.
+
 ## 0.4.0
 
 - The Flutter example's Omni preview supports English live transcription and
