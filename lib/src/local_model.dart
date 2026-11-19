@@ -2,15 +2,12 @@
 /// GPU where there is one, ready for conversations.
 library;
 
-import 'dart:ffi';
-import 'dart:io';
-
 import 'chat_session.dart';
 import 'control_vector.dart';
 import 'model.dart';
+import 'model_loading.dart';
 import 'model_use.dart';
 import 'native.dart';
-import 'quant.dart';
 import 'tokenizer.dart';
 import 'vision_backbone.dart';
 import 'vision_bundle.dart';
@@ -80,41 +77,14 @@ final class LocalModel {
     int contextLength = 2048,
     int threads = 4,
   }) async {
-    final weights = _bundleWeights(dir);
+    bundleWeights(dir); // fails before anything is loaded
     final tokenizer = Lfm3Tokenizer.load(dir);
-    if (!NativeKernels.isLoaded) {
-      if (!NativeKernels.isAvailable) {
-        throw UnsupportedError(
-          'dianoia has no native kernels for ${Abi.current()}; it runs on '
-          'arm64 macOS, iOS and Android and on x86-64 Windows with AVX2',
-        );
-      }
-      NativeKernels.load(null, threads: threads);
-    }
-    Future<Lfm3Model> open({required bool gpu}) => Lfm3Model.load(
+    ensureNativeKernels(threads);
+    final (model, used) = await openLanguageBundle(
       dir,
-      maxSeq: contextLength,
-      weights: weights,
-      q8CachePath: '$dir/lfm3-${weights.name}.cache',
-      gpu: gpu,
+      backend: backend,
+      contextLength: contextLength,
     );
-
-    var used = backend == InferenceBackend.cpu
-        ? InferenceBackend.cpu
-        : InferenceBackend.gpu;
-    Lfm3Model model;
-    try {
-      model = await open(gpu: used == InferenceBackend.gpu);
-    } on Error catch (e) {
-      // StateError: no usable GPU; UnsupportedError: the model needs what
-      // the GPU path lacks.
-      if (backend != InferenceBackend.auto ||
-          (e is! StateError && e is! UnsupportedError)) {
-        rethrow;
-      }
-      used = InferenceBackend.cpu;
-      model = await open(gpu: false);
-    }
     return LocalModel._(model, tokenizer, used);
   }
 
@@ -132,22 +102,6 @@ final class LocalModel {
     tools: tools,
     maxNew: maxNewTokens,
   );
-
-  /// The weights the bundle in [dir] holds: Q4 if it has a Q4 cache, Q8
-  /// if it has a Q8 one.
-  static WeightFormat _bundleWeights(String dir) {
-    for (final weights in [WeightFormat.q4, WeightFormat.q8]) {
-      if (File('$dir/lfm3-${weights.name}.cache').existsSync()) {
-        return weights;
-      }
-    }
-    throw ArgumentError.value(
-      dir,
-      'dir',
-      'holds no quantized weights (lfm3-q4.cache or lfm3-q8.cache); make '
-          'them with `dianoia import-gguf` or `dianoia pack`',
-    );
-  }
 }
 
 /// Experimental, lab-only: steering a [LocalModel] with a control vector
