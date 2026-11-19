@@ -272,14 +272,84 @@ final class TextCheckpointSpec extends InstallableModel {
     );
   }
 
+  static const _qwen3_1_7bRepo =
+      'https://huggingface.co/Qwen/Qwen3-1.7B/resolve/'
+      '70d244cc86ccca08cf5af4e1e306ecf908b1ad5e';
+
+  /// Qwen3-1.7B quantized to Q8 on the device: 4.07 GB downloaded, about
+  /// 2.57 GB installed; allow 12.5 GB during setup. Plain Q4 loses too
+  /// much of this checkpoint to offer (docs/qwen3_support.md).
+  static const qwen3_1_7bQ8 = TextCheckpointSpec(
+    id: 'qwen3-1.7b-q8-70d244c',
+    installedBytes: 2570580922,
+    setupBytes: 12500000000,
+    name: 'Qwen3-1.7B (Q8)',
+    license: 'Apache License 2.0',
+    licenseUrl:
+        'https://huggingface.co/Qwen/Qwen3-1.7B/blob/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e/LICENSE',
+    files: [
+      RemoteFile(
+        'config.json',
+        '$_qwen3_1_7bRepo/config.json',
+        size: 726,
+        sha256:
+            '1ddb5b89ebc90dcb417a45c213d818577e65976454d29385c8f6140771d95197',
+      ),
+      RemoteFile(
+        'generation_config.json',
+        '$_qwen3_1_7bRepo/generation_config.json',
+        size: 239,
+        sha256:
+            '2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2',
+      ),
+      RemoteFile(
+        'tokenizer.json',
+        '$_qwen3_1_7bRepo/tokenizer.json',
+        size: 11422654,
+        sha256:
+            'aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4',
+      ),
+      RemoteFile(
+        'LICENSE',
+        '$_qwen3_1_7bRepo/LICENSE',
+        size: 11343,
+        sha256:
+            '832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e',
+      ),
+      RemoteFile(
+        'model.safetensors.index.json',
+        '$_qwen3_1_7bRepo/model.safetensors.index.json',
+        size: 25605,
+        sha256:
+            '0d660e94b165eb912669a5249dff44b83188c4777a07ddb9611fb78d91b0578d',
+      ),
+      RemoteFile(
+        'model-00001-of-00002.safetensors',
+        '$_qwen3_1_7bRepo/model-00001-of-00002.safetensors',
+        size: 3441185608,
+        sha256:
+            '169ad53ec313c3a34b06c0809216e4fc072cce444a5d4ff2b59690d064130ed5',
+      ),
+      RemoteFile(
+        'model-00002-of-00002.safetensors',
+        '$_qwen3_1_7bRepo/model-00002-of-00002.safetensors',
+        size: 622329984,
+        sha256:
+            '912becff8d60672aa8628ef08c05898d9adf17c2ad4ae3caf99b065622fdeff9',
+      ),
+    ],
+  );
+
   static const _qwen3_0_6bRepo =
       'https://huggingface.co/Qwen/Qwen3-0.6B/resolve/'
       'c1899de289a04d12100db370d81485cdf75e47ca';
 
-  /// Qwen3-0.6B quantized to Q8 on the device: 1.52 GB downloaded, about
-  /// 0.95 GB installed; allow 4 GB during setup.
+  /// Qwen3-0.6B quantized to Q8 on the device: 1.51 GB downloaded, about
+  /// 0.99 GB installed; allow 4.5 GB during setup.
   static const qwen3_0_6bQ8 = TextCheckpointSpec(
     id: 'qwen3-0.6b-q8-c1899de',
+    installedBytes: 994274234,
+    setupBytes: 4500000000,
     name: 'Qwen3-0.6B (Q8)',
     license: 'Apache License 2.0',
     licenseUrl:

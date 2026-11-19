@@ -41,6 +41,22 @@ void main() {
     }
   });
 
+  test('the Qwen3-1.7B spec pins its shards and index', () {
+    const spec = TextCheckpointSpec.qwen3_1_7bQ8;
+    expect(spec.downloadBytes, 4074976159);
+    expect(
+      spec.files.map((f) => f.name),
+      containsAll([
+        'model.safetensors.index.json',
+        'model-00001-of-00002.safetensors',
+        'model-00002-of-00002.safetensors',
+      ]),
+    );
+    for (final f in spec.files) {
+      expect(f.url, contains('70d244cc86ccca08cf5af4e1e306ecf908b1ad5e'));
+    }
+  });
+
   test('installs, quantizes and loads a Qwen3 checkpoint', () async {
     final root = Directory.systemTemp.createTempSync('dianoia-text-store-');
     addTearDown(() => root.deleteSync(recursive: true));
