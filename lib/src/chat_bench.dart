@@ -57,7 +57,7 @@ List<Map<String, Object?>> catalogTools(Map<String, Object?> spec) => [
 /// Runs the benchmark on [model] with the cases of [spec], reporting lines
 /// to [log], and returns a record of the timings.
 Future<Map<String, Object?>> chatBench(
-  Lfm3Model model,
+  TextModel model,
   Lfm3Tokenizer tokenizer,
   Map<String, Object?> spec,
   void Function(String) log, {
@@ -195,7 +195,7 @@ Future<Map<String, Object?>> chatBench(
 
 /// The prompt logits for [conversation], computed from an empty state.
 Future<Float32List> _fromScratch(
-  Lfm3Model model,
+  TextModel model,
   ChatSession session,
   List<Map<String, Object?>> conversation,
 ) async {

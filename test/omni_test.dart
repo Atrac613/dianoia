@@ -494,7 +494,7 @@ void main() {
       writeSyntheticTokenizer(dir, additionalSpecials: _speechSpecials);
       final tokenizer = Lfm3Tokenizer.load(dir);
       final config = Lfm3VlConfig.load('${root.path}/model');
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         dir,
         maxSeq: 256,
         maxChunk: 8,

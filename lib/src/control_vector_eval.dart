@@ -164,7 +164,7 @@ final class ControlVectorEval {
     this.log = _ignore,
   });
 
-  final Lfm3Model model;
+  final TextModel model;
   final Lfm3Tokenizer tokenizer;
   final ControlVector vector;
 

@@ -26,15 +26,15 @@ void ensureNativeKernels(int threads) {
 
 /// Opens the language bundle in [dir], holding [weights] (see
 /// [bundleWeights]), on [backend]. With [InferenceBackend.auto] a GPU that
-/// cannot run the model leaves it on the CPU kernels; [Lfm3Model.gpu] says
+/// cannot run the model leaves it on the CPU kernels; [TextModel.gpu] says
 /// which ran.
-Future<Lfm3Model> openLanguageBundle(
+Future<TextModel> openLanguageBundle(
   String dir, {
   required WeightFormat weights,
   required InferenceBackend backend,
   required int contextLength,
 }) async {
-  Future<Lfm3Model> open({required bool gpu}) => Lfm3Model.load(
+  Future<TextModel> open({required bool gpu}) => TextModel.load(
     dir,
     maxSeq: contextLength,
     weights: weights,

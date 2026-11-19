@@ -287,7 +287,7 @@ void main() {
           dir,
           additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
         );
-        final model = await Lfm3Model.load(
+        final model = await TextModel.load(
           dir,
           maxSeq: 512,
           weights: WeightFormat.q8,
@@ -385,7 +385,7 @@ void main() {
         dir,
         additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
       );
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         dir,
         maxSeq: 512,
         weights: WeightFormat.q8,

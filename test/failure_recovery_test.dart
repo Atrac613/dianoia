@@ -74,9 +74,9 @@ void main() {
     });
 
     group('after a failure', () {
-      late Lfm3Model model;
+      late TextModel model;
       setUpAll(() async {
-        model = await Lfm3Model.load(
+        model = await TextModel.load(
           backbone,
           maxSeq: 64,
           maxChunk: 4,

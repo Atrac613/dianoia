@@ -105,7 +105,7 @@ Future<void> main(List<String> args) async {
     (w) => File('$bundle/lfm3-${w.name}.cache').existsSync(),
     orElse: () => throw ArgumentError('$bundle has no lfm3-q4/q8.cache'),
   );
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     bundle,
     maxSeq: 2048,
     weights: weights,

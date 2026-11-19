@@ -91,7 +91,7 @@ final class VisionRequestCancelled implements Exception {
 /// dianoia.dart; applications create sessions through LocalVisionModel.chat.
 final class VisionChatRuntime {
   VisionChatRuntime(this.model, this.tokenizer, this.processor, this.encoder);
-  final Lfm3Model model;
+  final TextModel model;
   final Lfm3Tokenizer tokenizer;
   final Lfm3ImageProcessor processor;
   Lfm3VisionEncoder? encoder;

@@ -156,8 +156,8 @@ void main() {
         File('$out/vl_config.json').readAsStringSync(),
         File('${source.path}/config.json').readAsStringSync(),
       );
-      final a = await Lfm3Model.load(reference.path, maxSeq: 8, maxChunk: 2);
-      final b = await Lfm3Model.load(out, maxSeq: 8, maxChunk: 2);
+      final a = await TextModel.load(reference.path, maxSeq: 8, maxChunk: 2);
+      final b = await TextModel.load(out, maxSeq: 8, maxChunk: 2);
       try {
         await a.forward([5, 6, 7]);
         await b.forward([5, 6, 7]);

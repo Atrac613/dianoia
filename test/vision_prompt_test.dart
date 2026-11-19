@@ -196,7 +196,7 @@ void main() {
       'encoder rows reach language prefill (${gpu ? 'GPU' : 'CPU'})',
       () async {
         NativeKernels.load(null, threads: 2);
-        final model = await Lfm3Model.load(
+        final model = await TextModel.load(
           modelDir!,
           weights: WeightFormat.q4,
           q8CachePath: '$modelDir/lfm3-q4.cache',

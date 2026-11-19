@@ -1,4 +1,4 @@
-/// A conversation on one [Lfm3Model] that keeps the model's state between
+/// A conversation on one [TextModel] that keeps the model's state between
 /// requests, so each turn feeds only the tokens the model has not seen.
 ///
 /// Every prompt starts with the same block: the system prompt and the tool
@@ -71,7 +71,7 @@ final class ChatSession {
     this.maxNew = 256,
   }) : _system = system;
 
-  final Lfm3Model model;
+  final TextModel model;
   final Lfm3Tokenizer tokenizer;
   final List<Map<String, Object?>>? tools;
   final int maxNew;
@@ -96,7 +96,7 @@ final class ChatSession {
 
   /// Feeds the system prompt and tools block and checkpoints after it.
   /// With [statePath], first tries to load exactly that block from the file
-  /// (Lfm3Model.loadState), and after computing it saves it there. Returns
+  /// (TextModel.loadState), and after computing it saves it there. Returns
   /// whether the state came from the file.
   Future<bool> warmUp({String? statePath}) async {
     beginModelUse(model);

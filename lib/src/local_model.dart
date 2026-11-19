@@ -38,7 +38,7 @@ enum InferenceBackend {
 final class LocalModel {
   LocalModel._(this._model, this._tokenizer, this.backend);
 
-  final Lfm3Model _model;
+  final TextModel _model;
   final Lfm3Tokenizer _tokenizer;
 
   /// Where the model runs: [InferenceBackend.gpu] or [InferenceBackend.cpu].
@@ -136,7 +136,7 @@ extension LocalModelControlVector on LocalModel {
 
 /// Sets [vector] on [model], resetting its sequence if the vector changes
 /// the arithmetic, unless a conversation is using it.
-Future<void> _steer(Lfm3Model model, ControlVector? vector) async {
+Future<void> _steer(TextModel model, ControlVector? vector) async {
   if (modelInUse(model)) {
     throw StateError(
       'a reply is being generated; set the control vector between replies',

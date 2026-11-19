@@ -68,7 +68,7 @@ Future<Map<String, Object?>> benchmarkControlVector({
   };
   for (final gpu in backends) {
     final name = gpu ? 'gpu' : 'cpu';
-    final model = await Lfm3Model.load(
+    final model = await TextModel.load(
       bundle,
       maxSeq: contextLength,
       weights: weights,

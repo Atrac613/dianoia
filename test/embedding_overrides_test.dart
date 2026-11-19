@@ -16,10 +16,10 @@ void main() {
         ? noGpuSkip
         : false;
     group(gpu ? 'GPU embedding overrides' : 'CPU embedding overrides', () {
-      late Lfm3Model model;
+      late TextModel model;
       setUpAll(() async {
         NativeKernels.load(null, threads: 2);
-        model = await Lfm3Model.load(
+        model = await TextModel.load(
           _modelDir!,
           maxSeq: 32,
           maxChunk: 2,

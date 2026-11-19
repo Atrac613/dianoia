@@ -1,10 +1,10 @@
 /// Control vectors: per-layer directions applied to the residual stream
 /// leaving a layer, as llama.cpp's `--control-vector` does (activation
-/// steering). Experimental; `Lfm3Model.setControlVector` applies one on the
+/// steering). Experimental; `TextModel.setControlVector` applies one on the
 /// CPU path and on the GPU (Metal or Vulkan, the `steer` kernel).
 ///
 /// Layer `l` is the zero-based index of the layer whose output is steered:
-/// its direction acts on what `Lfm3Model.forward`'s capture reports in slot
+/// its direction acts on what `TextModel.forward`'s capture reports in slot
 /// `l + 1`, on every token row. Two modes:
 ///
 ///  * [ControlMode.add]: `x += scale * d`;

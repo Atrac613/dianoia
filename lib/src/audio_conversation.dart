@@ -138,7 +138,7 @@ final class AudioConversationSession {
       _id(marker);
     }
   }
-  final Lfm3Model model;
+  final TextModel model;
   final Lfm3Tokenizer tokenizer;
   final Lfm3AudioGenerator generator;
   final _history = <_Slot>[];
@@ -233,7 +233,7 @@ final class AudioConversationSession {
     }
   }
 
-  /// [meanwhile] runs on the CPU during the last chunk (Lfm3Model.forward).
+  /// [meanwhile] runs on the CPU during the last chunk (TextModel.forward).
   Future<void> _forward(
     List<_Slot> slots, {
     bool logits = true,

@@ -1,4 +1,4 @@
-/// LFM3 forward pass in float32: the main-isolate side.
+/// The text forward pass in float32: the main-isolate side.
 ///
 /// The structure follows `modeling_lfm3.py` (see
 /// docs/lfm3_1.7b_architecture.md). Every layer is
@@ -6,7 +6,9 @@
 ///     h += post_operator_norm(mixer(operator_norm(h)))
 ///     h += post_ffn_norm(ffn(ffn_norm(h)))
 ///
-/// where the mixer is a gated short convolution or attention. This class
+/// where the mixer is a gated short convolution or attention. Bundles name
+/// their tensors as LFM3 checkpoints do, whatever the architecture: other
+/// families are renamed to those names when they are imported. This class
 /// owns the residual stream, the norms and token lookup; the mixers and
 /// FFNs, with their weights and state, live in layer shards (shard.dart)
 /// run by a [LayerExecutor]. A prompt goes through the layers in chunks of
@@ -46,8 +48,11 @@ final class _LayerNorms {
   final Float32List? postOperator, postFfn;
 }
 
-final class Lfm3Model {
-  Lfm3Model._(
+/// Older name of [TextModel], from when LFM3 was the only family.
+typedef Lfm3Model = TextModel;
+
+final class TextModel {
+  TextModel._(
     this.config,
     this._embedBf16,
     this._embedQ8,
@@ -80,7 +85,7 @@ final class Lfm3Model {
   /// missing), so it needs Q8 or Q4 weights, a cache path and the native
   /// kernels, which map the cache. [gpuLib] does too, with the GPU layer of
   /// the library at that path instead of the package's kernels asset.
-  static Future<Lfm3Model> load(
+  static Future<TextModel> load(
     String modelDir, {
     int maxSeq = 4096,
     int maxChunk = 64,
@@ -191,7 +196,7 @@ final class Lfm3Model {
           maxSeq: maxSeq,
           maxChunk: maxChunk,
         );
-        return Lfm3Model._(
+        return TextModel._(
           c,
           embedBf16,
           embedQ8,
@@ -229,7 +234,7 @@ final class Lfm3Model {
               keepF32: keepF32,
             );
       if (built != null) Q8Cache.write(q8CachePath!, cacheKey!, built);
-      return Lfm3Model._(
+      return TextModel._(
         c,
         embedBf16,
         embedQ8,

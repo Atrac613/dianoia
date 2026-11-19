@@ -27,11 +27,11 @@ Future<void> main(List<String> args) async {
     throw UnsupportedError('LiveASR is defined for LFM3-Audio only');
   }
   RandomAccessFile? reader;
-  Lfm3Model? model;
+  TextModel? model;
   Lfm3LiveTranscriber? live;
   var fed = 0, block = 0;
   try {
-    model = await Lfm3Model.load(
+    model = await TextModel.load(
       '$dir/language',
       maxSeq: 2048,
       weights: WeightFormat.q4,

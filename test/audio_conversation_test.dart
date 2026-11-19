@@ -51,7 +51,7 @@ void main() {
   group('conversation ownership and rollback', () {
     late Directory root;
     late Lfm3AudioGenerator generator;
-    late Lfm3Model model;
+    late TextModel model;
     late AudioConversationSession session;
     setUp(() async {
       root = Directory.systemTemp.createTempSync('dianoia-conversation-test-');
@@ -92,7 +92,7 @@ void main() {
           '<|audio_start|>',
         ],
       );
-      model = await Lfm3Model.load(
+      model = await TextModel.load(
         dir,
         maxSeq: 512,
         weights: WeightFormat.q8,
@@ -178,7 +178,7 @@ void main() {
       final encoder = Lfm3AudioEncoder.load(
         '$dir/${Lfm3AudioQ4Source.audio.name}',
       );
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         '$dir/language',
         maxSeq: 2048,
         weights: WeightFormat.q4,

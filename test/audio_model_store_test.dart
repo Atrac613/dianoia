@@ -197,7 +197,7 @@ void main() {
       expect(Directory(downloads).existsSync(), isFalse);
       expect(File('$bundle/language.gguf').existsSync(), isFalse);
       expect(Directory('$bundle.partial').existsSync(), isFalse);
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         '$bundle/language',
         maxSeq: 64,
         weights: WeightFormat.q4,

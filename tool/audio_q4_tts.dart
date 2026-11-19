@@ -44,10 +44,10 @@ Future<void> main(List<String> args) async {
     speechMmprojIn(dir),
     int8Inputs: int8,
   );
-  Lfm3Model? model;
+  TextModel? model;
   StreamSubscription<ProcessSignal>? interrupt;
   try {
-    model = await Lfm3Model.load(
+    model = await TextModel.load(
       '$dir/language',
       maxSeq: 2048,
       weights: WeightFormat.q4,

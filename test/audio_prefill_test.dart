@@ -22,7 +22,7 @@ Float32List _rows(int n) => Float32List.fromList([
 void main() {
   final supported = NativeKernels.isAvailable;
   late Directory temp;
-  late Lfm3Model model;
+  late TextModel model;
   late Lfm3Tokenizer tokenizer;
   setUpAll(() async {
     if (!supported) return;
@@ -32,7 +32,7 @@ void main() {
     final dir = '${temp.path}/backbone';
     writeSyntheticTokenizer(dir, additionalSpecials: _specials);
     tokenizer = Lfm3Tokenizer.load(dir);
-    model = await Lfm3Model.load(
+    model = await TextModel.load(
       dir,
       maxSeq: 256,
       maxChunk: 2,

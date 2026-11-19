@@ -407,7 +407,7 @@ final class LayerShard {
   /// Views of everything the first [position] tokens left behind: the conv
   /// histories, then each attention layer's keys and values rows before
   /// [position]. Writing them out and reading them back into another model
-  /// on the same backend restores that position (see Lfm3Model.saveState).
+  /// on the same backend restores that position (see TextModel.saveState).
   List<Float32List> stateBlocks(int position) => [
     for (final conv in _conv)
       if (conv != null) conv.history,

@@ -217,7 +217,7 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
     sw
       ..reset()
       ..start();
-    final cpu = await Lfm3Model.load(
+    final cpu = await TextModel.load(
       modelDir,
       maxSeq: 2048,
       weights: weights,
@@ -244,7 +244,7 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   final best = threadCounts.reduce((a, b) => decode(a) >= decode(b) ? a : b);
   cpuRecord['best_threads'] = best;
   NativeKernels.load(null, threads: best);
-  final cpu = await Lfm3Model.load(
+  final cpu = await TextModel.load(
     modelDir,
     maxSeq: 2048,
     weights: weights,
@@ -297,7 +297,7 @@ Future<void> _gpuBench(
 }) async {
   final bundle = record['bundle'];
   final sw = Stopwatch()..start();
-  final gpu = await Lfm3Model.load(
+  final gpu = await TextModel.load(
     modelDir,
     maxSeq: 2048,
     weights: weights,
@@ -537,7 +537,7 @@ bool _selectVectorCandidate(bool vector, bool automatic) => vector && automatic
     : GpuForward.setQ8Vector(vector);
 
 Future<Map<String, Object?>> _validateVectorChat(
-  Lfm3Model model,
+  TextModel model,
   Lfm3Tokenizer tokenizer,
   Map<String, Object?> spec,
   String stateDir,
@@ -765,7 +765,7 @@ int _argmax(Float32List v) {
 /// Metal reports nothing): over the tool prompt in chunks, and over 32
 /// decoded tokens.
 Future<Map<String, Object?>> _profileGpu(
-  Lfm3Model model,
+  TextModel model,
   List<int> ids,
   void Function(String) log, {
   bool vectorOnly = false,
@@ -919,7 +919,7 @@ Future<Map<String, Object?>> _profileGpu(
 
 /// The tool-calling question, greedy, as `lfm3 ask` runs it.
 Future<Map<String, Object?>> _ask(
-  Lfm3Model model,
+  TextModel model,
   Lfm3Tokenizer tokenizer,
   List<int> ids,
   void Function(String) log,
@@ -991,7 +991,7 @@ Future<Map<String, Object?>> _ask(
 /// `lfm3 run --force` (see bin/lfm3.dart). Prompt logits are kept for every
 /// position of prompts up to 128 tokens, else for the last one only.
 Future<Map<String, Object?>> _forced(
-  Lfm3Model model,
+  TextModel model,
   String weights,
   String refDir,
   String outDir,

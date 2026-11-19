@@ -9,7 +9,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:dianoia/dianoia.dart';
 import 'package:dianoia/lab.dart'
-    show Lfm3Model, NativeKernels, WeightFormat, physFootprint, GpuForward;
+    show TextModel, NativeKernels, WeightFormat, physFootprint, GpuForward;
 
 Map<String, Object?> memory() => {
   'rss_bytes': ProcessInfo.currentRss,
@@ -30,7 +30,7 @@ Future<void> main(List<String> args) async {
     NativeKernels.load(null, threads: 4);
     final backbone = require('backbone');
     final watch = Stopwatch()..start();
-    final model = await Lfm3Model.load(
+    final model = await TextModel.load(
       backbone,
       maxSeq: 1,
       maxChunk: 1,

@@ -24,7 +24,7 @@ const _defaultTexts = [
 /// depth pass by stage (capture copies included), the codec and the
 /// language model's step that feeds a frame back.
 Future<Map<String, Object?>> _profileFrames(
-  Lfm3Model model,
+  TextModel model,
   Lfm3Tokenizer tokenizer,
   Lfm3AudioGenerator g,
   void Function(String) log,
@@ -120,7 +120,7 @@ Future<Map<String, Object?>> speechCheck(
   final dir = '$docs/${config['bundle'] as String}';
   final gpu = config['backend'] != 'cpu';
   NativeKernels.load(null, threads: (config['threads'] as num?)?.toInt() ?? 4);
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     '$dir/language',
     maxSeq: 2048,
     weights: WeightFormat.q4,

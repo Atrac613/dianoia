@@ -115,7 +115,7 @@ final class AudioSynthesizer {
   /// use [load]; this is for `package:dianoia/lab.dart`, where the language
   /// model is shared with transcription or conversation.
   AudioSynthesizer(
-    Lfm3Model model,
+    TextModel model,
     Lfm3Tokenizer tokenizer,
     Lfm3AudioGenerator generator,
   ) : this._(model, tokenizer, generator, owned: false);
@@ -174,7 +174,7 @@ final class AudioSynthesizer {
     }
   }
 
-  final Lfm3Model _model;
+  final TextModel _model;
   final Lfm3Tokenizer _tokenizer;
   final Lfm3AudioGenerator _generator;
   final bool _owned;

@@ -100,7 +100,7 @@ Future<void> prepareVisionFixture(Directory root, {int hiddenSize = 32}) async {
   final out = '${root.path}/backbone';
   importVlBackbone(source.path, out);
   NativeKernels.load(null, threads: 2);
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     out,
     maxSeq: 512,
     weights: WeightFormat.q8,

@@ -444,7 +444,7 @@ final class GpuForward {
   /// steers and before that layer's capture, or stops with null. Uploads its
   /// vectors to a buffer of its own, released when replaced, cleared or
   /// disposed. Callers make sure no state computed under another vector is
-  /// reused (Lfm3Model.setControlVector).
+  /// reused (TextModel.setControlVector).
   void setControlVector(ControlVector? vector) {
     if (_disposed) throw StateError('the GPU forward pass is disposed');
     final c = config;

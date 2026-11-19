@@ -63,7 +63,7 @@ void main() {
   });
   group('live session ownership', () {
     late Directory root;
-    late Lfm3Model model;
+    late TextModel model;
     late Lfm3Tokenizer tokenizer;
     late Lfm3AudioEncoder encoder;
     setUp(() async {
@@ -78,7 +78,7 @@ void main() {
             .toList(),
       );
       tokenizer = Lfm3Tokenizer.load(dir);
-      model = await Lfm3Model.load(
+      model = await TextModel.load(
         dir,
         maxSeq: 512,
         weights: WeightFormat.q8,
@@ -148,7 +148,7 @@ void main() {
       () async {
         await model.close();
         final dir = '${root.path}/backbone';
-        model = await Lfm3Model.load(
+        model = await TextModel.load(
           dir,
           maxSeq: 256,
           weights: WeightFormat.q8,
@@ -285,7 +285,7 @@ void main() {
     'official Q4 English LiveASR updates before finish and flushes zero-row tails',
     () async {
       NativeKernels.load(null, threads: 2);
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         '$dir/language',
         maxSeq: 2048,
         weights: WeightFormat.q4,

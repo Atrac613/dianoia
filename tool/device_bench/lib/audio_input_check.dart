@@ -51,7 +51,7 @@ Future<Map<String, Object?>> audioInputCheck(
   write();
 
   NativeKernels.load(null, threads: threads);
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     '$dir/language',
     maxSeq: 2048,
     weights: WeightFormat.q4,

@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:dianoia/lab.dart';
 
 Future<Map<String, Object?>> runGpuSustained(
-  Lfm3Model model,
+  TextModel model,
   List<int> ids,
   int seconds,
   void Function(String) log,

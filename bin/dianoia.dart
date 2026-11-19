@@ -225,7 +225,7 @@ Future<int> _run(Map<String, String> flags) async {
 
   final ids = Int32List.sublistView(File(require('ids')).readAsBytesSync());
   final sw = Stopwatch()..start();
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     modelDir,
     maxSeq: maxSeq,
     maxChunk: chunk,
@@ -402,7 +402,7 @@ Future<int> _ask(Map<String, String> flags) async {
 
   final sw = Stopwatch()..start();
   final tokenizer = Lfm3Tokenizer.load(modelDir);
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     modelDir,
     workers: workers,
     weights: weights,
@@ -478,7 +478,7 @@ Future<int> _toolbench(Map<String, String> flags) async {
   final catalog = (spec['tools'] as Map).cast<String, Object?>();
   final cases = (spec['cases'] as List).cast<Map<String, Object?>>();
   final tokenizer = Lfm3Tokenizer.load(modelDir);
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     modelDir,
     workers: int.parse(flags['workers'] ?? '0'),
     weights: weights,
@@ -543,7 +543,7 @@ Future<int> _chatbench(Map<String, String> flags) async {
   final spec =
       jsonDecode(File(require('cases')).readAsStringSync())
           as Map<String, Object?>;
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     modelDir,
     weights: weights,
     q8CachePath: _q8CachePath(flags, modelDir, weights),
@@ -670,7 +670,7 @@ Future<int> _visionRun(Map<String, String> flags) async {
   final weights = WeightFormat.values.byName(flags['weights'] ?? 'f32');
   _loadNative(flags, needed: weights.isNative || NativeKernels.isAvailable);
   clock.reset();
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     backbone,
     weights: weights,
     q8CachePath: _q8CachePath(flags, backbone, weights),

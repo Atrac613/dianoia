@@ -103,14 +103,14 @@ final class VisionPrompt {
   /// All inputs are validated and copied before model state changes.
   ///
   /// Without [imageKeys] the model is reset and the whole prompt fed. With
-  /// one key per image, [Lfm3Model.prefill] reuses the longest prefix the
+  /// one key per image, [TextModel.prefill] reuses the longest prefix the
   /// model already holds (or its latest checkpoint inside it), an image's
   /// rows only where they were fed under an equal key: give an image the
   /// same key only while its projected rows stay the same.
   /// The caller must load the matching VL language backbone, not text-chat
   /// weights. This low-level lab API does not load/check checkpoint identity.
   Future<int> prefill(
-    Lfm3Model model,
+    TextModel model,
     List<Float32List> projectedImages, {
     List<Object>? imageKeys,
   }) async {

@@ -113,7 +113,7 @@ final class AudioLiveSession {
   ) : _prompt = List.unmodifiable(prompt),
       _pending = List.from(prompt);
   static Future<AudioLiveSession> start(
-    Lfm3Model model,
+    TextModel model,
     Lfm3Tokenizer tokenizer, {
     int maxContextAudioTokens = 375,
   }) async {
@@ -145,7 +145,7 @@ final class AudioLiveSession {
     );
   }
 
-  final Lfm3Model model;
+  final TextModel model;
   final Lfm3Tokenizer tokenizer;
   final AudioLiveTokenPolicy _policy;
   final List<int> _prompt;
@@ -302,7 +302,7 @@ final class Lfm3LiveTranscriber {
     this.onBlock,
   );
   static Future<Lfm3LiveTranscriber> start(
-    Lfm3Model model,
+    TextModel model,
     Lfm3Tokenizer tokenizer,
     Lfm3AudioEncoder encoder, {
     void Function(String)? onText,

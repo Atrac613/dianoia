@@ -8,7 +8,7 @@ import 'dart:isolate';
 
 import 'package:dianoia/dianoia.dart';
 import 'package:dianoia/lab.dart'
-    show ControlVector, Lfm3Model, Lfm3Tokenizer, LocalModelControlVector;
+    show ControlVector, TextModel, Lfm3Tokenizer, LocalModelControlVector;
 
 import 'chat_protocol.dart';
 import 'control_vectors.dart';
@@ -39,7 +39,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   LocalVisionModel? visionModel;
   VisionChatSession? visionSession;
   // LFM3-Omni has no public chat API yet; the example drives the lab one.
-  Lfm3Model? omniModel;
+  TextModel? omniModel;
   OmniResponder? omni;
   OmniConversation? omniChat;
   Future<void>? loading, replying, cancelling;
