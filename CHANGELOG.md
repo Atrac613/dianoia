@@ -1,4 +1,4 @@
-## Unreleased
+## 0.5.0
 
 - Text-to-speech is part of the app API. `package:dianoia/dianoia.dart`
   exports `AudioSynthesizer`, `renderAudioTtsPrompt`, `AudioSynthesisResult`,
