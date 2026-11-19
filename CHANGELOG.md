@@ -1,4 +1,4 @@
-## Unreleased
+## 0.4.1
 
 - `ChatSession.send` takes `suppressedTokens`, token IDs greedy decoding
   never picks in that reply. A caller that offers no tools can suppress
