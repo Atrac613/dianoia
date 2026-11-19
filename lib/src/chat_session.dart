@@ -14,7 +14,7 @@ library;
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'chat_template.dart';
+import 'chat_format.dart';
 import 'model.dart';
 import 'model_use.dart';
 import 'tokenizer.dart';
@@ -69,13 +69,19 @@ final class ChatSession {
     String? system,
     this.tools,
     this.maxNew = 256,
-  }) : _system = system;
+    ChatFormat? format,
+  }) : _system = system,
+       format = format ?? chatFormatFor(model.config);
 
   final TextModel model;
   final Lfm3Tokenizer tokenizer;
   final List<Map<String, Object?>>? tools;
   final int maxNew;
   final String? _system;
+
+  /// How prompts are rendered and replies parsed; the model family's own
+  /// unless the constructor was given another.
+  final ChatFormat format;
 
   /// The conversation so far, after the system prompt.
   final messages = <Map<String, Object?>>[];
@@ -91,7 +97,7 @@ final class ChatSession {
 
   /// The tokens of the system prompt and tools block.
   late final List<int> prefix = tokenizer.encode(
-    renderChat(_systemMessages, tools: tools, addGenerationPrompt: false),
+    format.render(_systemMessages, tools: tools, addGenerationPrompt: false),
   );
 
   /// Feeds the system prompt and tools block and checkpoints after it.
@@ -126,7 +132,7 @@ final class ChatSession {
   /// system prompt), ending in the assistant's generation prompt.
   List<int> promptIds(List<Map<String, Object?>> conversation) =>
       tokenizer.encode(
-        renderChat(
+        format.render(
           [..._systemMessages, ...conversation],
           tools: tools,
           enableThinking: false,
@@ -219,7 +225,7 @@ final class ChatSession {
     messages.add({'role': 'assistant', 'content': text});
     return ChatTurn(
       text: text,
-      reply: parseAssistantReply(text),
+      reply: format.parseReply(text),
       promptTokens: ids.length,
       reusedTokens: reused,
       prefillSeconds: prefillSeconds,

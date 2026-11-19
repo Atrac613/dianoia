@@ -20,6 +20,7 @@ export 'src/audio_synthesis.dart';
 export 'src/audio_prompt.dart';
 export 'src/speech_reply.dart';
 export 'src/chat_bench.dart';
+export 'src/chat_format.dart';
 export 'src/chat_template.dart';
 export 'src/config.dart';
 export 'src/control_vector.dart';

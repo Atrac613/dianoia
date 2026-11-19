@@ -416,7 +416,8 @@ Future<int> _ask(Map<String, String> flags) async {
     'loaded in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s',
   );
 
-  final prompt = renderChat(
+  final format = chatFormatFor(model.config);
+  final prompt = format.render(
     messages,
     tools: tools,
     enableThinking: flags['think'] == 'true',
@@ -457,7 +458,7 @@ Future<int> _ask(Map<String, String> flags) async {
     '(${(gen.length / decodeS).toStringAsFixed(2)} tok/s)',
   );
 
-  final reply = parseAssistantReply(tokenizer.decode(gen));
+  final reply = format.parseReply(tokenizer.decode(gen));
   if (reply.toolCalls.isNotEmpty) {
     stdout.writeln(
       'tool calls: '
@@ -499,7 +500,7 @@ Future<int> _toolbench(Map<String, String> flags) async {
         },
     ];
     final ids = tokenizer.encode(
-      renderChat(
+      chatFormatFor(model.config).render(
         [
           {'role': 'user', 'content': c['prompt']},
         ],
@@ -517,7 +518,7 @@ Future<int> _toolbench(Map<String, String> flags) async {
       await model.step(next);
     }
     final text = tokenizer.decode(gen);
-    final calls = parseAssistantReply(text).toolCalls;
+    final calls = chatFormatFor(model.config).parseReply(text).toolCalls;
     final ok = toolCallMatches(calls, c['expect'] as Map<String, Object?>?);
     if (ok) passed++;
     final shown = calls.isEmpty
