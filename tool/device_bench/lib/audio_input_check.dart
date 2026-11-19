@@ -60,7 +60,7 @@ Future<Map<String, Object?>> audioInputCheck(
   );
   Lfm3AudioEncoder? encoder;
   try {
-    final tokenizer = Lfm3Tokenizer.load('$dir/language');
+    final tokenizer = BpeTokenizer.load('$dir/language');
     final audioEncoder = encoder = Lfm3AudioEncoder.load(
       speechMmprojIn(dir),
       nativeDownsampling: nativeDownsampling,

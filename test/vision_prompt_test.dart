@@ -35,12 +35,12 @@ List<Map<String, Object?>> _messages(Object? input) => [
 
 void main() {
   late Directory root;
-  late Lfm3Tokenizer tokenizer;
+  late BpeTokenizer tokenizer;
   late Lfm3VlConfig config;
   setUp(() {
     root = Directory.systemTemp.createTempSync('dianoia_vl_prompt');
     writeSyntheticTokenizer(root.path);
-    tokenizer = Lfm3Tokenizer.load(root.path);
+    tokenizer = BpeTokenizer.load(root.path);
     config = Lfm3VlConfig.fromJson(_config());
   });
   tearDown(() => root.deleteSync(recursive: true));

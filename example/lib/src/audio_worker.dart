@@ -309,7 +309,7 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
   out.send(commands.sendPort);
   TextModel? model;
   Lfm3AudioEncoder? encoder;
-  Lfm3Tokenizer? tokenizer;
+  BpeTokenizer? tokenizer;
   Lfm3AudioGenerator? generator;
   AudioSynthesizer? synthesizer;
   AudioConversationSession? conversation;
@@ -461,7 +461,7 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                 SpeechModel.omni => verifyOmniBundle(dir, () => check(version)),
               };
               encoder = Lfm3AudioEncoder.load('$dir/$mmprojName');
-              tokenizer = Lfm3Tokenizer.load('$dir/language');
+              tokenizer = BpeTokenizer.load('$dir/language');
               Future<TextModel> open(bool gpu) => TextModel.load(
                 '$dir/language',
                 maxSeq: 2048,

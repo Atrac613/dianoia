@@ -116,7 +116,7 @@ final class AudioSynthesizer {
   /// model is shared with transcription or conversation.
   AudioSynthesizer(
     TextModel model,
-    Lfm3Tokenizer tokenizer,
+    BpeTokenizer tokenizer,
     Lfm3AudioGenerator generator,
   ) : this._(model, tokenizer, generator, owned: false);
 
@@ -157,7 +157,7 @@ final class AudioSynthesizer {
         'holds no LFM3-Audio or LFM3-Omni speech mmproj',
       );
     }
-    final tokenizer = Lfm3Tokenizer.load(language);
+    final tokenizer = BpeTokenizer.load(language);
     ensureNativeKernels(threads);
     final generator = Lfm3AudioGenerator.load(mmproj, int8Inputs: int8Inputs);
     try {
@@ -175,7 +175,7 @@ final class AudioSynthesizer {
   }
 
   final TextModel _model;
-  final Lfm3Tokenizer _tokenizer;
+  final BpeTokenizer _tokenizer;
   final Lfm3AudioGenerator _generator;
   final bool _owned;
   bool _cancelled = false, _closed = false;

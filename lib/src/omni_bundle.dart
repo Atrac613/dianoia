@@ -71,7 +71,7 @@ Future<void> buildOmniGgufBundle(
     ).copySync('${tokenizerDir.path}/tokenizer.json');
     final vision = loadOmniVisionConfig(
       configPath,
-      Lfm3Tokenizer.load(tokenizerDir.path),
+      BpeTokenizer.load(tokenizerDir.path),
     );
     final file = GgufFile.open('$downloads/$mmproj');
     try {

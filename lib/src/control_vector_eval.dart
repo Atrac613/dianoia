@@ -165,7 +165,7 @@ final class ControlVectorEval {
   });
 
   final TextModel model;
-  final Lfm3Tokenizer tokenizer;
+  final BpeTokenizer tokenizer;
   final ControlVector vector;
 
   /// Generated tokens checked for an opening refusal.

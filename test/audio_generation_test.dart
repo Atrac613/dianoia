@@ -295,7 +295,7 @@ void main() {
         );
         try {
           expect(() => model.lastHiddenState, throwsStateError);
-          final synth = AudioSynthesizer(model, Lfm3Tokenizer.load(dir), g);
+          final synth = AudioSynthesizer(model, BpeTokenizer.load(dir), g);
           final cancelled = synth.synthesize('Hello', maxFrames: 2);
           await expectLater(
             synth.synthesize('Other', maxFrames: 2),
@@ -392,7 +392,7 @@ void main() {
         q8CachePath: '$dir/lfm3-q8.cache',
       );
       try {
-        final synth = AudioSynthesizer(model, Lfm3Tokenizer.load(dir), g);
+        final synth = AudioSynthesizer(model, BpeTokenizer.load(dir), g);
         expect(synth.backend, InferenceBackend.cpu);
         await synth.close();
         expect(model.isClosed, isFalse);

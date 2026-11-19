@@ -43,7 +43,7 @@ final class AudioLiveTokenPolicy {
     }
   }
   factory AudioLiveTokenPolicy.fromTokenizer(
-    Lfm3Tokenizer tokenizer,
+    BpeTokenizer tokenizer,
     int vocabSize,
   ) => AudioLiveTokenPolicy({
     for (final n in names)
@@ -114,7 +114,7 @@ final class AudioLiveSession {
       _pending = List.from(prompt);
   static Future<AudioLiveSession> start(
     TextModel model,
-    Lfm3Tokenizer tokenizer, {
+    BpeTokenizer tokenizer, {
     int maxContextAudioTokens = 375,
   }) async {
     if (maxContextAudioTokens < 1 || maxContextAudioTokens > 375) {
@@ -146,7 +146,7 @@ final class AudioLiveSession {
   }
 
   final TextModel model;
-  final Lfm3Tokenizer tokenizer;
+  final BpeTokenizer tokenizer;
   final AudioLiveTokenPolicy _policy;
   final List<int> _prompt;
 
@@ -303,7 +303,7 @@ final class Lfm3LiveTranscriber {
   );
   static Future<Lfm3LiveTranscriber> start(
     TextModel model,
-    Lfm3Tokenizer tokenizer,
+    BpeTokenizer tokenizer,
     Lfm3AudioEncoder encoder, {
     void Function(String)? onText,
     void Function(AudioLiveBlock)? onBlock,

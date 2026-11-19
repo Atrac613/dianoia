@@ -297,7 +297,7 @@ final class OmniPrompt {
 /// Rejects placeholders that are unbound, malformed or in plain text.
 OmniPrompt prepareOmniPrompt(
   List<Map<String, Object?>> messages, {
-  required Lfm3Tokenizer tokenizer,
+  required BpeTokenizer tokenizer,
   required Lfm3VlConfig config,
   List<int> imageTokenCounts = const [],
   List<int> audioTokenCounts = const [],

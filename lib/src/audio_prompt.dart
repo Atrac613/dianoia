@@ -77,7 +77,7 @@ final class AudioTranscriptionPrompt {
 }
 
 AudioTranscriptionPrompt prepareAudioTranscriptionPrompt({
-  required Lfm3Tokenizer tokenizer,
+  required BpeTokenizer tokenizer,
   required int audioTokens,
   required int hiddenSize,
   String? language,
@@ -148,7 +148,7 @@ final class AudioTranscriptionPrefill {
 
   static Future<AudioTranscriptionPrefill> start({
     required TextModel model,
-    required Lfm3Tokenizer tokenizer,
+    required BpeTokenizer tokenizer,
     required int hiddenSize,
     String? language,
     int reservedTokens = 128,

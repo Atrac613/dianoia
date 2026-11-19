@@ -56,7 +56,7 @@ Future<void> main(List<String> args) async {
     );
     final synth = AudioSynthesizer(
       model,
-      Lfm3Tokenizer.load('$dir/language'),
+      BpeTokenizer.load('$dir/language'),
       generator,
     );
     interrupt = ProcessSignal.sigint.watch().listen((_) => synth.cancel());

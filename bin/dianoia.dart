@@ -242,7 +242,7 @@ Future<int> _run(Map<String, String> flags) async {
     gpu: flags['gpu'] == 'true',
     gpuLib: flags['gpu-lib'],
   );
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
+  final tokenizer = BpeTokenizer.load(modelDir);
   final loadS = sw.elapsedMilliseconds / 1000;
   final c = model.config;
   final h = c.hiddenSize;
@@ -407,7 +407,7 @@ Future<int> _ask(Map<String, String> flags) async {
   };
 
   final sw = Stopwatch()..start();
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
+  final tokenizer = BpeTokenizer.load(modelDir);
   final model = await TextModel.load(
     modelDir,
     workers: workers,
@@ -484,7 +484,7 @@ Future<int> _toolbench(Map<String, String> flags) async {
           as Map<String, Object?>;
   final catalog = (spec['tools'] as Map).cast<String, Object?>();
   final cases = (spec['cases'] as List).cast<Map<String, Object?>>();
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
+  final tokenizer = BpeTokenizer.load(modelDir);
   final model = await TextModel.load(
     modelDir,
     workers: int.parse(flags['workers'] ?? '0'),
@@ -559,7 +559,7 @@ Future<int> _chatbench(Map<String, String> flags) async {
   );
   final record = await chatBench(
     model,
-    Lfm3Tokenizer.load(modelDir),
+    BpeTokenizer.load(modelDir),
     spec,
     stdout.writeln,
     statePath: flags['state'] ?? '$modelDir/chatbench.state',
@@ -641,7 +641,7 @@ Future<int> _visionRun(Map<String, String> flags) async {
     height: height,
     width: width,
   );
-  final tokenizer = Lfm3Tokenizer.load(vlDir);
+  final tokenizer = BpeTokenizer.load(vlDir);
   final encoder = Lfm3VisionEncoder.load(vlDir);
   final prompt = prepareVisionPrompt(
     [
@@ -829,7 +829,7 @@ Future<int> _importHf(Map<String, String> flags) async {
 
 Future<int> _selftest(Map<String, String> flags) async {
   final require = _requirer(flags);
-  final tokenizer = Lfm3Tokenizer.load(require('model'));
+  final tokenizer = BpeTokenizer.load(require('model'));
   final oracle =
       jsonDecode(File(require('oracle')).readAsStringSync())
           as Map<String, Object?>;

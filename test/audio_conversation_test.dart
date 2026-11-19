@@ -100,7 +100,7 @@ void main() {
       );
       session = AudioConversationSession(
         model,
-        Lfm3Tokenizer.load(dir),
+        BpeTokenizer.load(dir),
         generator,
       );
     });
@@ -184,7 +184,7 @@ void main() {
         weights: WeightFormat.q4,
         q8CachePath: '$dir/language/lfm3-q4.cache',
       );
-      final tokenizer = Lfm3Tokenizer.load('$dir/language');
+      final tokenizer = BpeTokenizer.load('$dir/language');
       final session = AudioConversationSession(model, tokenizer, generator);
       Future<void> input(String path) async {
         final bytes = ByteData.sublistView(File(path).readAsBytesSync());

@@ -139,7 +139,7 @@ final class AudioConversationSession {
     }
   }
   final TextModel model;
-  final Lfm3Tokenizer tokenizer;
+  final BpeTokenizer tokenizer;
   final Lfm3AudioGenerator generator;
   final _history = <_Slot>[];
   List<_Slot>? _pending;

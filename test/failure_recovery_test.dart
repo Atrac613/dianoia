@@ -114,7 +114,7 @@ void main() {
       test('a reply that fails mid-generation leaves the messages', () async {
         final session = ChatSession(
           model,
-          Lfm3Tokenizer.load(backbone),
+          BpeTokenizer.load(backbone),
           system: 'S',
           maxNew: 8,
         );

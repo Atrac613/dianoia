@@ -25,7 +25,7 @@ const _defaultTexts = [
 /// language model's step that feeds a frame back.
 Future<Map<String, Object?>> _profileFrames(
   TextModel model,
-  Lfm3Tokenizer tokenizer,
+  BpeTokenizer tokenizer,
   Lfm3AudioGenerator g,
   void Function(String) log,
 ) async {
@@ -127,7 +127,7 @@ Future<Map<String, Object?>> speechCheck(
     q8CachePath: '$dir/language/lfm3-q4.cache',
     gpu: gpu,
   );
-  final tokenizer = Lfm3Tokenizer.load('$dir/language');
+  final tokenizer = BpeTokenizer.load('$dir/language');
   final generators = {
     for (final int8 in [false, true])
       int8: Lfm3AudioGenerator.load(speechMmprojIn(dir), int8Inputs: int8),

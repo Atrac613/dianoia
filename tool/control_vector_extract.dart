@@ -90,7 +90,7 @@ Future<void> main(List<String> args) async {
   }
 
   NativeKernels.load(null, threads: threads);
-  final tokenizer = Lfm3Tokenizer.load(bundle);
+  final tokenizer = BpeTokenizer.load(bundle);
   final model = await _load(bundle, gpu: gpu);
   try {
     final c = model.config;

@@ -74,7 +74,7 @@ final class ChatSession {
        format = format ?? chatFormatFor(model.config);
 
   final TextModel model;
-  final Lfm3Tokenizer tokenizer;
+  final BpeTokenizer tokenizer;
   final List<Map<String, Object?>>? tools;
   final int maxNew;
   final String? _system;

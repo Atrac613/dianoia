@@ -215,7 +215,7 @@ final class OmniResponder {
   });
 
   final TextModel model;
-  final Lfm3Tokenizer tokenizer;
+  final BpeTokenizer tokenizer;
   final String directory;
 
   /// The image budget: a mobile CPU encodes 256 tokens in a few seconds.

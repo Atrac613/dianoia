@@ -117,7 +117,7 @@ Future<void> main(List<String> args) async {
   try {
     final eval = ControlVectorEval(
       model,
-      Lfm3Tokenizer.load(bundle),
+      BpeTokenizer.load(bundle),
       vector,
       refusalTokens: refusalTokens,
       compareTokens: compareTokens,

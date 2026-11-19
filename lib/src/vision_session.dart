@@ -92,7 +92,7 @@ final class VisionRequestCancelled implements Exception {
 final class VisionChatRuntime {
   VisionChatRuntime(this.model, this.tokenizer, this.processor, this.encoder);
   final TextModel model;
-  final Lfm3Tokenizer tokenizer;
+  final BpeTokenizer tokenizer;
   final Lfm3ImageProcessor processor;
   Lfm3VisionEncoder? encoder;
   Completer<void>? _active;

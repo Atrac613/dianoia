@@ -47,7 +47,7 @@ final class SpeechReply {
 /// [variant] defaults to the generator's, or LFM3-Audio without one.
 Future<SpeechReply> decodeSpeechReply({
   required TextModel model,
-  required Lfm3Tokenizer tokenizer,
+  required BpeTokenizer tokenizer,
   required AudioReplyMode mode,
   required int maxSlots,
   required Future<void> Function(

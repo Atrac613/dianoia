@@ -89,7 +89,7 @@ Future<void> main(List<String> args) async {
   }
 
   final mmproj = speechMmprojIn(dir);
-  final tokenizer = Lfm3Tokenizer.load('$dir/language');
+  final tokenizer = BpeTokenizer.load('$dir/language');
   final config = loadOmniVisionConfig(
     '$dir/${Lfm3OmniQ4Source.config.name}',
     tokenizer,

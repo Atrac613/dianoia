@@ -64,7 +64,7 @@ void main() {
   group('live session ownership', () {
     late Directory root;
     late TextModel model;
-    late Lfm3Tokenizer tokenizer;
+    late BpeTokenizer tokenizer;
     late Lfm3AudioEncoder encoder;
     setUp(() async {
       root = Directory.systemTemp.createTempSync('dianoia-live-');
@@ -77,7 +77,7 @@ void main() {
             .where((n) => !['<|im_end|>', '<|im_start|>'].contains(n))
             .toList(),
       );
-      tokenizer = Lfm3Tokenizer.load(dir);
+      tokenizer = BpeTokenizer.load(dir);
       model = await TextModel.load(
         dir,
         maxSeq: 512,
@@ -291,7 +291,7 @@ void main() {
         weights: WeightFormat.q4,
         q8CachePath: '$dir/language/lfm3-q4.cache',
       );
-      final tokenizer = Lfm3Tokenizer.load('$dir/language');
+      final tokenizer = BpeTokenizer.load('$dir/language');
       final encoder = Lfm3AudioEncoder.load(
         '$dir/${Lfm3AudioQ4Source.audio.name}',
       );

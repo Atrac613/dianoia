@@ -86,7 +86,7 @@ Future<void> main(List<String> args) async {
   late String text;
   try {
     if (gpu && chunkMs == null) encoder.useGpu();
-    final tokenizer = Lfm3Tokenizer.load(bundle);
+    final tokenizer = BpeTokenizer.load(bundle);
     model = await TextModel.load(
       bundle,
       maxSeq: 4096,

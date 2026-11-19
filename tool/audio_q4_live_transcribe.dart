@@ -40,7 +40,7 @@ Future<void> main(List<String> args) async {
     );
     live = await Lfm3LiveTranscriber.start(
       model,
-      Lfm3Tokenizer.load('$dir/language'),
+      BpeTokenizer.load('$dir/language'),
       encoder,
       onBlock: (b) {
         block++;

@@ -8,7 +8,7 @@ import 'dart:isolate';
 
 import 'package:dianoia/dianoia.dart';
 import 'package:dianoia/lab.dart'
-    show ControlVector, TextModel, Lfm3Tokenizer, LocalModelControlVector;
+    show ControlVector, TextModel, BpeTokenizer, LocalModelControlVector;
 
 import 'chat_protocol.dart';
 import 'control_vectors.dart';
@@ -113,7 +113,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
         await verifyOmniBundle(dir, () {
           if (closing) throw StateError('The chat was closed');
         });
-        final tokenizer = Lfm3Tokenizer.load('$dir/language');
+        final tokenizer = BpeTokenizer.load('$dir/language');
         final (loaded, gpu) = await loadOmniLanguageModel(dir);
         omniModel = loaded;
         if (closing) return;

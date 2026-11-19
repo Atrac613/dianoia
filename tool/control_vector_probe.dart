@@ -75,7 +75,7 @@ Future<void> main(List<String> args) async {
     firstLayer: layers.$1,
     lastLayer: layers.$2,
   );
-  final tokenizer = Lfm3Tokenizer.load(bundle);
+  final tokenizer = BpeTokenizer.load(bundle);
   final model = await _load(bundle, gpu: gpu);
   try {
     final steered = [

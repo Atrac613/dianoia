@@ -136,7 +136,7 @@ void main() {
       final random = math.Random(3);
       eval = ControlVectorEval(
         model,
-        Lfm3Tokenizer.load(backbone),
+        BpeTokenizer.load(backbone),
         ControlVector(
           {
             1: Float32List.fromList([
@@ -162,7 +162,7 @@ void main() {
         // before it.
         await model.reset();
         model.setControlVector(v);
-        final prompt = Lfm3Tokenizer.load('${root.path}/backbone').encode(
+        final prompt = BpeTokenizer.load('${root.path}/backbone').encode(
           renderChat([
             {'role': 'user', 'content': 'hi'},
           ], enableThinking: false),

@@ -23,7 +23,7 @@ void main() {
   final supported = NativeKernels.isAvailable;
   late Directory temp;
   late TextModel model;
-  late Lfm3Tokenizer tokenizer;
+  late BpeTokenizer tokenizer;
   setUpAll(() async {
     if (!supported) return;
     temp = Directory.systemTemp.createTempSync('dianoia-audio-prefill-');
@@ -31,7 +31,7 @@ void main() {
     await prepareVisionFixture(temp);
     final dir = '${temp.path}/backbone';
     writeSyntheticTokenizer(dir, additionalSpecials: _specials);
-    tokenizer = Lfm3Tokenizer.load(dir);
+    tokenizer = BpeTokenizer.load(dir);
     model = await TextModel.load(
       dir,
       maxSeq: 256,

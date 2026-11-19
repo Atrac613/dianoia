@@ -36,7 +36,7 @@ Future<void> main(List<String> args) async {
     );
     session = AudioConversationSession(
       model,
-      Lfm3Tokenizer.load('$dir/language'),
+      BpeTokenizer.load('$dir/language'),
       generator,
     );
     for (var i = 2; i < pos.length; i++) {

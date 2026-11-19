@@ -58,7 +58,7 @@ List<Map<String, Object?>> catalogTools(Map<String, Object?> spec) => [
 /// to [log], and returns a record of the timings.
 Future<Map<String, Object?>> chatBench(
   TextModel model,
-  Lfm3Tokenizer tokenizer,
+  BpeTokenizer tokenizer,
   Map<String, Object?> spec,
   void Function(String) log, {
   required String statePath,

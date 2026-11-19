@@ -172,7 +172,7 @@ final class VisionPrompt {
 /// or video tokens, including placeholders embedded in plain text.
 VisionPrompt prepareVisionPrompt(
   List<Map<String, Object?>> messages, {
-  required Lfm3Tokenizer tokenizer,
+  required BpeTokenizer tokenizer,
   required Lfm3VlConfig config,
   required List<int> imageTokenCounts,
   List<Map<String, Object?>>? tools,

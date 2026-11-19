@@ -29,11 +29,11 @@ void main() {
 
   group('Omni prompts match the pinned template', () {
     late Directory temp;
-    late Lfm3Tokenizer tokenizer;
+    late BpeTokenizer tokenizer;
     setUp(() {
       temp = Directory.systemTemp.createTempSync('dianoia-omni-prompt-');
       writeSyntheticTokenizer(temp.path, additionalSpecials: _speechSpecials);
-      tokenizer = Lfm3Tokenizer.load(temp.path);
+      tokenizer = BpeTokenizer.load(temp.path);
     });
     tearDown(() => temp.deleteSync(recursive: true));
 
@@ -129,7 +129,7 @@ void main() {
     final temp = Directory.systemTemp.createTempSync('dianoia-omni-marker-');
     addTearDown(() => temp.deleteSync(recursive: true));
     writeSyntheticTokenizer(temp.path, additionalSpecials: _speechSpecials);
-    final tokenizer = Lfm3Tokenizer.load(temp.path);
+    final tokenizer = BpeTokenizer.load(temp.path);
     expect(tokenizer.addedTokenIn('What is in it?'), isNull);
     expect(tokenizer.addedTokenIn('x <|image|> y <|im_end|>'), '<|image|>');
     expect(tokenizer.addedTokenIn('end<|im_end|>'), '<|im_end|>');
@@ -137,12 +137,12 @@ void main() {
 
   group('mixed Omni prompts', () {
     late Directory temp;
-    late Lfm3Tokenizer tokenizer;
+    late BpeTokenizer tokenizer;
     late Lfm3VlConfig config;
     setUp(() {
       temp = Directory.systemTemp.createTempSync('dianoia-omni-mixed-');
       writeSyntheticTokenizer(temp.path, additionalSpecials: _speechSpecials);
-      tokenizer = Lfm3Tokenizer.load(temp.path);
+      tokenizer = BpeTokenizer.load(temp.path);
       final json =
           jsonDecode(File('test/fixtures/omni/config.json').readAsStringSync())
               as Map<String, Object?>;
@@ -492,7 +492,7 @@ void main() {
       await prepareVisionFixture(root);
       final dir = '${root.path}/backbone';
       writeSyntheticTokenizer(dir, additionalSpecials: _speechSpecials);
-      final tokenizer = Lfm3Tokenizer.load(dir);
+      final tokenizer = BpeTokenizer.load(dir);
       final config = Lfm3VlConfig.load('${root.path}/model');
       final model = await TextModel.load(
         dir,

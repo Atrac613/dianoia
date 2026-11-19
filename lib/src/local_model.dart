@@ -39,7 +39,7 @@ final class LocalModel {
   LocalModel._(this._model, this._tokenizer, this.backend);
 
   final TextModel _model;
-  final Lfm3Tokenizer _tokenizer;
+  final BpeTokenizer _tokenizer;
 
   /// Where the model runs: [InferenceBackend.gpu] or [InferenceBackend.cpu].
   final InferenceBackend backend;
@@ -78,7 +78,7 @@ final class LocalModel {
     int threads = 4,
   }) async {
     final weights = bundleWeights(dir); // fails before anything loads
-    final tokenizer = Lfm3Tokenizer.load(dir);
+    final tokenizer = BpeTokenizer.load(dir);
     ensureNativeKernels(threads);
     final model = await openLanguageBundle(
       dir,
@@ -214,7 +214,7 @@ final class LocalVisionModel {
         config.vision.inChannels != 3) {
       throw const FormatException('processor and vision configuration differ');
     }
-    final tokenizer = Lfm3Tokenizer.load(modelDir);
+    final tokenizer = BpeTokenizer.load(modelDir);
     // Verify special tokens using the same path as real visual prompts.
     prepareVisionPrompt(
       [],

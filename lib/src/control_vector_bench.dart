@@ -48,7 +48,7 @@ Future<Map<String, Object?>> benchmarkControlVector({
   void Function(String) log = _ignore,
   void Function(Map<String, Object?>) onRecord = _ignoreRecord,
 }) async {
-  final tokenizer = Lfm3Tokenizer.load(bundle);
+  final tokenizer = BpeTokenizer.load(bundle);
   List<int> idsOf(String prompt) => tokenizer.encode(
     renderChat([
       {'role': 'user', 'content': prompt},

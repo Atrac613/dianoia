@@ -142,7 +142,7 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   }
 
   NativeKernels.load(null, threads: 2);
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
+  final tokenizer = BpeTokenizer.load(modelDir);
   final ids = tokenizer.encode(
     renderChat(
       [
@@ -284,7 +284,7 @@ Future<void> _gpuBench(
   String modelDir,
   WeightFormat weights,
   String cachePath,
-  Lfm3Tokenizer tokenizer,
+  BpeTokenizer tokenizer,
   List<int> ids,
   File toolCases,
   String docs,
@@ -538,7 +538,7 @@ bool _selectVectorCandidate(bool vector, bool automatic) => vector && automatic
 
 Future<Map<String, Object?>> _validateVectorChat(
   TextModel model,
-  Lfm3Tokenizer tokenizer,
+  BpeTokenizer tokenizer,
   Map<String, Object?> spec,
   String stateDir,
   void Function(String) log, {
@@ -920,7 +920,7 @@ Future<Map<String, Object?>> _profileGpu(
 /// The tool-calling question, greedy, as `lfm3 ask` runs it.
 Future<Map<String, Object?>> _ask(
   TextModel model,
-  Lfm3Tokenizer tokenizer,
+  BpeTokenizer tokenizer,
   List<int> ids,
   void Function(String) log,
   String label,
