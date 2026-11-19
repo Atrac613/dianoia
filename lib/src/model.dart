@@ -451,7 +451,8 @@ final class TextModel {
   /// Feeds the prompt [ids] for a new reply, reusing what the model has
   /// already computed: the longest common prefix of [ids] and [history]
   /// if [history] does not go past it, else the state at the latest
-  /// checkpoint inside it, else nothing. At least the last token is always
+  /// checkpoint inside it, else nothing. A model without conv layers keeps
+  /// the common prefix either way. At least the last token is always
   /// fed, so [logits] are the prompt's. Saves checkpoints at [checkpoints]
   /// (positions in [ids], such as the end of the system prompt) and at the
   /// end of the prompt. Returns how many tokens were reused.
@@ -525,14 +526,20 @@ final class TextModel {
       common++;
     }
     if (common < length) {
-      final start = _checkpoints.keys
-          .where((p) => p <= common)
-          .fold(0, math.max);
+      // Without conv layers the KV rows are the whole state, and those
+      // before any position stay valid: rewind to the divergence itself.
+      final start = _attentionOnly
+          ? common
+          : _checkpoints.keys.where((p) => p <= common).fold(0, math.max);
       await _rewind(start);
       common = start;
     }
     return common;
   }
+
+  /// Whether every layer is attention, so that the state at a position is
+  /// just the KV rows before it.
+  late final bool _attentionOnly = !config.layerTypes.contains(LayerType.conv);
 
   /// Saves the state at the current position, for [prefill] to return to.
   /// Costs a copy of the conv histories (640 KB for LFM3-1.7B); a no-op
@@ -673,11 +680,15 @@ final class TextModel {
       await reset();
       return;
     }
-    final state = _checkpoints[position]!;
-    if (_gpu case final gpu?) {
-      gpu.restoreState(state as List<Float32List>);
-    } else {
-      await _executor!.restoreState(state);
+    // An attention-only model has nothing to restore: later KV rows are
+    // simply overwritten.
+    if (!_attentionOnly) {
+      final state = _checkpoints[position]!;
+      if (_gpu case final gpu?) {
+        gpu.restoreState(state as List<Float32List>);
+      } else {
+        await _executor!.restoreState(state);
+      }
     }
     length = position;
     _history.length = position;
