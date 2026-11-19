@@ -21,11 +21,21 @@
 /// [VisionGgufSpec.lfm3VlQadQ4]. Load it with [LocalVisionModel.loadBundle]. Image encoding
 /// currently runs on the CPU. Use [ChatImage.encoded] or [ChatImage.fromFile]
 /// for PNG/JPEG input, or [ChatImage.rgb] for caller-decoded pixels.
-/// [AudioGgufSpec.lfm3AudioQ4] installs the paired audio model. Audio inference
-/// remains experimental under `package:dianoia/lab.dart` and in the example.
+/// [AudioGgufSpec.lfm3AudioQ4] installs the paired audio model. Speak text with
+/// [AudioSynthesizer.load] and [AudioSynthesizer.synthesize], and save it with
+/// [encodeSpeechWav]. Transcription and voice conversation remain
+/// experimental under `package:dianoia/lab.dart` and in the example.
 /// `package:dianoia/lab.dart` exposes the engine's internals.
 library;
 
+export 'src/audio_gguf.dart' show Lfm3SpeechVariant;
+export 'src/audio_synthesis.dart'
+    show
+        AudioSynthesisCancelled,
+        AudioSynthesisResult,
+        AudioSynthesizer,
+        encodeSpeechWav,
+        renderAudioTtsPrompt;
 export 'src/chat_session.dart'
     show ChatSession, ChatTurn, ContextLengthExceeded;
 export 'src/local_model.dart'

@@ -322,6 +322,60 @@ void main() {
         }
       },
     );
+    test('loads an installed bundle and frees it on close', () async {
+      await prepareVisionFixture(temp);
+      final bundle = Directory('${temp.path}/bundle')..createSync();
+      final language = '${bundle.path}/language';
+      Directory('${temp.path}/backbone').renameSync(language);
+      writeSyntheticTokenizer(
+        language,
+        additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
+      );
+      File(
+        '${temp.path}/mmproj.gguf',
+      ).copySync('${bundle.path}/${Lfm3AudioQ4Source.audio.name}');
+      final synth = await AudioSynthesizer.load(
+        bundle.path,
+        backend: InferenceBackend.cpu,
+        contextLength: 512,
+        threads: 2,
+      );
+      expect(synth.backend, InferenceBackend.cpu);
+      expect(synth.generator.int8Inputs, isTrue);
+      final result = await synth.synthesize('Hello', maxFrames: 2);
+      expect(
+        result.samples.length,
+        result.frames * synth.generator.frameSamples,
+      );
+      await synth.close();
+      expect(synth.isClosed, isTrue);
+      expect(synth.model.isClosed, isTrue);
+      await expectLater(synth.synthesize('Hello'), throwsStateError);
+      await synth.close();
+    });
+    test('close leaves caller-owned parts open', () async {
+      await prepareVisionFixture(temp);
+      final dir = '${temp.path}/backbone';
+      writeSyntheticTokenizer(
+        dir,
+        additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
+      );
+      final model = await Lfm3Model.load(
+        dir,
+        maxSeq: 512,
+        weights: WeightFormat.q8,
+        q8CachePath: '$dir/lfm3-q8.cache',
+      );
+      try {
+        final synth = AudioSynthesizer(model, Lfm3Tokenizer.load(dir), g);
+        expect(synth.backend, isNull);
+        await synth.close();
+        expect(model.isClosed, isFalse);
+        g.startCodecStream().close();
+      } finally {
+        await model.close();
+      }
+    });
   }, skip: supported ? false : 'native kernels unavailable');
   test(
     'TTS prompt uses language/voice instructions and rejects control markers',

@@ -1,4 +1,5 @@
-/// Text-to-speech orchestration for the prepared official LFM3-Audio Q4 bundle.
+/// Text-to-speech with the LFM3-Audio and LFM3-Omni bundles that
+/// [AudioGgufSpec] and [OmniGgufSpec] install.
 library;
 
 import 'dart:math' as math;
@@ -6,7 +7,11 @@ import 'dart:typed_data';
 
 import 'audio_generation.dart';
 import 'audio_gguf.dart';
+import 'local_model.dart' show InferenceBackend;
 import 'model.dart';
+import 'model_loading.dart';
+import 'model_store.dart' show AudioGgufSpec, OmniGgufSpec;
+import 'omni_gguf.dart' show speechMmprojIn;
 import 'tokenizer.dart';
 
 const _languages = {
@@ -32,8 +37,14 @@ const _languages = {
   'zh': 'Chinese',
 };
 
-/// The official single-text TTS prompt. Speech output is conditioned by language
-/// and the model's female/male instruction, not by a reference speaker recording.
+/// The official single-text TTS prompt for [text].
+///
+/// Speech is conditioned by [language] and [voice] (`female` or `male`), not
+/// by a reference speaker recording. [language] is a code such as `en`,
+/// `en-gb` or `ja`, or a language name the model is asked to speak. The
+/// prompt ends at `<|audio_start|>`, where speech frames begin. Throws
+/// [ArgumentError] for empty text, text over 16000 characters or holding
+/// `<|`, an invalid language or another voice.
 String renderAudioTtsPrompt(
   String text, {
   String language = 'en',
@@ -53,12 +64,14 @@ String renderAudioTtsPrompt(
       '${variant.assistantOpen}<|audio_start|>';
 }
 
+/// Thrown by [AudioSynthesizer.synthesize] after [AudioSynthesizer.cancel].
 final class AudioSynthesisCancelled implements Exception {
   const AudioSynthesisCancelled();
   @override
   String toString() => 'Audio synthesis cancelled';
 }
 
+/// Synthesized speech: mono float PCM in -1..1.
 final class AudioSynthesisResult {
   AudioSynthesisResult(
     this.samples,
@@ -66,30 +79,134 @@ final class AudioSynthesisResult {
     this.frames,
     this.stopReason,
   );
+
+  /// The waveform, [sampleRate] samples per second.
   final Float32List samples;
+
+  /// Samples per second (24000 for LFM3) and generated speech frames.
   final int sampleRate, frames;
 
   /// `eos` or `length`. A length-limited result is partial speech.
   final String stopReason;
+
+  /// The speech's duration.
   double get seconds => samples.length / sampleRate;
 }
 
-/// Caller-owned model/generator, used exclusively during a synthesis operation.
-/// CPU generation/codec work is synchronous per frame: use a worker isolate.
+/// Speaks text with an LFM3-Audio or LFM3-Omni model.
+///
+/// ```dart
+/// final synth = await AudioSynthesizer.load(
+///   store.bundlePath(AudioGgufSpec.lfm3AudioQ4),
+/// );
+/// final speech = await synth.synthesize('Hello!', voice: 'male');
+/// File('hello.wav').writeAsBytesSync(
+///   encodeSpeechWav(speech.samples, sampleRate: speech.sampleRate),
+/// );
+/// await synth.close();
+/// ```
+///
+/// Each frame's sampling and codec decoding is synchronous CPU work, so an
+/// app should synthesize in a worker isolate. One synthesis runs at a time.
 final class AudioSynthesizer {
-  AudioSynthesizer(this.model, this.tokenizer, this.generator);
+  /// A synthesizer over a caller-owned [model], [tokenizer] and [generator],
+  /// which it uses exclusively while it synthesizes and never closes. Apps
+  /// use [load]; this is for `package:dianoia/lab.dart`, where the language
+  /// model is shared with transcription or conversation.
+  AudioSynthesizer(this.model, this.tokenizer, this.generator)
+    : backend = null,
+      _owned = false;
+
+  AudioSynthesizer._owned(
+    this.model,
+    this.tokenizer,
+    this.generator,
+    this.backend,
+  ) : _owned = true;
+
+  /// Loads the speech model installed in [dir]: an [AudioGgufSpec] or
+  /// [OmniGgufSpec] bundle, whose `language/` holds the imported language
+  /// model and whose mmproj holds the speech generator and codec.
+  ///
+  /// [backend], [contextLength] and [threads] are as for [LocalModel.load];
+  /// a prompt and its frames must fit in [contextLength]. With [int8Inputs]
+  /// the speech generator's quantized products take int8 inputs, about 1.4
+  /// times faster than float inputs and slightly different speech; it is
+  /// what keeps an iPhone 15 Pro Max at real time.
+  static Future<AudioSynthesizer> load(
+    String dir, {
+    InferenceBackend backend = InferenceBackend.auto,
+    int contextLength = 2048,
+    int threads = 4,
+    bool int8Inputs = true,
+  }) async {
+    final language = '$dir/language', mmproj = speechMmprojIn(dir);
+    bundleWeights(language); // fails before anything is loaded
+    final tokenizer = Lfm3Tokenizer.load(language);
+    ensureNativeKernels(threads);
+    final generator = Lfm3AudioGenerator.load(mmproj, int8Inputs: int8Inputs);
+    try {
+      final (model, used) = await openLanguageBundle(
+        language,
+        backend: backend,
+        contextLength: contextLength,
+      );
+      return AudioSynthesizer._owned(model, tokenizer, generator, used);
+    } catch (_) {
+      generator.close();
+      rethrow;
+    }
+  }
+
+  /// The language model, its tokenizer and the speech generator.
   final Lfm3Model model;
   final Lfm3Tokenizer tokenizer;
   final Lfm3AudioGenerator generator;
-  bool _busy = false, _cancelled = false;
+
+  /// Where a [load]ed synthesizer's language model runs:
+  /// [InferenceBackend.gpu] or [InferenceBackend.cpu]. Null for one made
+  /// from caller-owned parts.
+  final InferenceBackend? backend;
+
+  final bool _owned;
+  bool _busy = false, _cancelled = false, _closed = false;
+
+  /// Whether [close] has run.
+  bool get isClosed => _closed;
+
+  /// Stops the running synthesis at its next frame: its
+  /// [synthesize] throws [AudioSynthesisCancelled].
   void cancel() {
     _cancelled = true;
+  }
+
+  /// Cancels any running synthesis and, for a [load]ed synthesizer, frees
+  /// the language model and the speech generator. Parts passed to the
+  /// constructor stay open. Closing twice does nothing.
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    cancel();
+    if (_owned) {
+      generator.close();
+      await model.close();
+    }
   }
 
   void _check() {
     if (_cancelled) throw const AudioSynthesisCancelled();
   }
 
+  /// Speaks [text] in [language] with a `female` or `male` [voice] (see
+  /// [renderAudioTtsPrompt]), at most [maxFrames] frames of 80 ms (1..750).
+  ///
+  /// Sampling uses the model's defaults unless [temperature], [topK] or
+  /// [repetitionPenalty] override them; [seed] makes it repeatable.
+  /// [onAudio] receives each new piece of the waveform as it is decoded and
+  /// [onCodes] each frame's codes. Throws [StateError] while another
+  /// synthesis runs or after [close], [ArgumentError] for invalid options
+  /// or a prompt that does not fit the context, and
+  /// [AudioSynthesisCancelled] after [cancel].
   Future<AudioSynthesisResult> synthesize(
     String text, {
     String language = 'en',
@@ -102,6 +219,7 @@ final class AudioSynthesizer {
     void Function(Float32List samples)? onAudio,
     void Function(List<int> codes)? onCodes,
   }) async {
+    if (_closed) throw StateError('Audio synthesizer is closed');
     if (_busy) throw StateError('Synthesis is already running');
     final prompt = tokenizer.encode(
       renderAudioTtsPrompt(
@@ -205,7 +323,8 @@ final class AudioSynthesizer {
   }
 }
 
-/// PCM16 WAV with explicit finite-sample validation and full-scale clipping.
+/// [samples] as a mono 16-bit PCM WAV file at [sampleRate], clipped to
+/// full scale. Throws [ArgumentError] for a non-finite sample.
 Uint8List encodeSpeechWav(Float32List samples, {int sampleRate = 24000}) {
   if (sampleRate < 1 ||
       sampleRate > 192000 ||
