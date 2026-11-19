@@ -1,68 +1,13 @@
 // A tiny synthetic Qwen3 checkpoint, imported and run in float32: prompt
 // reuse across a diverging conversation gives the logits of a fresh
 // prefill, and keeps every common token since the model has no conv state.
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
 
-import 'support/synthetic_tokenizer.dart';
-import 'support/synthetic_vision.dart';
-
-const _h = 32, _hd = 8, _heads = 4, _kvHeads = 2, _layers = 2, _vocab = 272;
-
-String _writeQwen3(Directory root) {
-  final hf = Directory('${root.path}/hf')..createSync();
-  File('${hf.path}/config.json').writeAsStringSync(
-    jsonEncode({
-      'model_type': 'qwen3',
-      'hidden_act': 'silu',
-      'hidden_size': _h,
-      'intermediate_size': 2 * _h,
-      'num_attention_heads': _heads,
-      'num_key_value_heads': _kvHeads,
-      'head_dim': _hd,
-      'num_hidden_layers': _layers,
-      'vocab_size': _vocab,
-      'rms_norm_eps': 1e-6,
-      'rope_theta': 1000000,
-      'rope_scaling': null,
-      'tie_word_embeddings': true,
-      'attention_bias': false,
-      'use_sliding_window': false,
-      'eos_token_id': 1,
-    }),
-  );
-  final shapes = <String, Object?>{
-    'model.embed_tokens.weight': [_vocab, _h],
-    'model.norm.weight': [_h],
-  };
-  for (var i = 0; i < _layers; i++) {
-    final p = 'model.layers.$i.';
-    shapes['${p}input_layernorm.weight'] = [_h];
-    shapes['${p}post_attention_layernorm.weight'] = [_h];
-    shapes['${p}self_attn.q_proj.weight'] = [_heads * _hd, _h];
-    shapes['${p}self_attn.k_proj.weight'] = [_kvHeads * _hd, _h];
-    shapes['${p}self_attn.v_proj.weight'] = [_kvHeads * _hd, _h];
-    shapes['${p}self_attn.o_proj.weight'] = [_h, _heads * _hd];
-    shapes['${p}self_attn.q_norm.weight'] = [_hd];
-    shapes['${p}self_attn.k_norm.weight'] = [_hd];
-    shapes['${p}mlp.gate_proj.weight'] = [2 * _h, _h];
-    shapes['${p}mlp.up_proj.weight'] = [2 * _h, _h];
-    shapes['${p}mlp.down_proj.weight'] = [_h, 2 * _h];
-  }
-  writeSyntheticVisionWeights(
-    '${hf.path}/model.safetensors',
-    shapes,
-    bf16: true,
-  );
-  writeSyntheticTokenizer(hf.path);
-  final out = '${root.path}/model';
-  importHfCheckpoint(hf.path, out);
-  return out;
-}
+import 'support/synthetic_qwen3.dart';
 
 void main() {
   late Directory root;
@@ -71,7 +16,9 @@ void main() {
 
   setUpAll(() async {
     root = Directory.systemTemp.createTempSync('dianoia-qwen3-model-');
-    dir = _writeQwen3(root);
+    writeSyntheticQwen3('${root.path}/hf');
+    dir = '${root.path}/model';
+    importHfCheckpoint('${root.path}/hf', dir);
     model = await TextModel.load(dir, maxSeq: 64, maxChunk: 4);
   });
   tearDownAll(() async {

@@ -18,6 +18,7 @@ import 'native.dart';
 import 'omni_bundle.dart';
 import 'omni_gguf.dart';
 import 'quant.dart';
+import 'text_bundle.dart';
 import 'vision_backbone.dart';
 import 'vision_bundle.dart';
 import 'vision_gguf.dart';
@@ -216,6 +217,112 @@ final class OmniGgufSpec extends InstallableModel {
 
 /// Language matrix quantization; the tied output head stays Q8.
 enum VisionQuantization { q8, q4 }
+
+/// The weights a [TextCheckpointSpec] is quantized to on the device.
+enum TextQuantization { q8, q4 }
+
+/// An upstream BF16 text checkpoint, quantized into a bundle on the device:
+/// for families such as Qwen3 whose authors publish no Q4_0 build this
+/// engine imports. Installation renames its tensors into the engine's
+/// layout, quantizes every matrix, then keeps only the bundle.
+final class TextCheckpointSpec extends InstallableModel {
+  const TextCheckpointSpec({
+    required this.id,
+    required this.name,
+    required this.license,
+    required this.licenseUrl,
+    this.installedBytes,
+    this.setupBytes,
+    required this.files,
+    this.quantization = TextQuantization.q8,
+  });
+
+  @override
+  final String id;
+  @override
+  final String name;
+  @override
+  final String license;
+  @override
+  final String licenseUrl;
+  @override
+  final int? installedBytes;
+  @override
+  final int? setupBytes;
+
+  /// config.json, tokenizer.json, LICENSE and the safetensors weights (one
+  /// file, or shards with their index), plus generation_config.json.
+  @override
+  final List<RemoteFile> files;
+
+  final TextQuantization quantization;
+
+  @override
+  TextCheckpointSpec fromMirror(String baseUrl) {
+    final at = _mirrorFiles(baseUrl);
+    return TextCheckpointSpec(
+      id: id,
+      name: name,
+      license: license,
+      licenseUrl: licenseUrl,
+      installedBytes: installedBytes,
+      setupBytes: setupBytes,
+      quantization: quantization,
+      files: List.unmodifiable(files.map(at)),
+    );
+  }
+
+  static const _qwen3_0_6bRepo =
+      'https://huggingface.co/Qwen/Qwen3-0.6B/resolve/'
+      'c1899de289a04d12100db370d81485cdf75e47ca';
+
+  /// Qwen3-0.6B quantized to Q8 on the device: 1.52 GB downloaded, about
+  /// 0.95 GB installed; allow 4 GB during setup.
+  static const qwen3_0_6bQ8 = TextCheckpointSpec(
+    id: 'qwen3-0.6b-q8-c1899de',
+    name: 'Qwen3-0.6B (Q8)',
+    license: 'Apache License 2.0',
+    licenseUrl:
+        'https://huggingface.co/Qwen/Qwen3-0.6B/blob/c1899de289a04d12100db370d81485cdf75e47ca/LICENSE',
+    files: [
+      RemoteFile(
+        'config.json',
+        '$_qwen3_0_6bRepo/config.json',
+        size: 726,
+        sha256:
+            '660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd',
+      ),
+      RemoteFile(
+        'generation_config.json',
+        '$_qwen3_0_6bRepo/generation_config.json',
+        size: 239,
+        sha256:
+            '2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2',
+      ),
+      RemoteFile(
+        'tokenizer.json',
+        '$_qwen3_0_6bRepo/tokenizer.json',
+        size: 11422654,
+        sha256:
+            'aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4',
+      ),
+      RemoteFile(
+        'LICENSE',
+        '$_qwen3_0_6bRepo/LICENSE',
+        size: 11343,
+        sha256:
+            '832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e',
+      ),
+      RemoteFile(
+        'model.safetensors',
+        '$_qwen3_0_6bRepo/model.safetensors',
+        size: 1503300328,
+        sha256:
+            'f47f71177f32bcd101b7573ec9171e6a57f4f4d31148d38e382306f42996874b',
+      ),
+    ],
+  );
+}
 
 /// An upstream BF16 VL checkpoint converted into a standalone Q8/Q4 bundle.
 /// Installation imports its language backbone, quantizes it, then packs it.
@@ -700,8 +807,27 @@ final class ModelStore {
   /// [AudioGgufSpec] imports paired Q4 audio files with about 4 GB setup storage;
   /// cancellation waits for conversion and keeps downloads for a retry.
   /// [OmniGgufSpec] does the same for the Omni pair, with about 4.2 GB.
+  /// [TextCheckpointSpec] renames and quantizes an upstream BF16 checkpoint,
+  /// with the download, a staging copy of it and the bundle on disk at its
+  /// peak; cancellation during conversion waits for it to finish.
   Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
     _checkId(model.id);
+    if (model is TextCheckpointSpec) {
+      final names = model.files.map((f) => f.name).toList();
+      if (names.toSet().length != names.length ||
+          !names.contains('config.json') ||
+          !names.contains('tokenizer.json') ||
+          !names.contains('LICENSE') ||
+          !names.any((n) => n.endsWith('.safetensors')) ||
+          names.any(
+            (n) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(n),
+          )) {
+        throw ArgumentError(
+          'text checkpoint files need distinct safe names, config.json, '
+          'tokenizer.json, LICENSE and safetensors weights',
+        );
+      }
+    }
     if (model is AudioGgufSpec &&
         (model.config.name != 'audio_config.json' ||
             model.tokenizer.name != 'tokenizer.json' ||
@@ -859,6 +985,21 @@ final class ModelStore {
               File(
                 '${partial.path}/qad_source.json',
               ).writeAsStringSync(_qadReceipt(model, partial.path));
+              if (cancelled) return;
+              partial.renameSync(bundlePath(model));
+              await downloads.delete(recursive: true);
+            } finally {
+              if (partial.existsSync()) partial.deleteSync(recursive: true);
+            }
+          } else if (model is TextCheckpointSpec) {
+            final partial = Directory('${bundlePath(model)}.partial');
+            try {
+              await _buildText(
+                downloads.path,
+                partial.path,
+                '$directory/${model.id}/staging',
+                model.quantization,
+              );
               if (cancelled) return;
               partial.renameSync(bundlePath(model));
               await downloads.delete(recursive: true);
@@ -1031,6 +1172,29 @@ final class ModelStore {
       throw ArgumentError.value(id, 'model.id', 'expected a directory name');
     }
   }
+
+  /// Quantizes a text checkpoint into [partial] in another isolate, so that
+  /// an app's UI keeps running.
+  static Future<void> _buildText(
+    String downloads,
+    String partial,
+    String staging,
+    TextQuantization quantization,
+  ) => Isolate.run(() async {
+    if (Directory(partial).existsSync()) {
+      Directory(partial).deleteSync(recursive: true);
+    }
+    await buildTextBundle(
+      downloads,
+      partial,
+      stagingDir: staging,
+      weights: switch (quantization) {
+        TextQuantization.q8 => WeightFormat.q8,
+        TextQuantization.q4 => WeightFormat.q4,
+      },
+    );
+    File('$downloads/LICENSE').copySync('$partial/LICENSE');
+  });
 
   /// Builds the bundle from the downloads in another isolate, so that an
   /// app's UI keeps running, into a directory renamed into place at the end.
