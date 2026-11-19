@@ -16,10 +16,13 @@ the native CPU kernels; the rest of the encoder runs on the CPU.
 
 `package:dianoia/dianoia.dart` is the app API and may change before 1.0.
 `package:dianoia/lab.dart` exposes internals without a stability promise.
-Experimental [audio inference](docs/lfm3_audio_support.md) is available through
-research tools, `lab.dart` and the Flutter example, with a CPU audio encoder
-and CPU/Metal language inference. Audio model installation is available through
-`ModelStore`; audio inference is not yet part of the app API. An
+Text-to-speech is part of the app API: `AudioSynthesizer.load` opens an
+installed LFM3-Audio or LFM3-Omni bundle and `synthesize` returns mono 24 kHz
+PCM. Experimental [audio inference](docs/lfm3_audio_support.md) beyond speech
+synthesis (transcription, live transcription and voice conversation) is
+available through research tools, `lab.dart` and the Flutter example, with a
+CPU audio encoder and CPU/Metal language inference. Audio model installation is
+available through `ModelStore`. An
 [LFM3-Omni-2B Q4_0 research path](docs/lfm3_omni_support.md) reuses the vision
 and audio implementations for image questions, transcription, speech synthesis
 and voice conversation from one model. General-purpose GGUF support is planned.

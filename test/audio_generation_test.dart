@@ -322,6 +322,85 @@ void main() {
         }
       },
     );
+    Future<AudioSynthesizer> loadBundle(String mmprojName) async {
+      await prepareVisionFixture(temp);
+      final bundle = Directory('${temp.path}/bundle')..createSync();
+      final language = '${bundle.path}/language';
+      Directory('${temp.path}/backbone').renameSync(language);
+      writeSyntheticTokenizer(
+        language,
+        additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
+      );
+      File('${temp.path}/mmproj.gguf').copySync('${bundle.path}/$mmprojName');
+      return AudioSynthesizer.load(
+        bundle.path,
+        backend: InferenceBackend.cpu,
+        contextLength: 512,
+        threads: 2,
+      );
+    }
+
+    for (final mmproj in [
+      Lfm3AudioQ4Source.audio.name,
+      Lfm3OmniQ4Source.mmproj.name,
+    ]) {
+      test('loads a bundle with $mmproj and frees it on close', () async {
+        final synth = await loadBundle(mmproj);
+        expect(synth.backend, InferenceBackend.cpu);
+        final result = await synth.synthesize('Hello', maxFrames: 2);
+        expect(result.samples.length, result.frames * g.frameSamples);
+        await synth.close();
+        expect(synth.isClosed, isTrue);
+        await expectLater(synth.synthesize('Hello'), throwsStateError);
+        await synth.close();
+      });
+    }
+    test('close cancels a running synthesis and waits for it', () async {
+      final synth = await loadBundle(Lfm3AudioQ4Source.audio.name);
+      final running = synth.synthesize('Hello', maxFrames: 4);
+      final outcome = expectLater(
+        running,
+        throwsA(isA<AudioSynthesisCancelled>()),
+      );
+      await synth.close();
+      await outcome;
+    });
+    test('load rejects a directory without a speech mmproj', () async {
+      await prepareVisionFixture(temp);
+      final bundle = Directory('${temp.path}/bundle')..createSync();
+      Directory('${temp.path}/backbone').renameSync('${bundle.path}/language');
+      await expectLater(
+        AudioSynthesizer.load(bundle.path),
+        throwsArgumentError,
+      );
+      await expectLater(
+        AudioSynthesizer.load('${temp.path}/missing'),
+        throwsArgumentError,
+      );
+    });
+    test('close leaves caller-owned parts open', () async {
+      await prepareVisionFixture(temp);
+      final dir = '${temp.path}/backbone';
+      writeSyntheticTokenizer(
+        dir,
+        additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
+      );
+      final model = await Lfm3Model.load(
+        dir,
+        maxSeq: 512,
+        weights: WeightFormat.q8,
+        q8CachePath: '$dir/lfm3-q8.cache',
+      );
+      try {
+        final synth = AudioSynthesizer(model, Lfm3Tokenizer.load(dir), g);
+        expect(synth.backend, InferenceBackend.cpu);
+        await synth.close();
+        expect(model.isClosed, isFalse);
+        g.startCodecStream().close();
+      } finally {
+        await model.close();
+      }
+    });
   }, skip: supported ? false : 'native kernels unavailable');
   test(
     'TTS prompt uses language/voice instructions and rejects control markers',

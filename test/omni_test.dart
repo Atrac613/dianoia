@@ -439,8 +439,8 @@ void main() {
       final omni = open({'clip.vision.projector_type': 'lfm3vl'});
       addTearDown(audio.close);
       addTearDown(omni.close);
-      expect(Lfm3SpeechVariant.of(audio), Lfm3SpeechVariant.audio);
-      expect(Lfm3SpeechVariant.of(omni), Lfm3SpeechVariant.omni);
+      expect(speechVariantOf(audio), Lfm3SpeechVariant.audio);
+      expect(speechVariantOf(omni), Lfm3SpeechVariant.omni);
     });
 
     test('sampling defaults come from the published metadata', () {

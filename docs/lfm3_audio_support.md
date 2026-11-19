@@ -14,9 +14,9 @@ conversation session is available through `lab.dart` and the Flutter example.
 `AudioGgufSpec.lfm3AudioQ4` now installs the paired model through `ModelStore`. The Flutter example now has an experimental audio
 preview with in-app downloads, optional prepared local bundles and
 text-to-speech playback. Physical
-microphone/device behavior is not yet validated. Text-to-speech is also
-available through `lab.dart` and the research CLI, producing mono 24 kHz PCM
-or WAV.
+microphone/device behavior is not yet validated. Text-to-speech is part of the
+app API (`package:dianoia/dianoia.dart`) and the research CLI, producing mono
+24 kHz PCM or WAV.
 
 ## Q4_0 target and research commands
 
@@ -284,12 +284,17 @@ language context capacity. The CLI returns exit code 2 for a length-limited
 partial WAV; this must not be mistaken for a complete utterance. Ctrl-C cancels
 generation between operations. Preparation is shared with ASR.
 
-For worker-isolate integration, `AudioSynthesizer` owns one operation at a time
-but does not own the supplied model or generator:
+Apps load an installed bundle with `AudioSynthesizer.load`, exported by
+`package:dianoia/dianoia.dart` together with `renderAudioTtsPrompt`,
+`AudioSynthesisResult`, `AudioSynthesisCancelled` and `encodeSpeechWav`. It
+takes the `LocalModel.load` options plus `int8Inputs` (default true, as the
+example uses), owns the language model and generator, and frees both on
+`close`. Synthesize in a worker isolate; one operation runs at a time:
 
 ```dart
-final generator = Lfm3AudioGenerator.load(mmprojPath);
-final synth = AudioSynthesizer(backbone, tokenizer, generator);
+final synth = await AudioSynthesizer.load(
+  store.bundlePath(AudioGgufSpec.lfm3AudioQ4),
+);
 final result = await synth.synthesize(
   'Hello world.',
   language: 'en',
@@ -299,6 +304,15 @@ final result = await synth.synthesize(
 final wav = encodeSpeechWav(result.samples, sampleRate: result.sampleRate);
 // result.stopReason is 'eos' or 'length'.
 // synth.cancel() interrupts the operation at its next cancellation point.
+await synth.close();
+```
+
+Through `lab.dart`, the unnamed constructor borrows a model, tokenizer and
+generator shared with ASR or conversation; `close` then leaves them open:
+
+```dart
+final generator = Lfm3AudioGenerator.load(mmprojPath);
+final synth = AudioSynthesizer(backbone, tokenizer, generator);
 // Close generator and backbone after all operations have completed.
 ```
 
@@ -345,7 +359,8 @@ pair and metadata (1,228,932,715 bytes), then imports the language backbone and
 retains the original audio mmproj. Q4 blocks are preserved and the tied Q6_K
 embedding/head uses the existing Q8 adapter. Installed storage is approximately
 1.30 GB; allow at least 4 GB free during setup. Hashing and conversion stay off
-the UI isolate. Audio inference APIs remain experimental under `lab.dart`.
+the UI isolate. `AudioSynthesizer.load` speaks with the installed bundle;
+the other audio inference APIs remain experimental under `lab.dart`.
 
 `InstallProgress` reports downloading/building/done. The existing resumable
 HTTP downloader preserves `.part` files and verified source files on cancel
