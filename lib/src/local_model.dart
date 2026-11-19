@@ -8,6 +8,7 @@ import 'model.dart';
 import 'model_loading.dart';
 import 'model_use.dart';
 import 'native.dart';
+import 'sampler.dart';
 import 'tokenizer.dart';
 import 'vision_backbone.dart';
 import 'vision_bundle.dart';
@@ -95,17 +96,25 @@ final class LocalModel {
 
   /// A new conversation with [system] as its system prompt and [tools]
   /// (OpenAI-style function definitions) offered to the model. Replies
-  /// stop after [maxNewTokens].
+  /// stop after [maxNewTokens] and pick their tokens under [sampling]
+  /// (greedy by default). With [enableThinking] the model reasons before
+  /// answering; the reasoning arrives in [ChatTurn.reply]. Reasoning models
+  /// tend to repeat themselves under greedy decoding, so pair it with
+  /// sampling, such as [SamplingParams.qwen3Thinking].
   ChatSession chat({
     String? system,
     List<Map<String, Object?>>? tools,
     int maxNewTokens = 512,
+    SamplingParams sampling = SamplingParams.greedy,
+    bool enableThinking = false,
   }) => ChatSession(
     _model,
     _tokenizer,
     system: system,
     tools: tools,
     maxNew: maxNewTokens,
+    sampling: sampling,
+    enableThinking: enableThinking,
   );
 }
 

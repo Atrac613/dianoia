@@ -1,9 +1,12 @@
-/// The dianoia command-line tool, for LFM3 checkpoints.
+/// The dianoia command-line tool, for LFM3 and Qwen3 checkpoints.
 ///
 ///   dianoia ask --model=DIR --prompt=TEXT [--system=TEXT] [--tools=FILE.json]
 ///            [--think] [--max-new=256] [--workers=N]
+///            [--temperature=0] [--top-k=0] [--top-p=1] [--min-p=0]
+///            [--seed=N]
 ///       Chat from text: renders the chat template, tokenizes, generates
-///       greedily with streaming output, and prints parsed tool calls.
+///       with streaming output (greedily unless --temperature is above 0),
+///       and prints parsed tool calls.
 ///
 ///   --workers=N splits every matrix product across N worker isolates by
 ///   rows (0, the default, runs everything in the main isolate).
@@ -438,13 +441,22 @@ Future<int> _ask(Map<String, String> flags) async {
     '(${(ids.length / prefillS).toStringAsFixed(2)} tok/s)\n',
   );
 
+  final sampler = Sampler(
+    SamplingParams(
+      temperature: double.parse(flags['temperature'] ?? '0'),
+      topK: int.parse(flags['top-k'] ?? '0'),
+      topP: double.parse(flags['top-p'] ?? '1'),
+      minP: double.parse(flags['min-p'] ?? '0'),
+      seed: flags['seed'] == null ? null : int.parse(flags['seed']!),
+    ),
+  );
   final gen = <int>[];
   var shown = 0;
   sw
     ..reset()
     ..start();
   while (gen.length < maxNew) {
-    final next = _argmax(model.logits);
+    final next = sampler.next(model.logits);
     if (model.config.isEos(next)) break;
     gen.add(next);
     // Print only complete characters; a multi-byte character can span

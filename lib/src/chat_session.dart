@@ -17,6 +17,7 @@ import 'dart:typed_data';
 import 'chat_format.dart';
 import 'model.dart';
 import 'model_use.dart';
+import 'sampler.dart';
 import 'tokenizer.dart';
 import 'tool_calls.dart';
 
@@ -70,8 +71,11 @@ final class ChatSession {
     this.tools,
     this.maxNew = 256,
     ChatFormat? format,
+    this.sampling = SamplingParams.greedy,
+    this.enableThinking = false,
   }) : _system = system,
-       format = format ?? chatFormatFor(model.config);
+       format = format ?? chatFormatFor(model.config),
+       _sampler = Sampler(sampling);
 
   final TextModel model;
   final BpeTokenizer tokenizer;
@@ -82,6 +86,17 @@ final class ChatSession {
   /// How prompts are rendered and replies parsed; the model family's own
   /// unless the constructor was given another.
   final ChatFormat format;
+
+  /// How replies pick their tokens: greedy unless set. Draws continue one
+  /// random sequence across the conversation's replies.
+  final SamplingParams sampling;
+  final Sampler _sampler;
+
+  /// Whether the model may reason before it answers. Off, the prompt asks
+  /// for a direct answer (LFM3 and Qwen3 both close an empty think block);
+  /// on, the reply starts with its reasoning, which [ChatTurn.reply]
+  /// separates.
+  final bool enableThinking;
 
   /// The conversation so far, after the system prompt.
   final messages = <Map<String, Object?>>[];
@@ -135,12 +150,12 @@ final class ChatSession {
         format.render(
           [..._systemMessages, ...conversation],
           tools: tools,
-          enableThinking: false,
+          enableThinking: enableThinking,
         ),
       );
 
   /// Adds [message] (a user or tool message) and generates the reply
-  /// greedily, up to [maxNew] tokens or the end of the model's context
+  /// under [sampling], up to [maxNew] tokens or the end of the model's context
   /// (`maxSeq`).
   /// [onText] streams the reply: after each generated token it gets the
   /// text so far, without an incomplete UTF-8 sequence at the end.
@@ -149,9 +164,8 @@ final class ChatSession {
   /// between tokens, so that a request to stop can arrive.
   /// [suppressedTokens] are never generated in this reply, for example
   /// `<tool_call>` when the caller offers no tools and the model would
-  /// otherwise still start a call it cannot run. Greedy decoding picks the
-  /// best token outside the set; end-of-reply tokens are never
-  /// suppressed. An empty set leaves decoding unchanged.
+  /// otherwise still start a call it cannot run. Decoding picks only
+  /// tokens outside the set; end-of-reply tokens are never suppressed. An empty set leaves decoding unchanged.
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
   /// Observer work, [onText]'s included, counts in the generation timings.
@@ -206,7 +220,7 @@ final class ChatSession {
       ..start();
     try {
       while (gen.length < maxNew && model.history.length < model.maxSeq) {
-        final next = greedyToken(model.logits, suppressed: suppressed);
+        final next = _sampler.next(model.logits, suppressed: suppressed);
         if (model.config.isEos(next)) break;
         gen.add(next);
         await model.step(next);
@@ -250,13 +264,8 @@ final class ChatSession {
 
   /// The index of the largest of [logits] outside [suppressed]; the first
   /// one on a tie.
-  static int greedyToken(Float32List logits, {Set<int> suppressed = const {}}) {
-    var best = -1;
-    for (var i = 0; i < logits.length; i++) {
-      if (suppressed.contains(i)) continue;
-      if (best < 0 || logits[i] > logits[best]) best = i;
-    }
-    if (best < 0) throw StateError('every token is suppressed');
-    return best;
-  }
+  static int greedyToken(
+    Float32List logits, {
+    Set<int> suppressed = const {},
+  }) => argmaxToken(logits, suppressed: suppressed);
 }
