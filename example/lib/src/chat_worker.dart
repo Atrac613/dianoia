@@ -141,7 +141,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
         final loaded = await LocalModel.load(dir);
         model = loaded;
         if (closing) return;
-        final chat = loaded.chat(system: _system);
+        final chat = loaded.chat(system: _system, sampling: selected.sampling);
         await chat.warmUp();
         session = chat;
         backend = loaded.backend;
@@ -282,6 +282,7 @@ String? _sideLoaded(
   // An Omni folder is the one the audio page loads: prepared or installed.
   final marker = switch (selected) {
     ExampleModel.lfm3 => 'lfm3-q4.cache',
+    ExampleModel.qwen3 => 'qwen3-q8.cache',
     ExampleModel.lfm3Vl => 'vl_bundle.json',
     ExampleModel.omni => 'language/omni_source.json',
   };

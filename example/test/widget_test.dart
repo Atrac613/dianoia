@@ -35,6 +35,8 @@ void main() {
     await tester.pumpWidget(const DianoiaExampleApp());
     expect(find.text('Choose a model'), findsOneWidget);
     expect(find.text(ModelSpec.lfm3Q4.name), findsOneWidget);
+    expect(find.text(ExampleModel.qwen3.name), findsOneWidget);
+    expect(ExampleModel.qwen3.acceptsImages, isFalse);
     expect(find.text(ExampleModel.lfm3Vl.name), findsOneWidget);
     expect(find.textContaining('1.45 GB download'), findsOneWidget);
     expect(find.textContaining('1.54 GB after setup'), findsOneWidget);

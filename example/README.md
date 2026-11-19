@@ -10,7 +10,10 @@ kernels when there is no usable GPU, in a worker isolate so the UI never
 waits on it.
 
 The root screen lists the supported models with their download sizes and
-licenses (LFM3-1.7B QAD Q4_0 and LFM3-VL-2B QAD Q4_0). Selecting a model opens its chat and
+licenses (LFM3-1.7B QAD Q4_0, Qwen3-0.6B Q8 and LFM3-VL-2B QAD Q4_0). Qwen3 is
+downloaded as its official BF16 checkpoint and quantized to Q8 on the device
+(allow 4.5 GB free during setup); its replies use Qwen's recommended sampling
+for direct answers. Selecting a model opens its chat and
 loads it if already installed. Back returns to model selection and releases
 the chat worker; opening a model again starts a fresh conversation.
 
