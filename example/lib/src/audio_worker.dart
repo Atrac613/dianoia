@@ -490,6 +490,9 @@ Future<void> _runAudioWorker((SendPort, SpeechModel, bool, String) args) async {
                 '$directory/$mmprojName',
                 int8Inputs: true,
               );
+              // The lab constructor borrows the backbone that transcription
+              // and conversation also use. An app that only speaks would call
+              // AudioSynthesizer.load instead, which opens its own copy.
               final current = synthesizer = AudioSynthesizer(
                 model!,
                 tokenizer!,
