@@ -56,6 +56,21 @@ void main() {
       expect(next.reusedTokens, greaterThan(session.prefix.length));
     });
 
+    test('suppressed tokens are never generated', () async {
+      final plain = await session.send({
+        'role': 'user',
+        'content': 'Name three colors.',
+      });
+      final first = session.tokenizer.encode(plain.text).first;
+      session.clear();
+      final turn = await session.send(
+        {'role': 'user', 'content': 'Name three colors.'},
+        suppressedTokens: {first},
+      );
+      expect(session.tokenizer.encode(turn.text), isNot(contains(first)));
+      expect(turn.text, isNot(plain.text));
+    });
+
     test('a prompt past the context throws and changes nothing', () async {
       await session.send({'role': 'user', 'content': 'Hello.'});
       final before = [...session.messages];
