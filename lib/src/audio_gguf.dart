@@ -57,14 +57,17 @@ enum Lfm3SpeechVariant {
   /// every assistant turn opens with an empty `<think></think>`.
   omni;
 
-  /// Omni mmprojs also carry the LFM3-VL vision tower and projector.
-  static Lfm3SpeechVariant of(GgufFile mmproj) =>
-      mmproj.metadata['clip.vision.projector_type'] == 'lfm3vl' ? omni : audio;
-
   String get audioOpen => this == omni ? '<|vision_start|>' : '';
   String get audioClose => this == omni ? '<|vision_end|>' : '';
   String get assistantOpen => this == omni ? '<think></think>' : '';
 }
+
+/// The model a speech [mmproj] belongs to. Omni mmprojs also carry the
+/// LFM3-VL vision tower and projector.
+Lfm3SpeechVariant speechVariantOf(GgufFile mmproj) =>
+    mmproj.metadata['clip.vision.projector_type'] == 'lfm3vl'
+    ? Lfm3SpeechVariant.omni
+    : Lfm3SpeechVariant.audio;
 
 /// The official speech sampling defaults, stored in each mmproj GGUF:
 /// LFM3-Audio samples at temperature 1 from the top 128 codes; LFM3-Omni
@@ -188,7 +191,7 @@ final class Lfm3AudioEncoderConfig {
       positive('window_size'),
       eps.toDouble(),
       List.unmodifiable(conv),
-      Lfm3SpeechVariant.of(file),
+      speechVariantOf(file),
     );
     // Checking every consumed tensor before allocating matrices makes malformed
     // layouts fail atomically. Generation tensors are deliberately not loaded.

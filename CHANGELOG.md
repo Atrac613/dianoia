@@ -5,9 +5,12 @@
   `AudioSynthesisCancelled`, `Lfm3SpeechVariant` and `encodeSpeechWav`.
   `AudioSynthesizer.load` opens an installed LFM3-Audio or LFM3-Omni bundle
   with the `LocalModel.load` options and int8 speech-generator inputs by
-  default, and reports its `backend`; `close` frees what it loaded. The
-  constructor over caller-owned parts is unchanged, and `close` leaves those
-  parts open. `synthesize` throws `StateError` after `close`.
+  default, and reports its `backend`; `close` cancels a running synthesis,
+  waits for it to stop and frees what it loaded. The constructor over
+  caller-owned parts is unchanged, and `close` leaves those parts open.
+  `synthesize` throws `StateError` after `close`.
+- Lab: `AudioSynthesizer` no longer exposes its `model`, `tokenizer` and
+  `generator`, and `Lfm3SpeechVariant.of` is now `speechVariantOf`.
 
 ## 0.4.1
 

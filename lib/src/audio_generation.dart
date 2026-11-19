@@ -136,7 +136,7 @@ final class Lfm3AudioGenerator {
       if (file.metadata['clip.gen.audio.projector_type'] != 'lfm3a_gen') {
         throw const FormatException('not an LFM3 audio generator');
       }
-      final variant = Lfm3SpeechVariant.of(file);
+      final variant = speechVariantOf(file);
       final sampling = Lfm3SpeechSampling.fromGguf(file);
       List<int> dims(String name) =>
           file.tensors[name]?.dims.reversed.toList() ??

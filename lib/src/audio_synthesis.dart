@@ -2,6 +2,7 @@
 /// [AudioGgufSpec] and [OmniGgufSpec] install.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -113,20 +114,23 @@ final class AudioSynthesizer {
   /// which it uses exclusively while it synthesizes and never closes. Apps
   /// use [load]; this is for `package:dianoia/lab.dart`, where the language
   /// model is shared with transcription or conversation.
-  AudioSynthesizer(this.model, this.tokenizer, this.generator)
-    : backend = null,
-      _owned = false;
+  AudioSynthesizer(
+    Lfm3Model model,
+    Lfm3Tokenizer tokenizer,
+    Lfm3AudioGenerator generator,
+  ) : this._(model, tokenizer, generator, owned: false);
 
-  AudioSynthesizer._owned(
-    this.model,
-    this.tokenizer,
-    this.generator,
-    this.backend,
-  ) : _owned = true;
+  AudioSynthesizer._(
+    this._model,
+    this._tokenizer,
+    this._generator, {
+    required bool owned,
+  }) : _owned = owned;
 
   /// Loads the speech model installed in [dir]: an [AudioGgufSpec] or
   /// [OmniGgufSpec] bundle, whose `language/` holds the imported language
-  /// model and whose mmproj holds the speech generator and codec.
+  /// model and whose mmproj holds the speech generator and codec. Throws
+  /// [ArgumentError] when [dir] holds no such bundle.
   ///
   /// [backend], [contextLength] and [threads] are as for [LocalModel.load];
   /// a prompt and its frames must fit in [contextLength]. With [int8Inputs]
@@ -140,36 +144,49 @@ final class AudioSynthesizer {
     int threads = 4,
     bool int8Inputs = true,
   }) async {
-    final language = '$dir/language', mmproj = speechMmprojIn(dir);
-    bundleWeights(language); // fails before anything is loaded
+    final language = '$dir/language';
+    // Both checks fail before anything is loaded.
+    final weights = bundleWeights(language);
+    final String mmproj;
+    try {
+      mmproj = speechMmprojIn(dir);
+    } on StateError {
+      throw ArgumentError.value(
+        dir,
+        'dir',
+        'holds no LFM3-Audio or LFM3-Omni speech mmproj',
+      );
+    }
     final tokenizer = Lfm3Tokenizer.load(language);
     ensureNativeKernels(threads);
     final generator = Lfm3AudioGenerator.load(mmproj, int8Inputs: int8Inputs);
     try {
-      final (model, used) = await openLanguageBundle(
+      final model = await openLanguageBundle(
         language,
+        weights: weights,
         backend: backend,
         contextLength: contextLength,
       );
-      return AudioSynthesizer._owned(model, tokenizer, generator, used);
+      return AudioSynthesizer._(model, tokenizer, generator, owned: true);
     } catch (_) {
       generator.close();
       rethrow;
     }
   }
 
-  /// The language model, its tokenizer and the speech generator.
-  final Lfm3Model model;
-  final Lfm3Tokenizer tokenizer;
-  final Lfm3AudioGenerator generator;
-
-  /// Where a [load]ed synthesizer's language model runs:
-  /// [InferenceBackend.gpu] or [InferenceBackend.cpu]. Null for one made
-  /// from caller-owned parts.
-  final InferenceBackend? backend;
-
+  final Lfm3Model _model;
+  final Lfm3Tokenizer _tokenizer;
+  final Lfm3AudioGenerator _generator;
   final bool _owned;
-  bool _busy = false, _cancelled = false, _closed = false;
+  bool _cancelled = false, _closed = false;
+
+  /// The running synthesis, which [close] waits for.
+  Future<void>? _running;
+
+  /// Where the language model runs: [InferenceBackend.gpu] or
+  /// [InferenceBackend.cpu].
+  InferenceBackend get backend =>
+      _model.gpu == null ? InferenceBackend.cpu : InferenceBackend.gpu;
 
   /// Whether [close] has run.
   bool get isClosed => _closed;
@@ -180,16 +197,18 @@ final class AudioSynthesizer {
     _cancelled = true;
   }
 
-  /// Cancels any running synthesis and, for a [load]ed synthesizer, frees
-  /// the language model and the speech generator. Parts passed to the
-  /// constructor stay open. Closing twice does nothing.
+  /// Cancels any running synthesis and waits for it to stop, then, for a
+  /// [load]ed synthesizer, frees the language model and the speech
+  /// generator. Parts passed to the constructor stay open. Closing twice
+  /// does nothing.
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
     cancel();
+    await _running;
     if (_owned) {
-      generator.close();
-      await model.close();
+      _generator.close();
+      await _model.close();
     }
   }
 
@@ -220,26 +239,26 @@ final class AudioSynthesizer {
     void Function(List<int> codes)? onCodes,
   }) async {
     if (_closed) throw StateError('Audio synthesizer is closed');
-    if (_busy) throw StateError('Synthesis is already running');
-    final prompt = tokenizer.encode(
+    if (_running != null) throw StateError('Synthesis is already running');
+    final prompt = _tokenizer.encode(
       renderAudioTtsPrompt(
         text,
         language: language,
         voice: voice,
-        variant: generator.variant,
+        variant: _generator.variant,
       ),
     );
-    final start = tokenizer.addedTokenId('<|audio_start|>'),
-        output = tokenizer.addedTokenId('<|audio_out|>');
+    final start = _tokenizer.addedTokenId('<|audio_start|>'),
+        output = _tokenizer.addedTokenId('<|audio_out|>');
     if (start == null ||
         output == null ||
         prompt.last != start ||
-        prompt.any((id) => id < 0 || id >= model.config.vocabSize) ||
-        output >= model.config.vocabSize ||
-        model.config.hiddenSize != generator.hiddenSize ||
+        prompt.any((id) => id < 0 || id >= _model.config.vocabSize) ||
+        output >= _model.config.vocabSize ||
+        _model.config.hiddenSize != _generator.hiddenSize ||
         maxFrames < 1 ||
         maxFrames > 750 ||
-        prompt.length + maxFrames > model.maxSeq ||
+        prompt.length + maxFrames > _model.maxSeq ||
         (temperature != null && (!temperature.isFinite || temperature < 0)) ||
         (topK != null && topK < 1) ||
         (repetitionPenalty != null &&
@@ -248,8 +267,9 @@ final class AudioSynthesizer {
         'TTS model, tokenizer, context or sampling options differ',
       );
     }
-    final codec = generator.startCodecStream();
-    _busy = true;
+    final codec = _generator.startCodecStream();
+    final running = Completer<void>();
+    _running = running.future;
     _cancelled = false;
     final chunks = <Float32List>[], history = <List<int>>[];
     final random = math.Random(seed);
@@ -261,11 +281,11 @@ final class AudioSynthesizer {
     }
 
     try {
-      await model.reset();
-      for (var at = 0; at < prompt.length; at += model.maxChunk) {
+      await _model.reset();
+      for (var at = 0; at < prompt.length; at += _model.maxChunk) {
         _check();
-        final end = math.min(at + model.maxChunk, prompt.length);
-        await model.forward(
+        final end = math.min(at + _model.maxChunk, prompt.length);
+        await _model.forward(
           prompt.sublist(at, end),
           computeLogits: end == prompt.length,
         );
@@ -274,15 +294,15 @@ final class AudioSynthesizer {
       }
       for (var i = 0; i < maxFrames; i++) {
         _check();
-        final codes = generator.sampleFrame(
-          model.lastHiddenState,
+        final codes = _generator.sampleFrame(
+          _model.lastHiddenState,
           random,
           temperature: temperature,
           topK: topK,
           repetitionPenalty: repetitionPenalty,
           history: history,
         );
-        if (codes.contains(generator.eosCode)) {
+        if (codes.contains(_generator.eosCode)) {
           stop = 'eos';
           break;
         }
@@ -292,10 +312,10 @@ final class AudioSynthesizer {
         _check();
         if (i + 1 < maxFrames) {
           // The codec decodes this frame on the CPU while the GPU feeds it
-          // back to the language model.
-          await model.forward(
+          // back to the language _model.
+          await _model.forward(
             [output],
-            embeddingOverrides: {0: generator.feedback(codes)},
+            embeddingOverrides: {0: _generator.feedback(codes)},
             meanwhile: () => emit(codec.add(codes)),
           );
         } else {
@@ -312,13 +332,14 @@ final class AudioSynthesizer {
         samples.setAll(offset, chunk);
         offset += chunk.length;
       }
-      if (samples.length != frames * generator.frameSamples) {
+      if (samples.length != frames * _generator.frameSamples) {
         throw StateError('codec output length mismatch');
       }
-      return AudioSynthesisResult(samples, generator.sampleRate, frames, stop);
+      return AudioSynthesisResult(samples, _generator.sampleRate, frames, stop);
     } finally {
       codec.close();
-      _busy = false;
+      _running = null;
+      running.complete();
     }
   }
 }

@@ -322,7 +322,7 @@ void main() {
         }
       },
     );
-    test('loads an installed bundle and frees it on close', () async {
+    Future<AudioSynthesizer> loadBundle(String mmprojName) async {
       await prepareVisionFixture(temp);
       final bundle = Directory('${temp.path}/bundle')..createSync();
       final language = '${bundle.path}/language';
@@ -331,27 +331,52 @@ void main() {
         language,
         additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
       );
-      File(
-        '${temp.path}/mmproj.gguf',
-      ).copySync('${bundle.path}/${Lfm3AudioQ4Source.audio.name}');
-      final synth = await AudioSynthesizer.load(
+      File('${temp.path}/mmproj.gguf').copySync('${bundle.path}/$mmprojName');
+      return AudioSynthesizer.load(
         bundle.path,
         backend: InferenceBackend.cpu,
         contextLength: 512,
         threads: 2,
       );
-      expect(synth.backend, InferenceBackend.cpu);
-      expect(synth.generator.int8Inputs, isTrue);
-      final result = await synth.synthesize('Hello', maxFrames: 2);
-      expect(
-        result.samples.length,
-        result.frames * synth.generator.frameSamples,
+    }
+
+    for (final mmproj in [
+      Lfm3AudioQ4Source.audio.name,
+      Lfm3OmniQ4Source.mmproj.name,
+    ]) {
+      test('loads a bundle with $mmproj and frees it on close', () async {
+        final synth = await loadBundle(mmproj);
+        expect(synth.backend, InferenceBackend.cpu);
+        final result = await synth.synthesize('Hello', maxFrames: 2);
+        expect(result.samples.length, result.frames * g.frameSamples);
+        await synth.close();
+        expect(synth.isClosed, isTrue);
+        await expectLater(synth.synthesize('Hello'), throwsStateError);
+        await synth.close();
+      });
+    }
+    test('close cancels a running synthesis and waits for it', () async {
+      final synth = await loadBundle(Lfm3AudioQ4Source.audio.name);
+      final running = synth.synthesize('Hello', maxFrames: 4);
+      final outcome = expectLater(
+        running,
+        throwsA(isA<AudioSynthesisCancelled>()),
       );
       await synth.close();
-      expect(synth.isClosed, isTrue);
-      expect(synth.model.isClosed, isTrue);
-      await expectLater(synth.synthesize('Hello'), throwsStateError);
-      await synth.close();
+      await outcome;
+    });
+    test('load rejects a directory without a speech mmproj', () async {
+      await prepareVisionFixture(temp);
+      final bundle = Directory('${temp.path}/bundle')..createSync();
+      Directory('${temp.path}/backbone').renameSync('${bundle.path}/language');
+      await expectLater(
+        AudioSynthesizer.load(bundle.path),
+        throwsArgumentError,
+      );
+      await expectLater(
+        AudioSynthesizer.load('${temp.path}/missing'),
+        throwsArgumentError,
+      );
     });
     test('close leaves caller-owned parts open', () async {
       await prepareVisionFixture(temp);
@@ -368,7 +393,7 @@ void main() {
       );
       try {
         final synth = AudioSynthesizer(model, Lfm3Tokenizer.load(dir), g);
-        expect(synth.backend, isNull);
+        expect(synth.backend, InferenceBackend.cpu);
         await synth.close();
         expect(model.isClosed, isFalse);
         g.startCodecStream().close();

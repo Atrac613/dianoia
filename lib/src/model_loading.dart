@@ -24,15 +24,16 @@ void ensureNativeKernels(int threads) {
   NativeKernels.load(null, threads: threads);
 }
 
-/// Opens the language bundle in [dir] on [backend]. With
-/// [InferenceBackend.auto] a GPU that cannot run the model leaves it on the
-/// CPU kernels. Returns the model and where it runs.
-Future<(Lfm3Model, InferenceBackend)> openLanguageBundle(
+/// Opens the language bundle in [dir], holding [weights] (see
+/// [bundleWeights]), on [backend]. With [InferenceBackend.auto] a GPU that
+/// cannot run the model leaves it on the CPU kernels; [Lfm3Model.gpu] says
+/// which ran.
+Future<Lfm3Model> openLanguageBundle(
   String dir, {
+  required WeightFormat weights,
   required InferenceBackend backend,
   required int contextLength,
 }) async {
-  final weights = bundleWeights(dir);
   Future<Lfm3Model> open({required bool gpu}) => Lfm3Model.load(
     dir,
     maxSeq: contextLength,
@@ -41,11 +42,8 @@ Future<(Lfm3Model, InferenceBackend)> openLanguageBundle(
     gpu: gpu,
   );
 
-  var used = backend == InferenceBackend.cpu
-      ? InferenceBackend.cpu
-      : InferenceBackend.gpu;
   try {
-    return (await open(gpu: used == InferenceBackend.gpu), used);
+    return await open(gpu: backend != InferenceBackend.cpu);
   } on Error catch (e) {
     // StateError: no usable GPU; UnsupportedError: the model needs what
     // the GPU path lacks.
@@ -53,8 +51,7 @@ Future<(Lfm3Model, InferenceBackend)> openLanguageBundle(
         (e is! StateError && e is! UnsupportedError)) {
       rethrow;
     }
-    used = InferenceBackend.cpu;
-    return (await open(gpu: false), used);
+    return open(gpu: false);
   }
 }
 

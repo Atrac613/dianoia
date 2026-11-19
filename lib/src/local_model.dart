@@ -77,15 +77,20 @@ final class LocalModel {
     int contextLength = 2048,
     int threads = 4,
   }) async {
-    bundleWeights(dir); // fails before anything is loaded
+    final weights = bundleWeights(dir); // fails before anything loads
     final tokenizer = Lfm3Tokenizer.load(dir);
     ensureNativeKernels(threads);
-    final (model, used) = await openLanguageBundle(
+    final model = await openLanguageBundle(
       dir,
+      weights: weights,
       backend: backend,
       contextLength: contextLength,
     );
-    return LocalModel._(model, tokenizer, used);
+    return LocalModel._(
+      model,
+      tokenizer,
+      model.gpu == null ? InferenceBackend.cpu : InferenceBackend.gpu,
+    );
   }
 
   /// A new conversation with [system] as its system prompt and [tools]
