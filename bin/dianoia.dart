@@ -36,6 +36,11 @@
 ///       for --weights=q4 (see lib/src/gguf.dart), and prints how far each
 ///       imported tensor family is from DIR's weights.
 ///
+///   dianoia import-hf --model=HF_DIR --out=DIR
+///       Renames a Qwen3 checkpoint's tensors (merging its shards) into
+///       the engine's layout (see lib/src/hf_import.dart); run and pack
+///       then treat DIR like an LFM3 model directory.
+///
 ///   dianoia import-vl-backbone --model=VL_DIR --out=NEW_DIR
 ///       Copies the VL language backbone into standalone engine layout;
 ///       retains vl_config.json for matching vision inference.
@@ -127,6 +132,7 @@ Future<void> main(List<String> args) async {
     'selftest': _selftest,
     'pack': _pack,
     'import-gguf': _importGguf,
+    'import-hf': _importHf,
     'import-vl-backbone': _importVlBackbone,
     'vision-run': _visionRun,
     'vision-bench': _visionBench,
@@ -137,7 +143,7 @@ Future<void> main(List<String> args) async {
   final command = args.isEmpty ? null : commands[args.first];
   if (command == null) {
     stderr.writeln(
-      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|vision-bench|pack-vl|toolbench|chatbench '
+      'usage: dianoia ask|selftest|run|pack|import-gguf|import-hf|import-vl-backbone|vision-run|vision-bench|pack-vl|toolbench|chatbench '
       '--key=value ...',
     );
     exitCode = 2;
@@ -807,6 +813,17 @@ Future<int> _importGguf(Map<String, String> flags) async {
     );
     comparison.forEach(stdout.writeln);
   }
+  return 0;
+}
+
+Future<int> _importHf(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final outDir = require('out');
+  final sw = Stopwatch()..start();
+  importHfCheckpoint(require('model'), outDir);
+  stdout.writeln(
+    'wrote $outDir in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s',
+  );
   return 0;
 }
 

@@ -30,6 +30,7 @@ export 'src/download.dart';
 export 'src/executor.dart';
 export 'src/gguf.dart';
 export 'src/gpu.dart';
+export 'src/hf_import.dart';
 export 'src/linear.dart';
 export 'src/matmul.dart';
 export 'src/model.dart';

@@ -147,14 +147,32 @@ final class SafetensorsFile {
     String path,
     bool Function(String name, TensorInfo info) keep, {
     String Function(String name)? rename,
+  }) => writeMerged(path, [this], keep: keep, rename: rename);
+
+  /// Writes the tensors of [sources] for which [keep] holds (all by
+  /// default) to one new safetensors file at [path]: each source's in its
+  /// order, bytes unchanged, one source after another. [rename] changes
+  /// header names only; duplicate output names are rejected before writing.
+  static void writeMerged(
+    String path,
+    List<SafetensorsFile> sources, {
+    bool Function(String name, TensorInfo info)? keep,
+    String Function(String name)? rename,
   }) {
-    final kept = tensors.entries.where((e) => keep(e.key, e.value)).toList()
-      ..sort((a, b) => a.value.begin.compareTo(b.value.begin));
+    final kept = [
+      for (final source in sources)
+        for (final entry
+            in source.tensors.entries
+                .where((e) => keep?.call(e.key, e.value) ?? true)
+                .toList()
+              ..sort((a, b) => a.value.begin.compareTo(b.value.begin)))
+          (source, entry),
+    ];
     final header = <String, Object?>{
       '__metadata__': {'format': 'pt'},
     };
     var offset = 0;
-    for (final MapEntry(:key, :value) in kept) {
+    for (final (_, MapEntry(:key, :value)) in kept) {
       final bytes = value.end - value.begin;
       final name = rename?.call(key) ?? key;
       if (header.containsKey(name)) {
@@ -172,11 +190,11 @@ final class SafetensorsFile {
       _writeHeader(out, header);
       // Embeddings alone can exceed 500 MB; copying needs bounded memory.
       final buffer = Uint8List(1024 * 1024);
-      for (final MapEntry(:value) in kept) {
+      for (final (source, MapEntry(:value)) in kept) {
         var offset = value.begin;
         while (offset < value.end) {
           final count = (value.end - offset).clamp(0, buffer.length);
-          _readFully(_file, buffer, _dataStart + offset, count);
+          _readFully(source._file, buffer, source._dataStart + offset, count);
           out.writeFromSync(buffer, 0, count);
           offset += count;
         }
