@@ -44,6 +44,25 @@ void main() {
       expect(c.kvDim, 1024);
     });
 
+    test('load adds generation_config.json end tokens', () {
+      final dir = Directory.systemTemp.createTempSync('dianoia-qwen3-cfg-');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File(
+        '${dir.path}/config.json',
+      ).writeAsStringSync(jsonEncode(_qwen3Config()));
+      expect(TextModelConfig.load(dir.path).eosTokenIds, [151645]);
+      File('${dir.path}/generation_config.json').writeAsStringSync(
+        jsonEncode({
+          'eos_token_id': [151645, 151643],
+        }),
+      );
+      final c = TextModelConfig.load(dir.path);
+      expect(c.eosTokenIds, [151645, 151643]);
+      expect(c.eosTokenId, 151645);
+      expect(c.isEos(151643), isTrue);
+      expect(c.isEos(151644), isFalse);
+    });
+
     test('rope_theta may sit in rope_parameters', () {
       final json = _qwen3Config()
         ..remove('rope_theta')

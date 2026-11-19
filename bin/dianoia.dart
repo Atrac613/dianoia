@@ -417,7 +417,6 @@ Future<int> _ask(Map<String, String> flags) async {
     gpu: flags['gpu'] == 'true',
     gpuLib: flags['gpu-lib'],
   );
-  final eos = model.config.eosTokenId;
   stdout.writeln(
     'loaded in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s',
   );
@@ -446,7 +445,7 @@ Future<int> _ask(Map<String, String> flags) async {
     ..start();
   while (gen.length < maxNew) {
     final next = _argmax(model.logits);
-    if (next == eos) break;
+    if (model.config.isEos(next)) break;
     gen.add(next);
     // Print only complete characters; a multi-byte character can span
     // several tokens.
@@ -519,7 +518,7 @@ Future<int> _toolbench(Map<String, String> flags) async {
     final gen = <int>[];
     while (gen.length < 96) {
       final next = _argmax(model.logits);
-      if (next == model.config.eosTokenId) break;
+      if (model.config.isEos(next)) break;
       gen.add(next);
       await model.step(next);
     }
@@ -587,6 +586,10 @@ Future<int> _pack(Map<String, String> flags) async {
   Directory(outDir).createSync(recursive: true);
   for (final name in ['config.json', 'tokenizer.json']) {
     File('$modelDir/$name').copySync('$outDir/$name');
+  }
+  final generation = File('$modelDir/generation_config.json');
+  if (generation.existsSync()) {
+    generation.copySync('$outDir/generation_config.json');
   }
   final st = SafetensorsFile.open('$modelDir/model.safetensors');
   try {

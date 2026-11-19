@@ -47,15 +47,59 @@ final class TextModelConfig {
     required this.eosTokenIds,
   });
 
+  /// Reads `config.json` in [modelDir], adding the end-of-reply tokens of
+  /// `generation_config.json` when there is one (Qwen3 ends replies with
+  /// either `<|im_end|>` or `<|endoftext|>`, but config.json names one).
   factory TextModelConfig.load(String modelDir) {
+    final generation = File('$modelDir/generation_config.json');
     return TextModelConfig.fromJson(
       jsonDecode(File('$modelDir/config.json').readAsStringSync())
           as Map<String, Object?>,
+      extraEosTokenIds: generation.existsSync()
+          ? switch ((jsonDecode(generation.readAsStringSync())
+                as Map)['eos_token_id']) {
+              final List ids => ids.cast<int>(),
+              final int id => [id],
+              _ => const [],
+            }
+          : const [],
     );
   }
 
   /// Parses a standalone text configuration, including a VL text_config.
-  factory TextModelConfig.fromJson(Map<String, Object?> json) {
+  /// [extraEosTokenIds] join config.json's own, after them.
+  factory TextModelConfig.fromJson(
+    Map<String, Object?> json, {
+    List<int> extraEosTokenIds = const [],
+  }) {
+    final config = TextModelConfig._parse(json);
+    final extra = [
+      for (final id in extraEosTokenIds)
+        if (!config.eosTokenIds.contains(id)) id,
+    ];
+    return extra.isEmpty ? config : config._withEos(extra);
+  }
+
+  TextModelConfig _withEos(List<int> extra) => TextModelConfig._(
+    architecture: architecture,
+    hiddenSize: hiddenSize,
+    intermediateSize: intermediateSize,
+    numHeads: numHeads,
+    numKvHeads: numKvHeads,
+    headDim: headDim,
+    vocabSize: vocabSize,
+    convKernel: convKernel,
+    slidingWindow: slidingWindow,
+    normEps: normEps,
+    layerTypes: layerTypes,
+    fullRope: fullRope,
+    slidingRope: slidingRope,
+    sandwichNorm: sandwichNorm,
+    attentionOutputGate: attentionOutputGate,
+    eosTokenIds: List.unmodifiable([...eosTokenIds, ...extra]),
+  );
+
+  static TextModelConfig _parse(Map<String, Object?> json) {
     T field<T>(String key) {
       final value = json[key];
       if (value is! T) {

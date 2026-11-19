@@ -150,7 +150,7 @@ final class ChatSession {
   /// [suppressedTokens] are never generated in this reply, for example
   /// `<tool_call>` when the caller offers no tools and the model would
   /// otherwise still start a call it cannot run. Greedy decoding picks the
-  /// best token outside the set; the end-of-sequence token is never
+  /// best token outside the set; end-of-reply tokens are never
   /// suppressed. An empty set leaves decoding unchanged.
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
@@ -179,7 +179,8 @@ final class ChatSession {
     FutureOr<bool> Function(String text)? onText,
     Set<int> suppressedTokens,
   ) async {
-    final suppressed = {...suppressedTokens}..remove(model.config.eosTokenId);
+    final suppressed = {...suppressedTokens}
+      ..removeAll(model.config.eosTokenIds);
     final ids = promptIds([...messages, message]);
     if (ids.length >= model.maxSeq) {
       throw ContextLengthExceeded(ids.length, model.maxSeq);
@@ -206,7 +207,7 @@ final class ChatSession {
     try {
       while (gen.length < maxNew && model.history.length < model.maxSeq) {
         final next = greedyToken(model.logits, suppressed: suppressed);
-        if (next == model.config.eosTokenId) break;
+        if (model.config.isEos(next)) break;
         gen.add(next);
         await model.step(next);
         onLogits?.call(model.logits);
