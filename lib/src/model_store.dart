@@ -18,7 +18,6 @@ import 'native.dart';
 import 'omni_bundle.dart';
 import 'omni_gguf.dart';
 import 'quant.dart';
-import 'text_bundle.dart';
 import 'vision_backbone.dart';
 import 'vision_bundle.dart';
 import 'vision_gguf.dart';
@@ -217,182 +216,6 @@ final class OmniGgufSpec extends InstallableModel {
 
 /// Language matrix quantization; the tied output head stays Q8.
 enum VisionQuantization { q8, q4 }
-
-/// The weights a [TextCheckpointSpec] is quantized to on the device.
-enum TextQuantization { q8, q4 }
-
-/// An upstream BF16 text checkpoint, quantized into a bundle on the device:
-/// for families such as Qwen3 whose authors publish no Q4_0 build this
-/// engine imports. Installation renames its tensors into the engine's
-/// layout, quantizes every matrix, then keeps only the bundle.
-final class TextCheckpointSpec extends InstallableModel {
-  const TextCheckpointSpec({
-    required this.id,
-    required this.name,
-    required this.license,
-    required this.licenseUrl,
-    this.installedBytes,
-    this.setupBytes,
-    required this.files,
-    this.quantization = TextQuantization.q8,
-  });
-
-  @override
-  final String id;
-  @override
-  final String name;
-  @override
-  final String license;
-  @override
-  final String licenseUrl;
-  @override
-  final int? installedBytes;
-  @override
-  final int? setupBytes;
-
-  /// config.json, tokenizer.json, LICENSE and the safetensors weights (one
-  /// file, or shards with their index), plus generation_config.json.
-  @override
-  final List<RemoteFile> files;
-
-  final TextQuantization quantization;
-
-  @override
-  TextCheckpointSpec fromMirror(String baseUrl) {
-    final at = _mirrorFiles(baseUrl);
-    return TextCheckpointSpec(
-      id: id,
-      name: name,
-      license: license,
-      licenseUrl: licenseUrl,
-      installedBytes: installedBytes,
-      setupBytes: setupBytes,
-      quantization: quantization,
-      files: List.unmodifiable(files.map(at)),
-    );
-  }
-
-  static const _qwen3_1_7bRepo =
-      'https://huggingface.co/Qwen/Qwen3-1.7B/resolve/'
-      '70d244cc86ccca08cf5af4e1e306ecf908b1ad5e';
-
-  /// Qwen3-1.7B quantized to Q8 on the device: 4.07 GB downloaded, about
-  /// 2.57 GB installed; allow 12.5 GB during setup. Plain Q4 loses too
-  /// much of this checkpoint to offer (docs/qwen3_support.md).
-  static const qwen3_1_7bQ8 = TextCheckpointSpec(
-    id: 'qwen3-1.7b-q8-70d244c',
-    installedBytes: 2570580922,
-    setupBytes: 12500000000,
-    name: 'Qwen3-1.7B (Q8)',
-    license: 'Apache License 2.0',
-    licenseUrl:
-        'https://huggingface.co/Qwen/Qwen3-1.7B/blob/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e/LICENSE',
-    files: [
-      RemoteFile(
-        'config.json',
-        '$_qwen3_1_7bRepo/config.json',
-        size: 726,
-        sha256:
-            '1ddb5b89ebc90dcb417a45c213d818577e65976454d29385c8f6140771d95197',
-      ),
-      RemoteFile(
-        'generation_config.json',
-        '$_qwen3_1_7bRepo/generation_config.json',
-        size: 239,
-        sha256:
-            '2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2',
-      ),
-      RemoteFile(
-        'tokenizer.json',
-        '$_qwen3_1_7bRepo/tokenizer.json',
-        size: 11422654,
-        sha256:
-            'aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4',
-      ),
-      RemoteFile(
-        'LICENSE',
-        '$_qwen3_1_7bRepo/LICENSE',
-        size: 11343,
-        sha256:
-            '832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e',
-      ),
-      RemoteFile(
-        'model.safetensors.index.json',
-        '$_qwen3_1_7bRepo/model.safetensors.index.json',
-        size: 25605,
-        sha256:
-            '0d660e94b165eb912669a5249dff44b83188c4777a07ddb9611fb78d91b0578d',
-      ),
-      RemoteFile(
-        'model-00001-of-00002.safetensors',
-        '$_qwen3_1_7bRepo/model-00001-of-00002.safetensors',
-        size: 3441185608,
-        sha256:
-            '169ad53ec313c3a34b06c0809216e4fc072cce444a5d4ff2b59690d064130ed5',
-      ),
-      RemoteFile(
-        'model-00002-of-00002.safetensors',
-        '$_qwen3_1_7bRepo/model-00002-of-00002.safetensors',
-        size: 622329984,
-        sha256:
-            '912becff8d60672aa8628ef08c05898d9adf17c2ad4ae3caf99b065622fdeff9',
-      ),
-    ],
-  );
-
-  static const _qwen3_0_6bRepo =
-      'https://huggingface.co/Qwen/Qwen3-0.6B/resolve/'
-      'c1899de289a04d12100db370d81485cdf75e47ca';
-
-  /// Qwen3-0.6B quantized to Q8 on the device: 1.51 GB downloaded, about
-  /// 0.99 GB installed; allow 4.5 GB during setup.
-  static const qwen3_0_6bQ8 = TextCheckpointSpec(
-    id: 'qwen3-0.6b-q8-c1899de',
-    installedBytes: 994274234,
-    setupBytes: 4500000000,
-    name: 'Qwen3-0.6B (Q8)',
-    license: 'Apache License 2.0',
-    licenseUrl:
-        'https://huggingface.co/Qwen/Qwen3-0.6B/blob/c1899de289a04d12100db370d81485cdf75e47ca/LICENSE',
-    files: [
-      RemoteFile(
-        'config.json',
-        '$_qwen3_0_6bRepo/config.json',
-        size: 726,
-        sha256:
-            '660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd',
-      ),
-      RemoteFile(
-        'generation_config.json',
-        '$_qwen3_0_6bRepo/generation_config.json',
-        size: 239,
-        sha256:
-            '2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2',
-      ),
-      RemoteFile(
-        'tokenizer.json',
-        '$_qwen3_0_6bRepo/tokenizer.json',
-        size: 11422654,
-        sha256:
-            'aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4',
-      ),
-      RemoteFile(
-        'LICENSE',
-        '$_qwen3_0_6bRepo/LICENSE',
-        size: 11343,
-        sha256:
-            '832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e',
-      ),
-      RemoteFile(
-        'model.safetensors',
-        '$_qwen3_0_6bRepo/model.safetensors',
-        size: 1503300328,
-        sha256:
-            'f47f71177f32bcd101b7573ec9171e6a57f4f4d31148d38e382306f42996874b',
-      ),
-    ],
-  );
-}
 
 /// An upstream BF16 VL checkpoint converted into a standalone Q8/Q4 bundle.
 /// Installation imports its language backbone, quantizes it, then packs it.
@@ -686,8 +509,11 @@ final class VisionModelSpec extends InstallableModel {
   }
 }
 
-/// A model [ModelStore] can install: a GGUF checkpoint and the matching
-/// Hugging Face model's config, tokenizer and license.
+/// A text model [ModelStore] can install: a GGUF checkpoint and the
+/// matching Hugging Face model's config, tokenizer and license, plus its
+/// generation_config.json when that declares more end tokens. Liquid's QAD
+/// Q4_0 LFM3 and Qwen's Q8_0 Qwen3 builds are supported; installing only
+/// rearranges their quantized values, so nothing is quantized on the device.
 final class ModelSpec extends InstallableModel {
   const ModelSpec({
     required this.id,
@@ -700,6 +526,7 @@ final class ModelSpec extends InstallableModel {
     required this.config,
     required this.tokenizer,
     required this.licenseFile,
+    this.generationConfig,
   });
 
   /// The model's directory name in a store.
@@ -720,9 +547,16 @@ final class ModelSpec extends InstallableModel {
   final int? setupBytes;
 
   final RemoteFile gguf, config, tokenizer, licenseFile;
+  final RemoteFile? generationConfig;
 
   @override
-  List<RemoteFile> get files => [config, tokenizer, licenseFile, gguf];
+  List<RemoteFile> get files => [
+    config,
+    ?generationConfig,
+    tokenizer,
+    licenseFile,
+    gguf,
+  ];
 
   /// This model with every file fetched from [baseUrl] instead, as
   /// `[baseUrl]/[RemoteFile.name]`: a mirror an app hosts, or a test
@@ -742,6 +576,10 @@ final class ModelSpec extends InstallableModel {
       config: at(config),
       tokenizer: at(tokenizer),
       licenseFile: at(licenseFile),
+      generationConfig: switch (generationConfig) {
+        final f? => at(f),
+        null => null,
+      },
     );
   }
 
@@ -782,6 +620,100 @@ final class ModelSpec extends InstallableModel {
           '4d28ca14dedc0b3d0fcc2b3339f0e79931faa33874f3d24f522183a8fc70068c',
     ),
   );
+
+  /// Qwen3-0.6B in Qwen's Q8_0 build, from Qwen/Qwen3-0.6B-GGUF and
+  /// Qwen/Qwen3-0.6B on Hugging Face: 0.65 GB to download, 0.68 GB
+  /// installed.
+  static const qwen3_0_6bQ8 = ModelSpec(
+    id: 'qwen3-0.6b-q8-23749fe',
+    name: 'Qwen3-0.6B (Q8_0)',
+    license: 'Apache License 2.0',
+    licenseUrl:
+        'https://huggingface.co/Qwen/Qwen3-0.6B/blob/c1899de289a04d12100db370d81485cdf75e47ca/LICENSE',
+    installedBytes: 683239402,
+    setupBytes: 2000000000,
+    gguf: RemoteFile(
+      'Qwen3-0.6B-Q8_0.gguf',
+      '$_qwen3_0_6bGguf/Qwen3-0.6B-Q8_0.gguf',
+      size: 639446688,
+      sha256:
+          '9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031',
+    ),
+    config: RemoteFile(
+      'config.json',
+      '$_qwen3_0_6bBase/config.json',
+      size: 726,
+      sha256:
+          '660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd',
+    ),
+    generationConfig: _qwen3GenerationConfig,
+    tokenizer: _qwen3Tokenizer,
+    licenseFile: _qwen3License,
+  );
+
+  /// Qwen3-1.7B in Qwen's Q8_0 build, from Qwen/Qwen3-1.7B-GGUF and
+  /// Qwen/Qwen3-1.7B on Hugging Face: 1.85 GB to download, 1.88 GB
+  /// installed.
+  static const qwen3_1_7bQ8 = ModelSpec(
+    id: 'qwen3-1.7b-q8-90862c4',
+    name: 'Qwen3-1.7B (Q8_0)',
+    license: 'Apache License 2.0',
+    licenseUrl:
+        'https://huggingface.co/Qwen/Qwen3-1.7B/blob/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e/LICENSE',
+    installedBytes: 1948497938,
+    setupBytes: 4500000000,
+    gguf: RemoteFile(
+      'Qwen3-1.7B-Q8_0.gguf',
+      '$_qwen3_1_7bGguf/Qwen3-1.7B-Q8_0.gguf',
+      size: 1834426016,
+      sha256:
+          '061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a',
+    ),
+    config: RemoteFile(
+      'config.json',
+      '$_qwen3_1_7bBase/config.json',
+      size: 726,
+      sha256:
+          '1ddb5b89ebc90dcb417a45c213d818577e65976454d29385c8f6140771d95197',
+    ),
+    generationConfig: _qwen3GenerationConfig,
+    tokenizer: _qwen3Tokenizer,
+    licenseFile: _qwen3License,
+  );
+
+  // Both sizes share the tokenizer, generation config and license, byte for
+  // byte; they are pinned at Qwen3-0.6B's revision.
+  static const _qwen3GenerationConfig = RemoteFile(
+    'generation_config.json',
+    '$_qwen3_0_6bBase/generation_config.json',
+    size: 239,
+    sha256: '2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2',
+  );
+  static const _qwen3Tokenizer = RemoteFile(
+    'tokenizer.json',
+    '$_qwen3_0_6bBase/tokenizer.json',
+    size: 11422654,
+    sha256: 'aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4',
+  );
+  static const _qwen3License = RemoteFile(
+    'LICENSE',
+    '$_qwen3_0_6bBase/LICENSE',
+    size: 11343,
+    sha256: '832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e',
+  );
+
+  static const _qwen3_0_6bGguf =
+      'https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/'
+      '23749fefcc72300e3a2ad315e1317431b06b590a';
+  static const _qwen3_0_6bBase =
+      'https://huggingface.co/Qwen/Qwen3-0.6B/resolve/'
+      'c1899de289a04d12100db370d81485cdf75e47ca';
+  static const _qwen3_1_7bGguf =
+      'https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/'
+      '90862c4b9d2787eaed51d12237eafdfe7c5f6077';
+  static const _qwen3_1_7bBase =
+      'https://huggingface.co/Qwen/Qwen3-1.7B/resolve/'
+      '70d244cc86ccca08cf5af4e1e306ecf908b1ad5e';
 
   static const _ggufRepo =
       'https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/'
@@ -877,27 +809,8 @@ final class ModelStore {
   /// [AudioGgufSpec] imports paired Q4 audio files with about 4 GB setup storage;
   /// cancellation waits for conversion and keeps downloads for a retry.
   /// [OmniGgufSpec] does the same for the Omni pair, with about 4.2 GB.
-  /// [TextCheckpointSpec] renames and quantizes an upstream BF16 checkpoint,
-  /// with the download, a staging copy of it and the bundle on disk at its
-  /// peak; cancellation during conversion waits for it to finish.
   Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
     _checkId(model.id);
-    if (model is TextCheckpointSpec) {
-      final names = model.files.map((f) => f.name).toList();
-      if (names.toSet().length != names.length ||
-          !names.contains('config.json') ||
-          !names.contains('tokenizer.json') ||
-          !names.contains('LICENSE') ||
-          !names.any((n) => n.endsWith('.safetensors')) ||
-          names.any(
-            (n) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(n),
-          )) {
-        throw ArgumentError(
-          'text checkpoint files need distinct safe names, config.json, '
-          'tokenizer.json, LICENSE and safetensors weights',
-        );
-      }
-    }
     if (model is AudioGgufSpec &&
         (model.config.name != 'audio_config.json' ||
             model.tokenizer.name != 'tokenizer.json' ||
@@ -1055,21 +968,6 @@ final class ModelStore {
               File(
                 '${partial.path}/qad_source.json',
               ).writeAsStringSync(_qadReceipt(model, partial.path));
-              if (cancelled) return;
-              partial.renameSync(bundlePath(model));
-              await downloads.delete(recursive: true);
-            } finally {
-              if (partial.existsSync()) partial.deleteSync(recursive: true);
-            }
-          } else if (model is TextCheckpointSpec) {
-            final partial = Directory('${bundlePath(model)}.partial');
-            try {
-              await _buildText(
-                downloads.path,
-                partial.path,
-                '$directory/${model.id}/staging',
-                model.quantization,
-              );
               if (cancelled) return;
               partial.renameSync(bundlePath(model));
               await downloads.delete(recursive: true);
@@ -1242,29 +1140,6 @@ final class ModelStore {
       throw ArgumentError.value(id, 'model.id', 'expected a directory name');
     }
   }
-
-  /// Quantizes a text checkpoint into [partial] in another isolate, so that
-  /// an app's UI keeps running.
-  static Future<void> _buildText(
-    String downloads,
-    String partial,
-    String staging,
-    TextQuantization quantization,
-  ) => Isolate.run(() async {
-    if (Directory(partial).existsSync()) {
-      Directory(partial).deleteSync(recursive: true);
-    }
-    await buildTextBundle(
-      downloads,
-      partial,
-      stagingDir: staging,
-      weights: switch (quantization) {
-        TextQuantization.q8 => WeightFormat.q8,
-        TextQuantization.q4 => WeightFormat.q4,
-      },
-    );
-    File('$downloads/LICENSE').copySync('$partial/LICENSE');
-  });
 
   /// Builds the bundle from the downloads in another isolate, so that an
   /// app's UI keeps running, into a directory renamed into place at the end.

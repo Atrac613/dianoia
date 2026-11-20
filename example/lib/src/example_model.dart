@@ -5,8 +5,7 @@ import 'model_size.dart';
 enum ExampleModel {
   lfm3,
 
-  /// Qwen3-0.6B for text and tools, quantized to Q8 on the device from the
-  /// official BF16 checkpoint.
+  /// Qwen3-0.6B for text and tools, in Qwen's official Q8_0 build.
   qwen3,
   lfm3Vl,
 
@@ -41,7 +40,7 @@ enum ExampleModel {
 
   InstallableModel get downloadSpec => switch (this) {
     lfm3 => ModelSpec.lfm3Q4,
-    qwen3 => TextCheckpointSpec.qwen3_0_6bQ8,
+    qwen3 => ModelSpec.qwen3_0_6bQ8,
     lfm3Vl => VisionGgufSpec.lfm3VlQadQ4,
     omni => OmniGgufSpec.lfm3OmniQ4,
   };
