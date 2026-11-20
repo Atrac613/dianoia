@@ -156,6 +156,21 @@ LAB_EXPORT void lab_unmap_file(void* p, int64_t size) {
 LAB_EXPORT void lab_unmap_file(void* p, int64_t size) { munmap(p, (size_t)size); }
 #endif
 
+// Gives a mapped file's resident pages back to the OS, for when a copy of
+// it lives elsewhere, such as in GPU memory. The mapping stays valid: the
+// mapping is read-only, so a later read faults the page back in from the
+// file. `p` must be the start of a mapping from lab_map_file.
+#ifdef _WIN32
+LAB_EXPORT void lab_evict_file(void* p, int64_t size) {
+  // Unlocking pages that are not locked takes them out of the working set.
+  VirtualUnlock(p, (SIZE_T)size);
+}
+#else
+LAB_EXPORT void lab_evict_file(void* p, int64_t size) {
+  madvise(p, (size_t)size, MADV_DONTNEED);
+}
+#endif
+
 // For measuring the cost of a Dart-to-C call by itself.
 LAB_EXPORT int64_t lab_nop(int64_t x) { return x + 1; }
 

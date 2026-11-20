@@ -13,7 +13,8 @@
 /// each weight once per 8 tokens.
 ///
 /// The Q8 or Q4 weights are the mapped cache file, wrapped as GPU memory
-/// (without a copy on Metal); each matrix is a pair of byte offsets into it. The small
+/// (without a copy on Metal; on Vulkan a copy, after which the cache's
+/// pages are evicted); each matrix is a pair of byte offsets into it. The small
 /// float tensors (norm weights, conv kernels) are packed into one buffer.
 /// Activations, conv histories and the KV caches are shared-storage
 /// buffers, so Dart reads captured hidden states in place; the logits it
@@ -70,6 +71,9 @@ external int _readbackBuffer(int bytes);
   isLeaf: true,
 )
 external int _wrap(Pointer<Void> address, int bytes);
+
+@Native<Int64 Function()>(symbol: 'lab_gpu_wrap_copies', isLeaf: true)
+external int _wrapCopies();
 
 @Native<Pointer<Void> Function(Int64)>(symbol: 'lab_gpu_contents', isLeaf: true)
 external Pointer<Void> _contents(int handle);
@@ -436,6 +440,14 @@ final class GpuForward {
       gpu.dispose();
       rethrow;
     }
+    // Vulkan copied the weights into GPU memory, so the cache's pages are a
+    // second copy of the model. Give them back: the CPU's few reads of the
+    // cache, such as embedding rows, fault their pages back in. A library
+    // from elsewhere that predates the query wraps without a copy (Metal).
+    final tells =
+        libPath == null ||
+        DynamicLibrary.open(libPath).providesSymbol('lab_gpu_wrap_copies');
+    if (tells && _wrapCopies() != 0) cache.file.evict();
     return gpu;
   }
 

@@ -1,7 +1,7 @@
 {
-  "started": "2026-11-20T21:35:45.851483",
+  "started": "2026-11-20T22:06:52.033476",
   "os": "CP3A.261005.005",
-  "build": "6d33756",
+  "build": "v0.5.0-38-g4597546-dirty",
   "spec": "qwen3-0.6b-q8-23749fe",
   "install": {
     "already_installed": true,
@@ -15,7 +15,7 @@
     }
   },
   "gpu": {
-    "load_s": 1.413,
+    "load_s": 1.487,
     "greedy": {
       "content": "The capital of Japan is Tokyo.",
       "reasoning_chars": null,
@@ -23,9 +23,9 @@
       "prompt_tokens": 24,
       "reused_tokens": 0,
       "generated_tokens": 7,
-      "prefill_s": 0.237292,
-      "decode_tok_per_s": 26.9049678101278,
-      "footprint_mb": 2328,
+      "prefill_s": 0.224215,
+      "decode_tok_per_s": 23.968334406201638,
+      "footprint_mb": 1716,
       "passed": true
     },
     "second_turn": {
@@ -35,9 +35,9 @@
       "prompt_tokens": 50,
       "reused_tokens": 20,
       "generated_tokens": 7,
-      "prefill_s": 0.190706,
-      "decode_tok_per_s": 20.715636458336416,
-      "footprint_mb": 2329,
+      "prefill_s": 0.184249,
+      "decode_tok_per_s": 20.80039936766786,
+      "footprint_mb": 1717,
       "passed": true
     },
     "tool_call": {
@@ -54,9 +54,9 @@
       "prompt_tokens": 169,
       "reused_tokens": 1,
       "generated_tokens": 19,
-      "prefill_s": 1.100593,
-      "decode_tok_per_s": 20.324355316797867,
-      "footprint_mb": 2386,
+      "prefill_s": 1.10552,
+      "decode_tok_per_s": 18.257802087347248,
+      "footprint_mb": 1779,
       "passed": true
     },
     "thinking": {
@@ -66,15 +66,15 @@
       "prompt_tokens": 18,
       "reused_tokens": 1,
       "generated_tokens": 588,
-      "prefill_s": 0.124573,
-      "decode_tok_per_s": 16.26407772790834,
-      "footprint_mb": 2291,
+      "prefill_s": 0.116921,
+      "decode_tok_per_s": 16.641778057379774,
+      "footprint_mb": 1659,
       "passed": true
     }
   },
   "passed": true,
   "cpu": {
-    "load_s": 0.403,
+    "load_s": 0.456,
     "greedy": {
       "content": "The capital of Japan is Tokyo.",
       "reasoning_chars": null,
@@ -82,9 +82,9 @@
       "prompt_tokens": 24,
       "reused_tokens": 0,
       "generated_tokens": 7,
-      "prefill_s": 0.293068,
-      "decode_tok_per_s": 30.721157222105187,
-      "footprint_mb": 931,
+      "prefill_s": 0.459752,
+      "decode_tok_per_s": 29.269353314545196,
+      "footprint_mb": 950,
       "passed": true
     },
     "second_turn": {
@@ -94,9 +94,9 @@
       "prompt_tokens": 50,
       "reused_tokens": 20,
       "generated_tokens": 7,
-      "prefill_s": 0.334074,
-      "decode_tok_per_s": 33.33349206424793,
-      "footprint_mb": 940,
+      "prefill_s": 0.38041,
+      "decode_tok_per_s": 29.27253567067561,
+      "footprint_mb": 959,
       "passed": true
     },
     "tool_call": {
@@ -113,9 +113,9 @@
       "prompt_tokens": 169,
       "reused_tokens": 1,
       "generated_tokens": 19,
-      "prefill_s": 2.237571,
-      "decode_tok_per_s": 26.12118304212797,
-      "footprint_mb": 973,
+      "prefill_s": 2.557883,
+      "decode_tok_per_s": 22.12561995404858,
+      "footprint_mb": 980,
       "passed": true
     }
   },
