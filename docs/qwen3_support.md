@@ -2,15 +2,15 @@
 
 dianoia runs Qwen3 dense checkpoints (`model_type: qwen3`) for text, tool
 calling and thinking, on the CPU kernels and on Metal or Vulkan. It is the
-engine's second architecture after LFM3, and the first one imported from
-upstream BF16 weights rather than a prequantized GGUF.
+engine's second architecture after LFM3. Apps install Qwen's official Q8_0
+GGUFs; the BF16 checkpoints import too, for validation in float32.
 
 ## What is supported
 
 | | |
 |---|---|
 | Checkpoints | Qwen3 dense with tied embeddings: Qwen3-0.6B and Qwen3-1.7B checked (Qwen3-4B has the same layout but is unchecked) |
-| Weights | Official BF16 safetensors, one file or shards with their index, quantized to Q8 or Q4 by dianoia |
+| Weights | Qwen's Q8_0 GGUF, imported as it is; or the official BF16 safetensors (one file or shards), quantized to Q8 or Q4 by dianoia |
 | Tokenizer | Byte-level BPE from tokenizer.json (Qwen2 pre-tokenizer, merges always applied) |
 | Chat | Qwen3's chat template, `<tool_call>` JSON tool calls, `<tool_response>` results, thinking on or off |
 | Decoding | Greedy, or temperature / top-k / top-p / min-p sampling with a seed |
@@ -29,18 +29,25 @@ no sandwich norms and no conv layers. The engine describes both with one
 its kernels skip the gate when a layer has none. Without post norms, a new
 `add` GPU kernel adds each sublayer's output to the residual stream.
 
-Bundles keep LFM3's tensor names. `importHfCheckpoint` (`dianoia import-hf`)
-renames a Qwen3 checkpoint once, merging its shards and dropping the redundant
+Bundles keep LFM3's tensor names. `importGguf` (`dianoia import-gguf`) maps
+llama.cpp's names onto them, and `importHfCheckpoint` (`dianoia import-hf`)
+renames a BF16 checkpoint once, merging its shards and dropping the redundant
 tied `lm_head`:
 
-| Qwen3 | Engine |
-|---|---|
-| `input_layernorm` | `operator_norm` |
-| `post_attention_layernorm` | `ffn_norm` |
-| `mlp.gate_proj` / `up_proj` / `down_proj` | `feed_forward.w1` / `w3` / `w2` |
-| `model.norm` | `model.embedding_norm` |
+| Qwen3 | GGUF | Engine |
+|---|---|---|
+| `input_layernorm` | `attn_norm` | `operator_norm` |
+| `post_attention_layernorm` | `ffn_norm` | `ffn_norm` |
+| `mlp.gate_proj` / `up_proj` / `down_proj` | `ffn_gate` / `ffn_up` / `ffn_down` | `feed_forward.w1` / `w3` / `w2` |
+| `self_attn.q_proj` ... `o_proj` | `attn_q` ... `attn_output` | `self_attn.q_proj` ... `o_proj` |
+| `self_attn.q_norm` / `k_norm` | `attn_q_norm` / `attn_k_norm` | `self_attn.q_norm` / `k_norm` |
+| `model.norm` | `output_norm` | `model.embedding_norm` |
+| `model.embed_tokens` | `token_embd` | `model.embed_tokens` |
 
-Attention projections, `q_norm`, `k_norm` and the embedding keep their names.
+A Q8_0 block (a half scale and 32 int8 values) is the engine's Q8 block with
+its scale widened to float, which is exact: the import copies the values, and
+nothing is quantized on the device. The embedding stays in the Q8 cache,
+where it is both the LM head and the token lookup table.
 Quantized caches are named by architecture: `qwen3-q8.cache` next to LFM3's
 `lfm3-q4.cache`.
 
@@ -52,16 +59,17 @@ each new prompt differs from the previous one inside the last reply.
 
 ## Installing
 
-`ModelStore` installs `TextCheckpointSpec`s: it downloads the pinned BF16
-files, then renames, quantizes and packs them in an isolate.
+`ModelStore` installs these `ModelSpec`s: the pinned GGUF plus config.json,
+generation_config.json, tokenizer.json and LICENSE from the BF16 repository.
+The GGUF is imported in an isolate and then deleted.
 
-| Spec | Revision | Download | Installed | Setup peak |
+| Spec | GGUF revision | Download | Installed | Setup peak |
 |---|---|---:|---:|---:|
-| `TextCheckpointSpec.qwen3_0_6bQ8` | `c1899de` | 1.51 GB | 0.99 GB | 4.5 GB |
-| `TextCheckpointSpec.qwen3_1_7bQ8` | `70d244c` | 4.07 GB | 2.57 GB | 12.5 GB |
+| `ModelSpec.qwen3_0_6bQ8` | `23749fe` | 0.65 GB | 0.68 GB | 1.4 GB |
+| `ModelSpec.qwen3_1_7bQ8` | `90862c4` | 1.85 GB | 1.95 GB | 3.8 GB |
 
-The setup peak holds the download, a renamed staging copy, its quantized
-cache and the bundle at once.
+Before these, installing quantized the BF16 checkpoint on the device, which
+downloaded 1.51 and 4.07 GB and needed 4.5 and 12.5 GB free while building.
 
 ## Validation
 
@@ -79,6 +87,10 @@ reference's before the first difference.
 | 1.7B, 539-token chat | Q8 | CPU, Metal | 1.6, 1.1 | 19/32 |
 | 1.7B, 34-token chat | Q4 | Metal | 10.8 | 22/32 |
 | 1.7B, 539-token chat | Q4 | Metal | 13.0 | 1/32 |
+| 0.6B, 34-token chat | GGUF Q8_0 | CPU, Metal | 0.70, 0.59 | 20/32 |
+| 0.6B, 539-token chat | GGUF Q8_0 | CPU, Metal | 0.86, 0.71 | 32/32 |
+| 1.7B, 34-token chat | GGUF Q8_0 | CPU, Metal | 1.65, 1.57 | 32/32 |
+| 1.7B, 539-token chat | GGUF Q8_0 | CPU, Metal | 1.19, 0.95 | 12/32, 14/32 |
 
 Float32 matches the reference, so the graph is right. Q8 follows it closely:
 on the long prompt it reproduces the reference word for word until a near
@@ -86,6 +98,17 @@ tie. Plain (round-to-nearest) Q4 stays fluent but drifts. On the long prompt
 it rewords the answer from the first token and starts repeating a note, so
 the specs offer Q8 only. LFM3's Q4 is quantization-aware trained; Qwen3 has
 no such build.
+
+Qwen's Q8_0 GGUF is not dianoia's Q8 of the published BF16 weights. The
+embedding matches it value for value, but a third of the layer matrices'
+values are one step off and block scales differ by up to 10% in both
+directions, so the GGUF was quantized from slightly different weights. On
+0.6B it does as well as dianoia's own Q8; on 1.7B it stays further from the
+BF16 reference (logit difference 1.6 against 0.8 on the short chat) and
+leaves the long chat's reference text earlier, at 12 to 14 tokens against
+19. Its answers stay coherent. ModelStore uses it anyway, for the smaller
+download and setup; `import-hf` and `pack` still build dianoia's own Q8
+from BF16.
 
 The tokenizer matches Hugging Face on all 71 oracle cases but one: Qwen3's
 NFC normalizer is not applied (Dart has no Unicode normalization), so
@@ -105,7 +128,7 @@ Qwen3-1.7B Q8 prefills the 539-token prompt in 1.5 s on Metal.
 
 ```dart
 final store = ModelStore(dir);
-const spec = TextCheckpointSpec.qwen3_0_6bQ8;
+const spec = ModelSpec.qwen3_0_6bQ8;
 await store.install(spec).drain<void>();
 final model = await LocalModel.load(store.bundlePath(spec));
 final chat = model.chat(
@@ -131,7 +154,5 @@ since `ToolCall.arguments` holds strings for both families.
   about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
   against about 45 KB for LFM3-1.7B. The default 2048-token context needs
   about 470 MB; a 16-bit cache would halve it.
-- Setup storage: the staging copy could be avoided by renaming tensors as
-  they are read.
 - Q4: a quality-preserving 4-bit format (or per-channel scales) would make
   Q4 worth offering for Qwen3.

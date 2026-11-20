@@ -6,8 +6,8 @@ On-device text, tool calling, image chat and experimental audio in Dart.
 dianoia runs **LFM3-1.7B** for text and tools, **LFM3-VL-2B** for image
 conversations, and **LFM3-Audio-2B Q4_0** for transcription, speech synthesis
 and English voice conversation. **Qwen3** dense checkpoints (0.6B and 1.7B
-checked) run for text, tools and thinking, quantized on the device from the
-official BF16 weights ([Qwen3 support](docs/qwen3_support.md)).
+checked) run for text, tools and thinking, from Qwen's official Q8_0 GGUFs
+([Qwen3 support](docs/qwen3_support.md)).
 
 Dart owns the tokenizer, chat template, graph and conversation state. Native
 code provides quantized CPU kernels and the Metal/Vulkan language backend.
@@ -46,7 +46,8 @@ weights are downloaded only after that action and run on the device afterwards.
 | Model | Preset | Download | After setup |
 |---|---|---:|---:|
 | LFM3-1.7B, text and tools | `ModelSpec.lfm3Q4` | 1.07 GB | About 1.14 GB |
-| Qwen3-0.6B, text and tools | `TextCheckpointSpec.qwen3_0_6bQ8` | 1.51 GB | About 0.99 GB |
+| Qwen3-0.6B, text and tools | `ModelSpec.qwen3_0_6bQ8` | 0.65 GB | About 0.68 GB |
+| Qwen3-1.7B, text and tools | `ModelSpec.qwen3_1_7bQ8` | 1.85 GB | About 1.95 GB |
 | LFM3-VL-2B, text and images | `VisionGgufSpec.lfm3VlQadQ4` | 1.45 GB | About 1.54 GB |
 | LFM3-Audio-2B, transcription and speech | `AudioGgufSpec.lfm3AudioQ4` | 1.23 GB | About 1.30 GB |
 | LFM3-Omni-2B, photo questions, text chat and speech (experimental) | `OmniGgufSpec.lfm3OmniQ4` | 1.34 GB | About 1.41 GB |
@@ -190,10 +191,10 @@ removed. `isInstalled` checks its recorded source identity against the requested
 QAD pins; `loadBundle` verifies every runtime payload before loading. Existing
 QAD installs without the source record require explicit removal and reinstallation.
 
-Qwen3 publishes no Q4_0 build that dianoia imports, so
-`TextCheckpointSpec` downloads the official BF16 safetensors and quantizes
-them on the device: `TextCheckpointSpec.qwen3_0_6bQ8` needs about 4.5 GB free
-during setup and keeps 0.99 GB.
+Qwen3 installs from Qwen's Q8_0 GGUF, whose blocks are the engine's Q8
+values with a half scale: installation only rearranges them, with the
+download and the bundle on disk at its peak (about 1.4 GB for 0.6B and
+3.8 GB for 1.7B).
 
 Other VL installation paths use the same store API:
 
@@ -300,7 +301,7 @@ Future<void> textChat(
 }
 ```
 
-Qwen3 installs and loads the same way (`TextCheckpointSpec.qwen3_0_6bQ8`).
+Qwen3 installs and loads the same way (`ModelSpec.qwen3_0_6bQ8`).
 Its replies are better sampled than greedy, and it can reason before
 answering:
 
@@ -360,8 +361,17 @@ dart run dianoia import-gguf --gguf=LFM3-1.7B-QAD-Q4_0.gguf \
   --model=path/to/LFM3-1.7B --out=path/to/LFM3-1.7B-QAD-Q4
 ```
 
-A Qwen3 checkpoint from Hugging Face is renamed into the engine's layout,
-quantized on first load and packed:
+Qwen's Q8_0 GGUF imports the same way, with the BF16 model directory for its
+config and tokenizer:
+
+```bash
+dart run dianoia import-gguf --gguf=Qwen3-0.6B-Q8_0.gguf \
+  --model=path/to/Qwen3-0.6B --out=build/qwen3-gguf
+```
+
+The BF16 checkpoint itself can also be renamed into the engine's layout,
+quantized on first load and packed, which is how the float32 validation
+runs:
 
 ```bash
 dart run dianoia import-hf --model=path/to/Qwen3-0.6B --out=build/qwen3
