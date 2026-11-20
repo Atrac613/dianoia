@@ -14,7 +14,7 @@ GGUFs; the BF16 checkpoints import too, for validation in float32.
 | Tokenizer | Byte-level BPE from tokenizer.json (Qwen2 pre-tokenizer, merges always applied) |
 | Chat | Qwen3's chat template, `<tool_call>` JSON tool calls, `<tool_response>` results, thinking on or off |
 | Decoding | Greedy, or temperature / top-k / top-p / min-p sampling with a seed |
-| Backends | CPU (NEON, AVX2), Metal; Vulkan builds but is not yet checked on a device |
+| Backends | CPU (NEON, AVX2), Metal, Vulkan (checked on a Pixel 8; Windows unchecked) |
 
 Rejected at load, rather than run wrongly: untied embeddings (Qwen3-8B and
 up), attention bias, sliding-window attention, `rope_scaling` (YaRN), and
@@ -124,6 +124,26 @@ Decode speed on Metal, M2 Max, short prompts:
 
 Qwen3-1.7B Q8 prefills the 539-token prompt in 1.5 s on Metal.
 
+### On phones
+
+`tool/device_bench/run_ios_qwen3.sh` and `run_android_qwen3.sh` have the
+phone install `ModelSpec.qwen3_0_6bQ8` itself (from Hugging Face) and answer
+a greedy question, a second turn, a tool call and seeded thinking:
+
+| | iPhone (A17 Pro) | Pixel 8 (Tensor G3) |
+|---|---:|---:|
+| Download, import | 57 s, 3.0 s | 83 s, 3.8 s |
+| Load: GPU, CPU | 0.86 s, 0.31 s | 2.4 s, 0.39 s |
+| Decode, GPU (Metal, Vulkan) | 39-46 tok/s | 12-16 tok/s |
+| Decode, CPU | 34-39 tok/s | 30-32 tok/s |
+
+Both phones give the Mac's replies on both backends: Tokyo, then Paris
+reusing the first turn's 20 common tokens, and `get_weather(city: Paris)`.
+Thinking reaches 391 on both GPUs; the iPhone's 998 tokens match the Mac's
+token for token, while Vulkan's arithmetic takes the sampler down another
+path (588 tokens). The Pixel 8's Mali GPU decodes Qwen3's 28 attention
+layers at half the CPU's speed, as it did LFM3 at about the CPU's.
+
 ## Using it
 
 ```dart
@@ -149,7 +169,9 @@ since `ToolCall.arguments` holds strings for both families.
 ## Known gaps
 
 - NFC normalization of input text (above).
-- Vulkan: compiled and syntax-checked, not yet run on Android or Windows.
+- Vulkan on Windows is unchecked. On a Pixel 8 it is right but slower than
+  the CPU for Qwen3-0.6B (below), so an Android app may prefer
+  `InferenceBackend.cpu` for it.
 - KV cache in float32: every Qwen3 layer is attention, so a token costs
   about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
   against about 45 KB for LFM3-1.7B. The default 2048-token context needs
