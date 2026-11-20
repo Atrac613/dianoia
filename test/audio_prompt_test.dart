@@ -17,11 +17,11 @@ const audioSpecials = [
 
 void main() {
   late Directory temp;
-  late Lfm3Tokenizer tokenizer;
+  late BpeTokenizer tokenizer;
   setUp(() {
     temp = Directory.systemTemp.createTempSync('dianoia-audio-prompt-');
     writeSyntheticTokenizer(temp.path, additionalSpecials: audioSpecials);
-    tokenizer = Lfm3Tokenizer.load(temp.path);
+    tokenizer = BpeTokenizer.load(temp.path);
   });
   tearDown(() => temp.deleteSync(recursive: true));
   final oracle =
@@ -108,7 +108,7 @@ void main() {
         );
       }
       writeSyntheticTokenizer(temp.path);
-      final missing = Lfm3Tokenizer.load(temp.path);
+      final missing = BpeTokenizer.load(temp.path);
       expect(
         () => prepareAudioTranscriptionPrompt(
           tokenizer: missing,

@@ -34,6 +34,10 @@ void main() {
     expect(const AudioSynthesisCancelled(), isA<Exception>());
     expect(AudioSynthesisResult.new, isA<Function>());
   });
+  test('dianoia.dart exports sampling parameters', () {
+    expect(SamplingParams.greedy.isGreedy, isTrue);
+    expect(SamplingParams.qwen3Thinking.temperature, 0.6);
+  });
   test('dianoia.dart does not expose control vectors on local models', () {
     // Compiling is the check; referencing the probe keeps it in use.
     expect(_members, isA<Function>());

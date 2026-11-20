@@ -335,7 +335,7 @@ void main() {
     );
 
     test('Q4 bundle retains native formats and source arithmetic', () async {
-      final building = await Lfm3Model.load(
+      final building = await TextModel.load(
         backbone,
         maxSeq: 512,
         weights: WeightFormat.q4,

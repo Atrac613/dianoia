@@ -19,7 +19,7 @@ void main() {
     final ids = List.generate(64, (i) => 10 + i);
     Float32List? expected;
     for (final gpu in [false, true]) {
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         directory!,
         weights: WeightFormat.q4,
         q8CachePath: '$directory/lfm3-q4.cache',

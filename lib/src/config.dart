@@ -1,10 +1,19 @@
-/// The subset of LFM3's config.json the engine implements.
+/// The subset of a text model's config.json the engine implements.
+///
+/// The engine runs one family of decoder layers: a mixer (a gated short
+/// convolution or grouped-query attention with QK-norm and RoPE) and a
+/// SwiGLU FFN, each behind an RMSNorm and optionally followed by another
+/// (sandwich norms). [TextModelConfig.architecture] names the checkpoint
+/// family whose config.json and tensor names were read.
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
 enum LayerType { conv, fullAttention, slidingAttention }
+
+/// The checkpoint families the engine reads.
+enum ModelArchitecture { lfm3, qwen3 }
 
 final class RopeSpec {
   const RopeSpec(this.theta, this.partialRotaryFactor);
@@ -15,8 +24,12 @@ final class RopeSpec {
   final double partialRotaryFactor;
 }
 
-final class Lfm3Config {
-  Lfm3Config._({
+/// Older name of [TextModelConfig], from when LFM3 was the only family.
+typedef Lfm3Config = TextModelConfig;
+
+final class TextModelConfig {
+  TextModelConfig._({
+    required this.architecture,
     required this.hiddenSize,
     required this.intermediateSize,
     required this.numHeads,
@@ -30,18 +43,68 @@ final class Lfm3Config {
     required this.fullRope,
     required this.slidingRope,
     required this.sandwichNorm,
-    required this.eosTokenId,
+    required this.attentionOutputGate,
+    required this.eosTokenIds,
   });
 
-  factory Lfm3Config.load(String modelDir) {
-    return Lfm3Config.fromJson(
+  /// Reads `config.json` in [modelDir], adding the end-of-reply tokens of
+  /// `generation_config.json` when there is one (Qwen3 ends replies with
+  /// either `<|im_end|>` or `<|endoftext|>`, but config.json names one).
+  factory TextModelConfig.load(String modelDir) {
+    final generation = File('$modelDir/generation_config.json');
+    return TextModelConfig.fromJson(
       jsonDecode(File('$modelDir/config.json').readAsStringSync())
           as Map<String, Object?>,
+      extraEosTokenIds: generation.existsSync()
+          ? switch ((jsonDecode(generation.readAsStringSync())
+                as Map)['eos_token_id']) {
+              final List ids => ids.cast<int>(),
+              final int id => [id],
+              _ => const [],
+            }
+          : const [],
     );
   }
 
   /// Parses a standalone text configuration, including a VL text_config.
-  factory Lfm3Config.fromJson(Map<String, Object?> json) {
+  /// [extraEosTokenIds] join config.json's own, after them.
+  factory TextModelConfig.fromJson(
+    Map<String, Object?> json, {
+    List<int> extraEosTokenIds = const [],
+  }) {
+    final config = TextModelConfig._parse(json);
+    final extra = [
+      for (final id in extraEosTokenIds)
+        if (!config.eosTokenIds.contains(id)) id,
+    ];
+    if (config.eosTokenIds.isEmpty && extra.isEmpty) {
+      throw const FormatException(
+        'config.json: no eos_token_id here or in generation_config.json',
+      );
+    }
+    return extra.isEmpty ? config : config._withEos(extra);
+  }
+
+  TextModelConfig _withEos(List<int> extra) => TextModelConfig._(
+    architecture: architecture,
+    hiddenSize: hiddenSize,
+    intermediateSize: intermediateSize,
+    numHeads: numHeads,
+    numKvHeads: numKvHeads,
+    headDim: headDim,
+    vocabSize: vocabSize,
+    convKernel: convKernel,
+    slidingWindow: slidingWindow,
+    normEps: normEps,
+    layerTypes: layerTypes,
+    fullRope: fullRope,
+    slidingRope: slidingRope,
+    sandwichNorm: sandwichNorm,
+    attentionOutputGate: attentionOutputGate,
+    eosTokenIds: List.unmodifiable([...eosTokenIds, ...extra]),
+  );
+
+  static TextModelConfig _parse(Map<String, Object?> json) {
     T field<T>(String key) {
       final value = json[key];
       if (value is! T) {
@@ -52,8 +115,13 @@ final class Lfm3Config {
 
     // Fail loudly on anything this engine does not implement rather than
     // producing plausible but wrong text.
-    if (field<String>('model_type') != 'lfm3') {
-      throw const FormatException('config.json: model_type is not lfm3');
+    switch (field<String>('model_type')) {
+      case 'lfm3':
+        break;
+      case 'qwen3':
+        return _qwen3(json, field);
+      case final type:
+        throw FormatException('config.json: unsupported model_type $type');
     }
     if (field<bool>('tie_word_embeddings') != true ||
         field<bool>('conv_bias') != false) {
@@ -88,7 +156,8 @@ final class Lfm3Config {
     }
 
     final eos = json['eos_token_id'];
-    return Lfm3Config._(
+    return TextModelConfig._(
+      architecture: ModelArchitecture.lfm3,
       hiddenSize: field<int>('hidden_size'),
       intermediateSize: field<int>('intermediate_size'),
       numHeads: field<int>('num_attention_heads'),
@@ -102,10 +171,72 @@ final class Lfm3Config {
       fullRope: ropeFor('full_attention'),
       slidingRope: ropeFor('sliding_attention'),
       sandwichNorm: field<bool>('use_sandwich_norm'),
-      eosTokenId: eos is List ? eos.first as int : eos as int,
+      attentionOutputGate: true,
+      eosTokenIds: List.unmodifiable(_eosIds(eos)),
     );
   }
 
+  /// Qwen3 dense: every layer full attention with QK-norm, no output gate
+  /// and no sandwich norms.
+  static TextModelConfig _qwen3(
+    Map<String, Object?> json,
+    T Function<T>(String key) field,
+  ) {
+    if (field<bool>('tie_word_embeddings') != true) {
+      throw const FormatException(
+        'config.json: only tied embeddings are supported',
+      );
+    }
+    if (json['attention_bias'] == true ||
+        json['use_sliding_window'] == true ||
+        json['rope_scaling'] != null) {
+      throw const FormatException(
+        'config.json: attention bias, sliding windows and rope scaling are '
+        'not supported',
+      );
+    }
+    if (json['hidden_act'] case final act? when act != 'silu') {
+      throw FormatException('config.json: unsupported hidden_act $act');
+    }
+    // Newer transformers move rope_theta into rope_parameters.
+    final ropeParameters = json['rope_parameters'];
+    final theta = ropeParameters is Map
+        ? ropeParameters['rope_theta']
+        : json['rope_theta'];
+    if (ropeParameters is Map &&
+        (ropeParameters['rope_type'] ?? 'default') != 'default') {
+      throw const FormatException('config.json: unsupported rope_type');
+    }
+    if (theta is! num) {
+      throw const FormatException('config.json: rope_theta is missing');
+    }
+    final rope = RopeSpec(theta.toDouble(), 1);
+    final eos = json['eos_token_id'];
+    return TextModelConfig._(
+      architecture: ModelArchitecture.qwen3,
+      hiddenSize: field<int>('hidden_size'),
+      intermediateSize: field<int>('intermediate_size'),
+      numHeads: field<int>('num_attention_heads'),
+      numKvHeads: field<int>('num_key_value_heads'),
+      headDim: field<int>('head_dim'),
+      vocabSize: field<int>('vocab_size'),
+      convKernel: 0,
+      slidingWindow: 0,
+      normEps: field<num>('rms_norm_eps').toDouble(),
+      layerTypes: List.filled(
+        field<int>('num_hidden_layers'),
+        LayerType.fullAttention,
+        growable: false,
+      ),
+      fullRope: rope,
+      slidingRope: rope,
+      sandwichNorm: false,
+      attentionOutputGate: false,
+      eosTokenIds: List.unmodifiable(_eosIds(eos)),
+    );
+  }
+
+  final ModelArchitecture architecture;
   final int hiddenSize;
   final int intermediateSize;
   final int numHeads;
@@ -119,8 +250,30 @@ final class Lfm3Config {
   final RopeSpec fullRope;
   final RopeSpec slidingRope;
   final bool sandwichNorm;
-  final int eosTokenId;
+
+  /// Whether attention layers scale each head's output by
+  /// sigmoid(gate_proj(x)) before o_proj.
+  final bool attentionOutputGate;
+
+  /// Tokens that end a reply, the first being config.json's own.
+  final List<int> eosTokenIds;
+
+  /// The first of [eosTokenIds].
+  int get eosTokenId => eosTokenIds.first;
+
+  bool isEos(int token) => eosTokenIds.contains(token);
 
   int get numLayers => layerTypes.length;
   int get kvDim => numKvHeads * headDim;
 }
+
+/// config.json's `eos_token_id`, one id or a list. Without one the reply's
+/// end comes from generation_config.json alone, which
+/// [TextModelConfig.load] adds; a config that has neither is rejected
+/// there.
+List<int> _eosIds(Object? eos) => List.unmodifiable(switch (eos) {
+  final List ids => ids.cast<int>(),
+  final int id => [id],
+  null => const <int>[],
+  _ => throw FormatException('config.json: invalid eos_token_id $eos'),
+});

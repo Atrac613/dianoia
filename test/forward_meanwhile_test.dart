@@ -27,7 +27,7 @@ void main() {
       () async {
         NativeKernels.load(null, threads: 2);
         final backbone = '${root.path}/backbone';
-        final model = await Lfm3Model.load(
+        final model = await TextModel.load(
           backbone,
           maxSeq: 64,
           maxChunk: 4,

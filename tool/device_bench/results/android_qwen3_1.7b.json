@@ -1,0 +1,123 @@
+{
+  "started": "2026-11-20T21:11:22.639721",
+  "os": "CP3A.261005.005",
+  "build": "b3056ac",
+  "spec": "qwen3-1.7b-q8-90862c4",
+  "install": {
+    "already_installed": true,
+    "bundle_files": {
+      "config.json": 726,
+      "tokenizer.json": 11422654,
+      "generation_config.json": 239,
+      "model.safetensors": 506944,
+      "LICENSE": 11343,
+      "qwen3-q8.cache": 1936556032
+    }
+  },
+  "gpu": {
+    "load_s": 18.745,
+    "greedy": {
+      "content": "The capital of Japan is Tokyo.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 24,
+      "reused_tokens": 0,
+      "generated_tokens": 7,
+      "prefill_s": 0.741557,
+      "decode_tok_per_s": 5.287628083348126,
+      "footprint_mb": 3965,
+      "passed": true
+    },
+    "second_turn": {
+      "content": "The capital of France is Paris.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 50,
+      "reused_tokens": 20,
+      "generated_tokens": 7,
+      "prefill_s": 0.491186,
+      "decode_tok_per_s": 5.297055064400839,
+      "footprint_mb": 3966,
+      "passed": true
+    },
+    "tool_call": {
+      "content": "",
+      "reasoning_chars": null,
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          }
+        }
+      ],
+      "prompt_tokens": 169,
+      "reused_tokens": 1,
+      "generated_tokens": 19,
+      "prefill_s": 2.882674,
+      "decode_tok_per_s": 5.322544815127008,
+      "footprint_mb": 3871,
+      "passed": true
+    },
+    "thinking": {
+      "content": "To find the product of $17 \\times 23$, we can approach the problem using various methods to ensure accuracy and consistency.\n\n---\n\n### **Method 1: Distributive Property**\n\nWe can break down $23$ as $20 + 3$, then apply the distributive property:\n\n$$\n17 \\times 23 = 17 \\times (20 + 3) = (17 \\times 20) + (17 \\times 3)\n$$\n\n- $17 \\times 20 = 340$\n- $17 \\times 3 = 51$\n\nNow, add the two results:\n\n$$\n340 + 51 = 391\n$$\n\n---\n\n### **Method 2: Standard Multiplication Algorithm**\n\nSet up the multiplication:\n\n$$\n\\begin{array}{r}\n\\phantom{0}17 \\\\\n\\times 23 \\\\\n\\hline\n\\end{array}\n$$\n\n1. Multiply $17$ by $3$:  \n   $17 \\times 3 = 51$\n\n2. Multiply $17$ by $2$ (shift one position to the left):  \n   $17 \\times 2 = 34$, shifted to become $340$\n\n3. Add the results:  \n   $51 + 340 = 391$\n\n---\n\n### **Method 3: Alternate Distribution**\n\nWe can also express $17 \\times 23$ as:\n\n$$\n17 \\times 23 = (10 + 7) \\times (20 + 3) = 10 \\times 20 + 10 \\times 3 + 7 \\times 20 + 7 \\times 3\n$$\n\n- $10 \\times 20 = 200$\n- $10 \\times 3 = 30$\n- $7 \\times 20 = 140$\n- $7 \\times 3 = 21$\n\nAdd these together:\n\n$$\n200 + 30 + 140 + 21 = 391\n$$\n\n---\n\n### **Conclusion**\n\nAll methods consistently yield the same result. Therefore, the product of $17 \\times 23$ is:\n\n$$\n\\boxed{391}\n$$",
+      "reasoning_chars": 5507,
+      "tool_calls": [],
+      "prompt_tokens": 18,
+      "reused_tokens": 1,
+      "generated_tokens": 2732,
+      "prefill_s": 0.318593,
+      "decode_tok_per_s": 3.7443416172825654,
+      "footprint_mb": 2799,
+      "passed": true
+    }
+  },
+  "passed": true,
+  "cpu": {
+    "load_s": 0.724,
+    "greedy": {
+      "content": "The capital of Japan is Tokyo.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 24,
+      "reused_tokens": 0,
+      "generated_tokens": 7,
+      "prefill_s": 2.422916,
+      "decode_tok_per_s": 6.068518778597895,
+      "footprint_mb": 2104,
+      "passed": true
+    },
+    "second_turn": {
+      "content": "The capital of France is Paris.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 50,
+      "reused_tokens": 20,
+      "generated_tokens": 7,
+      "prefill_s": 2.251593,
+      "decode_tok_per_s": 7.873670333922359,
+      "footprint_mb": 2107,
+      "passed": true
+    },
+    "tool_call": {
+      "content": "",
+      "reasoning_chars": null,
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          }
+        }
+      ],
+      "prompt_tokens": 169,
+      "reused_tokens": 1,
+      "generated_tokens": 19,
+      "prefill_s": 9.416701,
+      "decode_tok_per_s": 7.144122135912036,
+      "footprint_mb": 2140,
+      "passed": true
+    }
+  },
+  "finished": true
+}

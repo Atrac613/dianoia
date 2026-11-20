@@ -36,7 +36,7 @@ final class SpeechReply {
 /// slot. [feed] forwards one generated slot — a token, or `<|audio_out|>`
 /// with its feedback embedding — and computes logits when asked; callers use
 /// it to record history. When it gets `meanwhile`, decoding the frame just
-/// sampled to audio, it should pass it to [Lfm3Model.forward] so the codec
+/// sampled to audio, it should pass it to [TextModel.forward] so the codec
 /// runs on the CPU while the GPU computes; if it does not call it, the reply
 /// runs it after [feed]. [check] may throw to cancel between slots.
 ///
@@ -46,8 +46,8 @@ final class SpeechReply {
 /// suppresses the speech and mixed markers, as upstream text mode does.
 /// [variant] defaults to the generator's, or LFM3-Audio without one.
 Future<SpeechReply> decodeSpeechReply({
-  required Lfm3Model model,
-  required Lfm3Tokenizer tokenizer,
+  required TextModel model,
+  required BpeTokenizer tokenizer,
   required AudioReplyMode mode,
   required int maxSlots,
   required Future<void> Function(

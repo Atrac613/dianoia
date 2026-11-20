@@ -166,7 +166,7 @@ void main() {
       Directory('${store.directory}/${spec.id}/downloads').existsSync(),
       isFalse,
     );
-    final tokenizer = Lfm3Tokenizer.load('$bundle/language');
+    final tokenizer = BpeTokenizer.load('$bundle/language');
     final config = loadOmniVisionConfig('$bundle/omni_config.json', tokenizer);
     loadVisionEncoderGguf('$bundle/omni.gguf', config).close();
     final cache = File('$bundle/language/lfm3-q4.cache');

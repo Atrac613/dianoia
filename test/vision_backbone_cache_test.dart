@@ -16,7 +16,7 @@ void main() {
         await prepareVisionFixture(root);
         final backbone = '${root.path}/backbone';
         final referencePath = '$backbone/reference.cache';
-        final model = await Lfm3Model.load(
+        final model = await TextModel.load(
           backbone,
           weights: weights,
           maxSeq: 1,

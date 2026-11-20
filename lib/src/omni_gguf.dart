@@ -62,7 +62,7 @@ abstract final class Lfm3OmniQ4Source {
 
 /// The vision part of an Omni config.json. Omni names no span marker IDs in
 /// its config; they are the tokenizer's `<|vision_start|>`/`<|vision_end|>`.
-Lfm3VlConfig loadOmniVisionConfig(String configPath, Lfm3Tokenizer tokenizer) {
+Lfm3VlConfig loadOmniVisionConfig(String configPath, BpeTokenizer tokenizer) {
   int marker(String text) =>
       tokenizer.addedTokenId(text) ??
       (throw FormatException('Omni tokenizer lacks $text'));

@@ -1,11 +1,12 @@
 /// Reading llama.cpp's GGUF files, and importing Liquid's quantization-aware
-/// distilled (QAD) Q4_0 LFM3 into this engine's bundle layout.
+/// distilled (QAD) Q4_0 LFM3 and Qwen's Q8_0 Qwen3 into this engine's
+/// bundle layout.
 ///
 /// GGUF: magic `GGUF`, version, tensor and metadata counts, metadata as
 /// typed key-value pairs, tensor infos (name, dims with the fastest first,
 /// type, offset), then tensor data from the next multiple of
-/// `general.alignment` (32 by default). Only the types LFM3's files use are
-/// supported: F32, F16, BF16, Q4_0 and Q6_K.
+/// `general.alignment` (32 by default). Only the types LFM3's and Qwen3's
+/// files use are supported: F32, F16, BF16, Q4_0, Q8_0 and Q6_K.
 library;
 
 import 'dart:convert';
@@ -14,15 +15,19 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'config.dart';
+import 'hf_import.dart';
 import 'native.dart';
 import 'q8_cache.dart';
+import 'quant.dart';
 import 'safetensors.dart';
+import 'text_bundle.dart';
 
 enum GgufType {
   f32(0, 1, 4),
   f16(1, 1, 2),
   bf16(30, 1, 2),
   q4_0(2, 32, 18),
+  q8_0(8, 32, 34),
   q6K(14, 256, 210);
 
   const GgufType(this.id, this.blockValues, this.blockBytes);
@@ -57,7 +62,11 @@ final class GgufFile {
         MappedFile.open(path) ??
         (throw FileSystemException('cannot map', path));
     try {
-      final data = ByteData.sublistView(file.bytes(0, file.length));
+      // Only the header is parsed here, so view no more of the file than
+      // one view may hold (MappedFile.maxView): Qwen3-1.7B's GGUF is 1.8 GB.
+      final data = ByteData.sublistView(
+        file.bytes(0, math.min(file.length, MappedFile.maxView)),
+      );
       var at = 0;
       // Each reader returns the value at the cursor and moves past it.
       T read<T>(int size, T Function(int offset) get) {
@@ -255,12 +264,35 @@ final class _RawMatrix implements CachedMatrix {
   final Uint8List qsBytes, scaleBytes;
 }
 
+/// Q8_0 blocks (half scale, then 32 int8 values) split into the engine's
+/// Q8 values and float scales (lab_native.c). Widening the scale is exact,
+/// so the matrix is the GGUF's, value for value.
+CachedMatrix splitQ8_0(Uint8List blocks, int rows, int cols) {
+  final count = rows * cols ~/ 32;
+  if (blocks.length != count * 34) {
+    throw ArgumentError('Q8_0 data does not hold a [$rows, $cols] matrix');
+  }
+  final qs = Uint8List(count * 32);
+  final scales = Float32List(count);
+  for (var b = 0; b < count; b++) {
+    scales[b] = halfToDouble(blocks[34 * b] | blocks[34 * b + 1] << 8);
+    qs.setRange(32 * b, 32 * b + 32, blocks, 34 * b + 2);
+  }
+  return _RawMatrix('q8', rows, cols, qs, scales.buffer.asUint8List());
+}
+
 /// Writes an engine bundle for the GGUF checkpoint [ggufPath] into
-/// [outDir]: config.json and tokenizer.json from the Hugging Face directory
-/// [hfDir] (the same model's), a model.safetensors with the float tensors
-/// under their Hugging Face names, and `lfm3-q4.cache` holding every matrix
-/// as Q4 and the tied embedding, Q6_K in the file, re-quantized to Q8 for
-/// the LM head and token lookup. Load it with `--weights=q4`.
+/// [outDir], with config.json and tokenizer.json from the Hugging Face
+/// directory [hfDir] (the same model's). Two families are supported:
+///
+/// - LFM3 in Liquid's QAD Q4_0 build: a model.safetensors with the float
+///   tensors under their Hugging Face names, and `lfm3-q4.cache` holding
+///   every matrix as Q4 and the tied embedding, Q6_K in the file,
+///   re-quantized to Q8 for the LM head and token lookup.
+/// - Qwen3 in Qwen's Q8_0 build: the norms under the engine's names
+///   (hf_import.dart), and `qwen3-q8.cache` holding every matrix, the tied
+///   embedding included, as the file's own Q8_0 values. generation_config.json
+///   is copied too when [hfDir] has it, for its end tokens.
 ///
 /// Returns lines comparing each imported tensor family with [hfDir]'s
 /// weights (relative L2 difference over layers 0-3), which shows the layout
@@ -268,133 +300,266 @@ final class _RawMatrix implements CachedMatrix {
 List<String> importGguf(String ggufPath, String hfDir, String outDir) {
   final gguf = GgufFile.open(ggufPath);
   try {
-    final c = Lfm3Config.load(hfDir);
-    final h = c.hiddenSize, f = c.intermediateSize, hd = c.headDim;
-    if (gguf.metadata['general.architecture'] != 'lfm3' ||
-        gguf.metadata['lfm3.block_count'] != c.numLayers) {
-      throw StateError('$ggufPath is not this LFM3 model');
-    }
-
-    final small = <String, (List<int>, Float32List)>{};
-    // The cache's matrices, made one at a time while it is written: on a
-    // phone the whole set (1.1 GB) does not fit in memory at once.
-    final shapes = <(String, String, int, int)>[];
-    final produce = <String, CachedMatrix Function()>{};
-    // Imported tensors keyed by their Hugging Face name, for the comparison.
-    final imported = <String, Float32List Function()>{};
-
-    void vector(String gguf_, String hf, List<int> shape) {
-      final values = gguf.f32(
-        gguf.tensor(gguf_, GgufType.f32, shape.reversed.toList()),
-      );
-      small[hf] = (shape, values);
-      imported[hf] = () => values;
-    }
-
-    void matrix(
-      String gguf_,
-      String cacheName,
-      String hfName,
-      int rows,
-      int cols,
-    ) {
-      final t = gguf.tensor(gguf_, GgufType.q4_0, [cols, rows]);
-      CachedMatrix split() => splitQ4_0(gguf.bytes(t), rows, cols);
-      shapes.add((cacheName, 'q4', rows, cols));
-      produce[cacheName] = split;
-      imported[hfName] = () => _dequantizeQ4(split());
-    }
-
-    for (var i = 0; i < c.numLayers; i++) {
-      final g = 'blk.$i.';
-      final p = 'model.layers.$i.';
-      vector('${g}attn_norm.weight', '${p}operator_norm.weight', [h]);
-      vector(
-        '${g}post_attention_norm.weight',
-        '${p}post_operator_norm.weight',
-        [h],
-      );
-      vector('${g}ffn_norm.weight', '${p}ffn_norm.weight', [h]);
-      vector('${g}post_ffw_norm.weight', '${p}post_ffn_norm.weight', [h]);
-      final ff = '${p}feed_forward.';
-      matrix('${g}ffn_gate.weight', '${ff}w1', '${ff}w1.weight', f, h);
-      matrix('${g}ffn_up.weight', '${ff}w3', '${ff}w3.weight', f, h);
-      matrix('${g}ffn_down.weight', '${ff}w2', '${ff}w2.weight', h, f);
-      if (c.layerTypes[i] == LayerType.conv) {
-        final t = gguf.tensor('${g}shortconv.conv.weight', GgufType.f32, [
-          c.convKernel,
-          h,
-        ]);
-        final values = gguf.f32(t);
-        small['${p}conv.conv.weight'] = ([h, 1, c.convKernel], values);
-        imported['${p}conv.conv.weight'] = () => values;
-        for (final (gName, hfName, rows) in [
-          ('shortconv.in_proj', 'conv.in_proj.weight', 3 * h),
-          ('shortconv.out_proj', 'conv.out_proj.weight', h),
-        ]) {
-          matrix('$g$gName.weight', '$p$hfName', '$p$hfName', rows, h);
-        }
-      } else {
-        final a = '${p}self_attn.';
-        vector('${g}attn_q_norm.weight', '${a}q_norm.weight', [hd]);
-        vector('${g}attn_k_norm.weight', '${a}k_norm.weight', [hd]);
-        for (final (gName, hfName, rows, cols) in [
-          ('attn_q', 'q_proj', c.numHeads * hd, h),
-          ('attn_k', 'k_proj', c.kvDim, h),
-          ('attn_v', 'v_proj', c.kvDim, h),
-          ('attn_gate', 'gate_proj', c.numHeads, h),
-          ('attn_output', 'o_proj', h, c.numHeads * hd),
-        ]) {
-          matrix(
-            '$g$gName.weight',
-            '$a$hfName',
-            '$a$hfName.weight',
-            rows,
-            cols,
-          );
-        }
-      }
-    }
-    vector('output_norm.weight', 'model.embedding_norm.weight', [h]);
-    const embed = 'model.embed_tokens.weight';
-    final embedding = gguf.tensor('token_embd.weight', GgufType.q6K, [
-      h,
-      c.vocabSize,
-    ]);
-    final embedBytes = gguf.bytes(embedding);
-    final perRow = h ~/ 256;
-    shapes.add((embed, 'q8', c.vocabSize, h));
-    produce[embed] = () => NativeQ8Matrix.quantizeRows(
-      c.vocabSize,
-      h,
-      (first, count, out) =>
-          dequantizeQ6K(embedBytes, first * perRow, count * perRow, out, 0),
-    );
-    imported[embed] = () {
-      const rows = 4096;
-      final out = Float32List(rows * h);
-      dequantizeQ6K(embedBytes, 0, rows * perRow, out, 0);
-      return out;
+    final c = TextModelConfig.load(hfDir);
+    return switch (gguf.metadata['general.architecture']) {
+      'lfm3' => _importLfm3(gguf, ggufPath, c, hfDir, outDir),
+      'qwen3' => _importQwen3(gguf, ggufPath, c, hfDir, outDir),
+      final other => throw StateError(
+        '$ggufPath holds $other, which this importer does not read',
+      ),
     };
-
-    Directory(outDir).createSync(recursive: true);
-    for (final name in ['config.json', 'tokenizer.json']) {
-      File('$hfDir/$name').copySync('$outDir/$name');
-    }
-    writeSafetensorsF32('$outDir/model.safetensors', small);
-    Q8Cache.writeEach(
-      '$outDir/lfm3-q4.cache',
-      Q8Cache.keyFor(outDir, weights: 'q4'),
-      shapes,
-      (name) => produce[name]!(),
-      done: (m) {
-        if (m is NativeQ8Matrix) m.free();
-      },
-    );
-    return _compare(hfDir, c, imported);
   } finally {
     gguf.close();
   }
+}
+
+List<String> _importLfm3(
+  GgufFile gguf,
+  String ggufPath,
+  TextModelConfig c,
+  String hfDir,
+  String outDir,
+) {
+  final h = c.hiddenSize, f = c.intermediateSize, hd = c.headDim;
+  if (gguf.metadata['lfm3.block_count'] != c.numLayers) {
+    throw StateError('$ggufPath is not this LFM3 model');
+  }
+
+  final small = <String, (List<int>, Float32List)>{};
+  // The cache's matrices, made one at a time while it is written: on a
+  // phone the whole set (1.1 GB) does not fit in memory at once.
+  final shapes = <(String, String, int, int)>[];
+  final produce = <String, CachedMatrix Function()>{};
+  // Imported tensors keyed by their Hugging Face name, for the comparison.
+  final imported = <String, Float32List Function()>{};
+
+  void vector(String gguf_, String hf, List<int> shape) {
+    final values = gguf.f32(
+      gguf.tensor(gguf_, GgufType.f32, shape.reversed.toList()),
+    );
+    small[hf] = (shape, values);
+    imported[hf] = () => values;
+  }
+
+  void matrix(
+    String gguf_,
+    String cacheName,
+    String hfName,
+    int rows,
+    int cols,
+  ) {
+    final t = gguf.tensor(gguf_, GgufType.q4_0, [cols, rows]);
+    CachedMatrix split() => splitQ4_0(gguf.bytes(t), rows, cols);
+    shapes.add((cacheName, 'q4', rows, cols));
+    produce[cacheName] = split;
+    imported[hfName] = () => _dequantizeQ4(split());
+  }
+
+  for (var i = 0; i < c.numLayers; i++) {
+    final g = 'blk.$i.';
+    final p = 'model.layers.$i.';
+    vector('${g}attn_norm.weight', '${p}operator_norm.weight', [h]);
+    vector('${g}post_attention_norm.weight', '${p}post_operator_norm.weight', [
+      h,
+    ]);
+    vector('${g}ffn_norm.weight', '${p}ffn_norm.weight', [h]);
+    vector('${g}post_ffw_norm.weight', '${p}post_ffn_norm.weight', [h]);
+    final ff = '${p}feed_forward.';
+    matrix('${g}ffn_gate.weight', '${ff}w1', '${ff}w1.weight', f, h);
+    matrix('${g}ffn_up.weight', '${ff}w3', '${ff}w3.weight', f, h);
+    matrix('${g}ffn_down.weight', '${ff}w2', '${ff}w2.weight', h, f);
+    if (c.layerTypes[i] == LayerType.conv) {
+      final t = gguf.tensor('${g}shortconv.conv.weight', GgufType.f32, [
+        c.convKernel,
+        h,
+      ]);
+      final values = gguf.f32(t);
+      small['${p}conv.conv.weight'] = ([h, 1, c.convKernel], values);
+      imported['${p}conv.conv.weight'] = () => values;
+      for (final (gName, hfName, rows) in [
+        ('shortconv.in_proj', 'conv.in_proj.weight', 3 * h),
+        ('shortconv.out_proj', 'conv.out_proj.weight', h),
+      ]) {
+        matrix('$g$gName.weight', '$p$hfName', '$p$hfName', rows, h);
+      }
+    } else {
+      final a = '${p}self_attn.';
+      vector('${g}attn_q_norm.weight', '${a}q_norm.weight', [hd]);
+      vector('${g}attn_k_norm.weight', '${a}k_norm.weight', [hd]);
+      for (final (gName, hfName, rows, cols) in [
+        ('attn_q', 'q_proj', c.numHeads * hd, h),
+        ('attn_k', 'k_proj', c.kvDim, h),
+        ('attn_v', 'v_proj', c.kvDim, h),
+        ('attn_gate', 'gate_proj', c.numHeads, h),
+        ('attn_output', 'o_proj', h, c.numHeads * hd),
+      ]) {
+        matrix('$g$gName.weight', '$a$hfName', '$a$hfName.weight', rows, cols);
+      }
+    }
+  }
+  vector('output_norm.weight', 'model.embedding_norm.weight', [h]);
+  const embed = 'model.embed_tokens.weight';
+  final embedding = gguf.tensor('token_embd.weight', GgufType.q6K, [
+    h,
+    c.vocabSize,
+  ]);
+  final embedBytes = gguf.bytes(embedding);
+  final perRow = h ~/ 256;
+  shapes.add((embed, 'q8', c.vocabSize, h));
+  produce[embed] = () => NativeQ8Matrix.quantizeRows(
+    c.vocabSize,
+    h,
+    (first, count, out) =>
+        dequantizeQ6K(embedBytes, first * perRow, count * perRow, out, 0),
+  );
+  imported[embed] = () {
+    const rows = 4096;
+    final out = Float32List(rows * h);
+    dequantizeQ6K(embedBytes, 0, rows * perRow, out, 0);
+    return out;
+  };
+
+  Directory(outDir).createSync(recursive: true);
+  for (final name in ['config.json', 'tokenizer.json']) {
+    File('$hfDir/$name').copySync('$outDir/$name');
+  }
+  writeSafetensorsF32('$outDir/model.safetensors', small);
+  Q8Cache.writeEach(
+    '$outDir/lfm3-q4.cache',
+    Q8Cache.keyFor(outDir, weights: 'q4'),
+    shapes,
+    (name) => produce[name]!(),
+    done: (m) {
+      if (m is NativeQ8Matrix) m.free();
+    },
+  );
+  return _compare(hfDir, c, imported);
+}
+
+List<String> _importQwen3(
+  GgufFile gguf,
+  String ggufPath,
+  TextModelConfig c,
+  String hfDir,
+  String outDir,
+) {
+  final h = c.hiddenSize, f = c.intermediateSize, hd = c.headDim;
+  if (c.architecture != ModelArchitecture.qwen3 ||
+      gguf.metadata['qwen3.block_count'] != c.numLayers ||
+      gguf.metadata['qwen3.embedding_length'] != h ||
+      gguf.metadata['qwen3.attention.head_count'] != c.numHeads ||
+      gguf.metadata['qwen3.attention.head_count_kv'] != c.numKvHeads ||
+      gguf.metadata['qwen3.attention.key_length'] != hd ||
+      !_near(gguf.metadata['qwen3.rope.freq_base'], c.fullRope.theta) ||
+      !_near(
+        gguf.metadata['qwen3.attention.layer_norm_rms_epsilon'],
+        c.normEps,
+      )) {
+    throw StateError('$ggufPath is not this Qwen3 model');
+  }
+  if (gguf.tensors.containsKey('output.weight')) {
+    throw StateError('$ggufPath has an untied output head');
+  }
+
+  final small = <String, (List<int>, Float32List)>{};
+  final shapes = <(String, String, int, int)>[];
+  final produce = <String, CachedMatrix Function()>{};
+  // Imported tensors keyed by their Qwen3 name, for the comparison.
+  final imported = <String, Float32List Function()>{};
+
+  void vector(String ggufName, String qwen, List<int> shape) {
+    final values = gguf.f32(
+      gguf.tensor(ggufName, GgufType.f32, shape.reversed.toList()),
+    );
+    small[qwen3TensorName(qwen)] = (shape, values);
+    imported[qwen] = () => values;
+  }
+
+  void matrix(String ggufName, String qwen, int rows, int cols) {
+    final t = gguf.tensor(ggufName, GgufType.q8_0, [cols, rows]);
+    CachedMatrix split() => splitQ8_0(gguf.bytes(t), rows, cols);
+    final engine = qwen3TensorName(qwen);
+    // The cache names matrices without `.weight`, except the embedding.
+    final cacheName = engine == _embedName
+        ? engine
+        : engine.substring(0, engine.length - '.weight'.length);
+    shapes.add((cacheName, 'q8', rows, cols));
+    produce[cacheName] = split;
+    // The embedding is compared on its first rows only, as LFM3's is: the
+    // whole table would take gigabytes as floats.
+    final compared = engine == _embedName
+        ? math.min(rows, _comparedEmbedRows)
+        : rows;
+    imported[qwen] = () => _dequantizeQ8(
+      splitQ8_0(
+        Uint8List.sublistView(gguf.bytes(t), 0, compared * cols ~/ 32 * 34),
+        compared,
+        cols,
+      ),
+    );
+  }
+
+  for (var i = 0; i < c.numLayers; i++) {
+    final g = 'blk.$i.';
+    final p = 'model.layers.$i.';
+    vector('${g}attn_norm.weight', '${p}input_layernorm.weight', [h]);
+    vector('${g}ffn_norm.weight', '${p}post_attention_layernorm.weight', [h]);
+    vector('${g}attn_q_norm.weight', '${p}self_attn.q_norm.weight', [hd]);
+    vector('${g}attn_k_norm.weight', '${p}self_attn.k_norm.weight', [hd]);
+    for (final (ggufName, qwen, rows, cols) in [
+      ('attn_q', 'self_attn.q_proj', c.numHeads * hd, h),
+      ('attn_k', 'self_attn.k_proj', c.kvDim, h),
+      ('attn_v', 'self_attn.v_proj', c.kvDim, h),
+      ('attn_output', 'self_attn.o_proj', h, c.numHeads * hd),
+      ('ffn_gate', 'mlp.gate_proj', f, h),
+      ('ffn_up', 'mlp.up_proj', f, h),
+      ('ffn_down', 'mlp.down_proj', h, f),
+    ]) {
+      matrix('$g$ggufName.weight', '$p$qwen.weight', rows, cols);
+    }
+  }
+  vector('output_norm.weight', 'model.norm.weight', [h]);
+  matrix('token_embd.weight', _embedName, c.vocabSize, h);
+
+  Directory(outDir).createSync(recursive: true);
+  for (final name in [
+    'config.json',
+    'tokenizer.json',
+    'generation_config.json',
+  ]) {
+    final file = File('$hfDir/$name');
+    if (file.existsSync() || name != 'generation_config.json') {
+      file.copySync('$outDir/$name');
+    }
+  }
+  writeSafetensorsF32('$outDir/model.safetensors', small);
+  Q8Cache.writeEach(
+    '$outDir/${quantizedCacheName(c, WeightFormat.q8)}',
+    Q8Cache.keyFor(outDir, weights: 'q8'),
+    shapes,
+    (name) => produce[name]!(),
+  );
+  return _compare(hfDir, c, imported);
+}
+
+const _embedName = 'model.embed_tokens.weight';
+
+/// Embedding rows [importGguf] compares, as `_compare` does for LFM3.
+const _comparedEmbedRows = 4096;
+
+/// Whether the GGUF's metadata value [gguf] is the config's [value], up to
+/// the float32 rounding GGUF stores it with.
+bool _near(Object? gguf, double value) =>
+    gguf is num && (gguf - value).abs() <= 1e-6 * value.abs();
+
+Float32List _dequantizeQ8(CachedMatrix m) {
+  final out = Float32List(m.rows * m.cols);
+  final q = Int8List.sublistView(m.qsBytes);
+  final s = Float32List.sublistView(m.scaleBytes);
+  for (var i = 0; i < out.length; i++) {
+    out[i] = q[i] * s[i ~/ 32];
+  }
+  return out;
 }
 
 /// Widens [values] weights of raw GGUF Q4_0 blocks (half scale, then 16
@@ -435,7 +600,7 @@ Float32List _dequantizeQ4(CachedMatrix m) {
 /// rows; empty if [hfDir] has no model.safetensors.
 List<String> _compare(
   String hfDir,
-  Lfm3Config c,
+  TextModelConfig c,
   Map<String, Float32List Function()> imported,
 ) {
   final path = '$hfDir/model.safetensors';

@@ -63,8 +63,8 @@ void main() {
   });
   group('live session ownership', () {
     late Directory root;
-    late Lfm3Model model;
-    late Lfm3Tokenizer tokenizer;
+    late TextModel model;
+    late BpeTokenizer tokenizer;
     late Lfm3AudioEncoder encoder;
     setUp(() async {
       root = Directory.systemTemp.createTempSync('dianoia-live-');
@@ -77,8 +77,8 @@ void main() {
             .where((n) => !['<|im_end|>', '<|im_start|>'].contains(n))
             .toList(),
       );
-      tokenizer = Lfm3Tokenizer.load(dir);
-      model = await Lfm3Model.load(
+      tokenizer = BpeTokenizer.load(dir);
+      model = await TextModel.load(
         dir,
         maxSeq: 512,
         weights: WeightFormat.q8,
@@ -148,7 +148,7 @@ void main() {
       () async {
         await model.close();
         final dir = '${root.path}/backbone';
-        model = await Lfm3Model.load(
+        model = await TextModel.load(
           dir,
           maxSeq: 256,
           weights: WeightFormat.q8,
@@ -285,13 +285,13 @@ void main() {
     'official Q4 English LiveASR updates before finish and flushes zero-row tails',
     () async {
       NativeKernels.load(null, threads: 2);
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         '$dir/language',
         maxSeq: 2048,
         weights: WeightFormat.q4,
         q8CachePath: '$dir/language/lfm3-q4.cache',
       );
-      final tokenizer = Lfm3Tokenizer.load('$dir/language');
+      final tokenizer = BpeTokenizer.load('$dir/language');
       final encoder = Lfm3AudioEncoder.load(
         '$dir/${Lfm3AudioQ4Source.audio.name}',
       );

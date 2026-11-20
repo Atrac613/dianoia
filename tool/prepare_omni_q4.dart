@@ -47,7 +47,7 @@ Future<void> main(List<String> args) async {
     if (audio.variant != Lfm3SpeechVariant.omni) {
       throw const FormatException('mmproj lacks the Omni vision tower');
     }
-    final tokenizer = Lfm3Tokenizer.load(dir.path);
+    final tokenizer = BpeTokenizer.load(dir.path);
     readVisionGgufWeights(mmproj, loadOmniVisionConfig(configPath, tokenizer));
   } finally {
     mmproj.close();

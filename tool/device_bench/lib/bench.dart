@@ -14,6 +14,9 @@
 /// * optionally `tool_cases.json` (example/), for the time to first
 ///   token with a system prompt and a tool catalog (chat_bench.dart).
 ///
+/// `"mode": "qwen3"` installs Qwen3 through ModelStore on the phone and
+/// chats with it instead (qwen3_check.dart, run_ios_qwen3.sh).
+///
 /// `"mode": "control_vector"` in `bench_config.json` runs only the control
 /// vector checks instead (control_vector_check.dart,
 /// run_ios_control_vector.sh).
@@ -36,6 +39,7 @@ import 'audio_input_check.dart';
 import 'control_vector_check.dart';
 import 'gpu_sustained.dart';
 import 'lifecycle_check.dart';
+import 'qwen3_check.dart';
 import 'speech_check.dart';
 
 const _androidPackage = 'com.noguwo.dartllmlab.lfm3_bench';
@@ -101,6 +105,40 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   if (config['mode'] == 'audio_input') {
     return audioInputCheck(config, docs, log);
   }
+  if (config['mode'] == 'qwen3') {
+    final record = <String, Object?>{
+      'started': DateTime.now().toIso8601String(),
+      'os': Platform.operatingSystemVersion,
+      'build': config['build'],
+    };
+    final output = File('$docs/bench/qwen3-latest.json');
+    output.parent.createSync(recursive: true);
+    void save() => output.writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert(record),
+    );
+    save();
+    try {
+      await qwen3Check(
+        config,
+        // Internal storage on Android, as an app's ModelStore would use:
+        // the external files directory is a slow FUSE mount to map.
+        Platform.isAndroid
+            ? '/data/data/$_androidPackage/files/models'
+            : '$docs/models',
+        record,
+        log,
+        save,
+        footprint: physFootprint,
+      );
+    } catch (e) {
+      record['error'] = '$e';
+      rethrow;
+    } finally {
+      record['finished'] = true;
+      save();
+    }
+    return record;
+  }
   final bundle = config['bundle'] as String? ?? 'LFM3-1.7B-device';
   final weights = WeightFormat.values.byName(
     config['weights'] as String? ?? 'q8',
@@ -142,7 +180,7 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   }
 
   NativeKernels.load(null, threads: 2);
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
+  final tokenizer = BpeTokenizer.load(modelDir);
   final ids = tokenizer.encode(
     renderChat(
       [
@@ -217,7 +255,7 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
     sw
       ..reset()
       ..start();
-    final cpu = await Lfm3Model.load(
+    final cpu = await TextModel.load(
       modelDir,
       maxSeq: 2048,
       weights: weights,
@@ -244,7 +282,7 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   final best = threadCounts.reduce((a, b) => decode(a) >= decode(b) ? a : b);
   cpuRecord['best_threads'] = best;
   NativeKernels.load(null, threads: best);
-  final cpu = await Lfm3Model.load(
+  final cpu = await TextModel.load(
     modelDir,
     maxSeq: 2048,
     weights: weights,
@@ -284,7 +322,7 @@ Future<void> _gpuBench(
   String modelDir,
   WeightFormat weights,
   String cachePath,
-  Lfm3Tokenizer tokenizer,
+  BpeTokenizer tokenizer,
   List<int> ids,
   File toolCases,
   String docs,
@@ -297,7 +335,7 @@ Future<void> _gpuBench(
 }) async {
   final bundle = record['bundle'];
   final sw = Stopwatch()..start();
-  final gpu = await Lfm3Model.load(
+  final gpu = await TextModel.load(
     modelDir,
     maxSeq: 2048,
     weights: weights,
@@ -537,8 +575,8 @@ bool _selectVectorCandidate(bool vector, bool automatic) => vector && automatic
     : GpuForward.setQ8Vector(vector);
 
 Future<Map<String, Object?>> _validateVectorChat(
-  Lfm3Model model,
-  Lfm3Tokenizer tokenizer,
+  TextModel model,
+  BpeTokenizer tokenizer,
   Map<String, Object?> spec,
   String stateDir,
   void Function(String) log, {
@@ -765,7 +803,7 @@ int _argmax(Float32List v) {
 /// Metal reports nothing): over the tool prompt in chunks, and over 32
 /// decoded tokens.
 Future<Map<String, Object?>> _profileGpu(
-  Lfm3Model model,
+  TextModel model,
   List<int> ids,
   void Function(String) log, {
   bool vectorOnly = false,
@@ -919,8 +957,8 @@ Future<Map<String, Object?>> _profileGpu(
 
 /// The tool-calling question, greedy, as `lfm3 ask` runs it.
 Future<Map<String, Object?>> _ask(
-  Lfm3Model model,
-  Lfm3Tokenizer tokenizer,
+  TextModel model,
+  BpeTokenizer tokenizer,
   List<int> ids,
   void Function(String) log,
   String label,
@@ -991,7 +1029,7 @@ Future<Map<String, Object?>> _ask(
 /// `lfm3 run --force` (see bin/lfm3.dart). Prompt logits are kept for every
 /// position of prompts up to 128 tokens, else for the last one only.
 Future<Map<String, Object?>> _forced(
-  Lfm3Model model,
+  TextModel model,
   String weights,
   String refDir,
   String outDir,

@@ -287,7 +287,7 @@ void main() {
           dir,
           additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
         );
-        final model = await Lfm3Model.load(
+        final model = await TextModel.load(
           dir,
           maxSeq: 512,
           weights: WeightFormat.q8,
@@ -295,7 +295,7 @@ void main() {
         );
         try {
           expect(() => model.lastHiddenState, throwsStateError);
-          final synth = AudioSynthesizer(model, Lfm3Tokenizer.load(dir), g);
+          final synth = AudioSynthesizer(model, BpeTokenizer.load(dir), g);
           final cancelled = synth.synthesize('Hello', maxFrames: 2);
           await expectLater(
             synth.synthesize('Other', maxFrames: 2),
@@ -385,14 +385,14 @@ void main() {
         dir,
         additionalSpecials: ['<|audio_out|>', '<|audio_start|>'],
       );
-      final model = await Lfm3Model.load(
+      final model = await TextModel.load(
         dir,
         maxSeq: 512,
         weights: WeightFormat.q8,
         q8CachePath: '$dir/lfm3-q8.cache',
       );
       try {
-        final synth = AudioSynthesizer(model, Lfm3Tokenizer.load(dir), g);
+        final synth = AudioSynthesizer(model, BpeTokenizer.load(dir), g);
         expect(synth.backend, InferenceBackend.cpu);
         await synth.close();
         expect(model.isClosed, isFalse);

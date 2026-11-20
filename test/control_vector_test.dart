@@ -466,10 +466,10 @@ void main() {
     });
   });
 
-  group('Lfm3Model control vector', () {
+  group('TextModel control vector', () {
     late Directory root;
     late String backbone;
-    late Lfm3Model model;
+    late TextModel model;
     // The fixture embeds only tokens 32 to 126; others are zero rows.
     const ids = [40, 50, 60, 70, 80, 90];
 
@@ -491,7 +491,7 @@ void main() {
     });
 
     /// Every captured slot of feeding [ids] from scratch, row-major per slot.
-    Future<List<Float32List>> captureAll(Lfm3Model m) async {
+    Future<List<Float32List>> captureAll(TextModel m) async {
       final h = m.config.hiddenSize;
       final slots = [
         for (var s = 0; s <= m.config.numLayers; s++)
@@ -671,7 +671,7 @@ void main() {
     () {
       late Directory root;
       late String backbone;
-      late Lfm3Model cpu, gpu;
+      late TextModel cpu, gpu;
       const ids = [40, 50, 60, 70, 80, 90];
 
       setUpAll(() async {
@@ -716,7 +716,7 @@ void main() {
       /// Every captured slot of feeding [ids] from scratch under [v], and
       /// the logits.
       Future<(List<Float32List>, Float32List)> run(
-        Lfm3Model m,
+        TextModel m,
         ControlVector? v,
       ) async {
         await m.reset();
@@ -873,7 +873,7 @@ void main() {
   );
 }
 
-Future<Lfm3Model> _load(String backbone, {bool gpu = false}) => Lfm3Model.load(
+Future<TextModel> _load(String backbone, {bool gpu = false}) => TextModel.load(
   backbone,
   maxSeq: 64,
   maxChunk: 4,

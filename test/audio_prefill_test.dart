@@ -22,8 +22,8 @@ Float32List _rows(int n) => Float32List.fromList([
 void main() {
   final supported = NativeKernels.isAvailable;
   late Directory temp;
-  late Lfm3Model model;
-  late Lfm3Tokenizer tokenizer;
+  late TextModel model;
+  late BpeTokenizer tokenizer;
   setUpAll(() async {
     if (!supported) return;
     temp = Directory.systemTemp.createTempSync('dianoia-audio-prefill-');
@@ -31,8 +31,8 @@ void main() {
     await prepareVisionFixture(temp);
     final dir = '${temp.path}/backbone';
     writeSyntheticTokenizer(dir, additionalSpecials: _specials);
-    tokenizer = Lfm3Tokenizer.load(dir);
-    model = await Lfm3Model.load(
+    tokenizer = BpeTokenizer.load(dir);
+    model = await TextModel.load(
       dir,
       maxSeq: 256,
       maxChunk: 2,

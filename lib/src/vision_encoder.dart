@@ -146,7 +146,7 @@ final class Lfm3VisionEncoder {
   static const _p = Lfm3VlConfig.projectorPrefix;
 
   /// Returns [image.imageTokens, config.text.hiddenSize] projected rows,
-  /// ready for Lfm3Model.forward's embeddingOverrides. [capture] gets owned
+  /// ready for TextModel.forward's embeddingOverrides. [capture] gets owned
   /// snapshots after embedding norm, each layer and projection.
   Float32List encode(
     VisionImageInput image, {

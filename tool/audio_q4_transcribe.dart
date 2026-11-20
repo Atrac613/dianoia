@@ -72,7 +72,7 @@ Future<void> main(List<String> args) async {
   final encoder = Lfm3AudioEncoder.load(speechMmprojIn(dir));
   final omni = encoder.config.variant == Lfm3SpeechVariant.omni;
   final bundle = '$dir/language';
-  Lfm3Model? model;
+  TextModel? model;
   AudioTranscriptionPrefill? input;
   Lfm3AudioEncoderStream? stream;
   final frontendTimer = Stopwatch(),
@@ -86,8 +86,8 @@ Future<void> main(List<String> args) async {
   late String text;
   try {
     if (gpu && chunkMs == null) encoder.useGpu();
-    final tokenizer = Lfm3Tokenizer.load(bundle);
-    model = await Lfm3Model.load(
+    final tokenizer = BpeTokenizer.load(bundle);
+    model = await TextModel.load(
       bundle,
       maxSeq: 4096,
       weights: WeightFormat.q4,

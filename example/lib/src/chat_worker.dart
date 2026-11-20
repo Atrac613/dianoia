@@ -8,7 +8,7 @@ import 'dart:isolate';
 
 import 'package:dianoia/dianoia.dart';
 import 'package:dianoia/lab.dart'
-    show ControlVector, Lfm3Model, Lfm3Tokenizer, LocalModelControlVector;
+    show ControlVector, TextModel, BpeTokenizer, LocalModelControlVector;
 
 import 'chat_protocol.dart';
 import 'control_vectors.dart';
@@ -39,7 +39,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
   LocalVisionModel? visionModel;
   VisionChatSession? visionSession;
   // LFM3-Omni has no public chat API yet; the example drives the lab one.
-  Lfm3Model? omniModel;
+  TextModel? omniModel;
   OmniResponder? omni;
   OmniConversation? omniChat;
   Future<void>? loading, replying, cancelling;
@@ -113,7 +113,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
         await verifyOmniBundle(dir, () {
           if (closing) throw StateError('The chat was closed');
         });
-        final tokenizer = Lfm3Tokenizer.load('$dir/language');
+        final tokenizer = BpeTokenizer.load('$dir/language');
         final (loaded, gpu) = await loadOmniLanguageModel(dir);
         omniModel = loaded;
         if (closing) return;
@@ -141,7 +141,7 @@ Future<void> runChatWorker((SendPort, ModelLocation, ExampleModel) args) async {
         final loaded = await LocalModel.load(dir);
         model = loaded;
         if (closing) return;
-        final chat = loaded.chat(system: _system);
+        final chat = loaded.chat(system: _system, sampling: selected.sampling);
         await chat.warmUp();
         session = chat;
         backend = loaded.backend;
@@ -282,6 +282,7 @@ String? _sideLoaded(
   // An Omni folder is the one the audio page loads: prepared or installed.
   final marker = switch (selected) {
     ExampleModel.lfm3 => 'lfm3-q4.cache',
+    ExampleModel.qwen3 => 'qwen3-q8.cache',
     ExampleModel.lfm3Vl => 'vl_bundle.json',
     ExampleModel.omni => 'language/omni_source.json',
   };

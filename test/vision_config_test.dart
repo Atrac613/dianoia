@@ -33,7 +33,7 @@ void main() {
 
   test('text loader continues to reject a VL checkpoint', () {
     expect(
-      () => Lfm3Config.load('test/fixtures/vision'),
+      () => TextModelConfig.load('test/fixtures/vision'),
       throwsFormatException,
     );
   });

@@ -1,0 +1,1650 @@
+{
+ "model": "Qwen/Qwen3-0.6B",
+ "revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+ "eos_token_ids": {
+  "config": 151645,
+  "generation_config": [
+   151645,
+   151643
+  ]
+ },
+ "encode": [
+  {
+   "text": "",
+   "ids": []
+  },
+  {
+   "text": " ",
+   "ids": [
+    220
+   ]
+  },
+  {
+   "text": "  ",
+   "ids": [
+    256
+   ]
+  },
+  {
+   "text": "\n",
+   "ids": [
+    198
+   ]
+  },
+  {
+   "text": "\n\n\n",
+   "ids": [
+    1406
+   ]
+  },
+  {
+   "text": " \n \n",
+   "ids": [
+    31906
+   ]
+  },
+  {
+   "text": "\t",
+   "ids": [
+    197
+   ]
+  },
+  {
+   "text": "Hello, world!",
+   "ids": [
+    9707,
+    11,
+    1879,
+    0
+   ]
+  },
+  {
+   "text": " Hello",
+   "ids": [
+    21927
+   ]
+  },
+  {
+   "text": "Hello  world   end",
+   "ids": [
+    9707,
+    220,
+    1879,
+    256,
+    835
+   ]
+  },
+  {
+   "text": "line one\nline two\r\nline three\n\n",
+   "ids": [
+    1056,
+    825,
+    198,
+    1056,
+    1378,
+    319,
+    1056,
+    2326,
+    271
+   ]
+  },
+  {
+   "text": "trailing spaces   ",
+   "ids": [
+    376,
+    14277,
+    12621,
+    262
+   ]
+  },
+  {
+   "text": "1234567890",
+   "ids": [
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    15
+   ]
+  },
+  {
+   "text": "Pi is 3.14159265358979 and 2^64 = 18446744073709551616.",
+   "ids": [
+    34767,
+    374,
+    220,
+    18,
+    13,
+    16,
+    19,
+    16,
+    20,
+    24,
+    17,
+    21,
+    20,
+    18,
+    20,
+    23,
+    24,
+    22,
+    24,
+    323,
+    220,
+    17,
+    61,
+    21,
+    19,
+    284,
+    220,
+    16,
+    23,
+    19,
+    19,
+    21,
+    22,
+    19,
+    19,
+    15,
+    22,
+    18,
+    22,
+    15,
+    24,
+    20,
+    20,
+    16,
+    21,
+    16,
+    21,
+    13
+   ]
+  },
+  {
+   "text": "x123y 1,000,000 0.5",
+   "ids": [
+    87,
+    16,
+    17,
+    18,
+    88,
+    220,
+    16,
+    11,
+    15,
+    15,
+    15,
+    11,
+    15,
+    15,
+    15,
+    220,
+    15,
+    13,
+    20
+   ]
+  },
+  {
+   "text": "I'm sure you'll see it's what we've done, they'd say. DON'T, I'LL",
+   "ids": [
+    40,
+    2776,
+    2704,
+    498,
+    3278,
+    1490,
+    432,
+    594,
+    1128,
+    582,
+    3003,
+    2814,
+    11,
+    807,
+    4172,
+    1977,
+    13,
+    44273,
+    17323,
+    11,
+    358,
+    6,
+    4086
+   ]
+  },
+  {
+   "text": "Don't",
+   "ids": [
+    8002,
+    944
+   ]
+  },
+  {
+   "text": "rock 'n' roll",
+   "ids": [
+    20521,
+    364,
+    77,
+    6,
+    6502
+   ]
+  },
+  {
+   "text": "def f(x):\n    return x * 2  # double\n",
+   "ids": [
+    750,
+    282,
+    2075,
+    982,
+    262,
+    470,
+    856,
+    353,
+    220,
+    17,
+    220,
+    671,
+    1990,
+    198
+   ]
+  },
+  {
+   "text": "{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Kobe\"}}",
+   "ids": [
+    4913,
+    606,
+    788,
+    330,
+    455,
+    69364,
+    497,
+    330,
+    16370,
+    788,
+    5212,
+    8926,
+    788,
+    330,
+    42,
+    15422,
+    30975
+   ]
+  },
+  {
+   "text": "日本語のテキストです。東京は晴れ。",
+   "ids": [
+    101059,
+    102819,
+    15767,
+    56833,
+    61803,
+    70534,
+    37541,
+    1773,
+    102356,
+    46553,
+    15322,
+    105212,
+    32021,
+    1773
+   ]
+  },
+  {
+   "text": "カタカナとひらがな、そして漢字",
+   "ids": [
+    70393,
+    46207,
+    70393,
+    95352,
+    19182,
+    124877,
+    32403,
+    28195,
+    25770,
+    5373,
+    79439,
+    110007,
+    18600
+   ]
+  },
+  {
+   "text": "한국어 텍스트",
+   "ids": [
+    23573,
+    124785,
+    31079,
+    10764,
+    44104,
+    53189
+   ]
+  },
+  {
+   "text": "Привет, мир",
+   "ids": [
+    53645,
+    26991,
+    8178,
+    11,
+    137144
+   ]
+  },
+  {
+   "text": "emoji 😀👍🏽 family 👨‍👩‍👧 flag 🇯🇵",
+   "ids": [
+    37523,
+    90316,
+    144349,
+    145375,
+    2997,
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235,
+    145665,
+    5181,
+    11162,
+    229,
+    107,
+    145516
+   ]
+  },
+  {
+   "text": "café",
+   "ids": [
+    924,
+    58858
+   ]
+  },
+  {
+   "text": "café",
+   "ids": [
+    924,
+    58858
+   ]
+  },
+  {
+   "text": "Ａｂｃ　全角",
+   "ids": [
+    133054,
+    144454,
+    144196,
+    22441,
+    35987,
+    63836
+   ]
+  },
+  {
+   "text": "<|im_start|>user\nhi<|im_end|>\n",
+   "ids": [
+    151644,
+    872,
+    198,
+    6023,
+    151645,
+    198
+   ]
+  },
+  {
+   "text": "<|endoftext|>",
+   "ids": [
+    151643
+   ]
+  },
+  {
+   "text": "<think>\nreasoning\n</think>\n\nanswer",
+   "ids": [
+    151667,
+    198,
+    19895,
+    287,
+    198,
+    151668,
+    271,
+    9217
+   ]
+  },
+  {
+   "text": "<tool_call>\n{\"name\": \"f\", \"arguments\": {}}\n</tool_call>",
+   "ids": [
+    151657,
+    198,
+    4913,
+    606,
+    788,
+    330,
+    69,
+    497,
+    330,
+    16370,
+    788,
+    4687,
+    532,
+    151658
+   ]
+  },
+  {
+   "text": "<tool_response>\nok\n</tool_response>",
+   "ids": [
+    151665,
+    198,
+    562,
+    198,
+    151666
+   ]
+  },
+  {
+   "text": "a<think>b</think>c",
+   "ids": [
+    64,
+    151667,
+    65,
+    151668,
+    66
+   ]
+  },
+  {
+   "text": " <tool_call> spaced </tool_call> ",
+   "ids": [
+    220,
+    151657,
+    63828,
+    220,
+    151658,
+    220
+   ]
+  },
+  {
+   "text": "<|im_start|",
+   "ids": [
+    27,
+    91,
+    318,
+    4906,
+    91
+   ]
+  },
+  {
+   "text": "<|fim_prefix|>x<|fim_suffix|>y<|fim_middle|>",
+   "ids": [
+    151659,
+    87,
+    151661,
+    88,
+    151660
+   ]
+  }
+ ],
+ "decode": [
+  {
+   "ids": [
+    9707,
+    11,
+    1879,
+    0
+   ],
+   "skip_special_tokens": false,
+   "text": "Hello, world!"
+  },
+  {
+   "ids": [
+    9707,
+    11,
+    1879,
+    0
+   ],
+   "skip_special_tokens": true,
+   "text": "Hello, world!"
+  },
+  {
+   "ids": [
+    101059,
+    102819,
+    15767,
+    56833,
+    61803,
+    70534,
+    37541,
+    1773,
+    102356,
+    46553,
+    15322,
+    105212,
+    32021,
+    1773
+   ],
+   "skip_special_tokens": false,
+   "text": "日本語のテキストです。東京は晴れ。"
+  },
+  {
+   "ids": [
+    101059,
+    102819,
+    15767,
+    56833,
+    61803,
+    70534,
+    37541,
+    1773,
+    102356,
+    46553,
+    15322,
+    105212,
+    32021,
+    1773
+   ],
+   "skip_special_tokens": true,
+   "text": "日本語のテキストです。東京は晴れ。"
+  },
+  {
+   "ids": [
+    37523,
+    90316,
+    144349,
+    145375,
+    2997,
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235,
+    145665,
+    5181,
+    11162,
+    229,
+    107,
+    145516
+   ],
+   "skip_special_tokens": false,
+   "text": "emoji 😀👍🏽 family 👨‍👩‍👧 flag 🇯🇵"
+  },
+  {
+   "ids": [
+    37523,
+    90316,
+    144349,
+    145375,
+    2997,
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235,
+    145665,
+    5181,
+    11162,
+    229,
+    107,
+    145516
+   ],
+   "skip_special_tokens": true,
+   "text": "emoji 😀👍🏽 family 👨‍👩‍👧 flag 🇯🇵"
+  },
+  {
+   "ids": [
+    151644,
+    872,
+    198,
+    6023,
+    151645,
+    198
+   ],
+   "skip_special_tokens": false,
+   "text": "<|im_start|>user\nhi<|im_end|>\n"
+  },
+  {
+   "ids": [
+    151644,
+    872,
+    198,
+    6023,
+    151645,
+    198
+   ],
+   "skip_special_tokens": true,
+   "text": "user\nhi\n"
+  },
+  {
+   "ids": [
+    151643
+   ],
+   "skip_special_tokens": false,
+   "text": "<|endoftext|>"
+  },
+  {
+   "ids": [
+    151643
+   ],
+   "skip_special_tokens": true,
+   "text": ""
+  },
+  {
+   "ids": [
+    151667,
+    198,
+    19895,
+    287,
+    198,
+    151668,
+    271,
+    9217
+   ],
+   "skip_special_tokens": false,
+   "text": "<think>\nreasoning\n</think>\n\nanswer"
+  },
+  {
+   "ids": [
+    151667,
+    198,
+    19895,
+    287,
+    198,
+    151668,
+    271,
+    9217
+   ],
+   "skip_special_tokens": true,
+   "text": "<think>\nreasoning\n</think>\n\nanswer"
+  },
+  {
+   "ids": [
+    151657,
+    198,
+    4913,
+    606,
+    788,
+    330,
+    69,
+    497,
+    330,
+    16370,
+    788,
+    4687,
+    532,
+    151658
+   ],
+   "skip_special_tokens": false,
+   "text": "<tool_call>\n{\"name\": \"f\", \"arguments\": {}}\n</tool_call>"
+  },
+  {
+   "ids": [
+    151657,
+    198,
+    4913,
+    606,
+    788,
+    330,
+    69,
+    497,
+    330,
+    16370,
+    788,
+    4687,
+    532,
+    151658
+   ],
+   "skip_special_tokens": true,
+   "text": "<tool_call>\n{\"name\": \"f\", \"arguments\": {}}\n</tool_call>"
+  },
+  {
+   "ids": [
+    151665,
+    198,
+    562,
+    198,
+    151666
+   ],
+   "skip_special_tokens": false,
+   "text": "<tool_response>\nok\n</tool_response>"
+  },
+  {
+   "ids": [
+    151665,
+    198,
+    562,
+    198,
+    151666
+   ],
+   "skip_special_tokens": true,
+   "text": "<tool_response>\nok\n</tool_response>"
+  },
+  {
+   "ids": [
+    64,
+    151667,
+    65,
+    151668,
+    66
+   ],
+   "skip_special_tokens": false,
+   "text": "a<think>b</think>c"
+  },
+  {
+   "ids": [
+    64,
+    151667,
+    65,
+    151668,
+    66
+   ],
+   "skip_special_tokens": true,
+   "text": "a<think>b</think>c"
+  },
+  {
+   "ids": [
+    220,
+    151657,
+    63828,
+    220,
+    151658,
+    220
+   ],
+   "skip_special_tokens": false,
+   "text": " <tool_call> spaced </tool_call> "
+  },
+  {
+   "ids": [
+    220,
+    151657,
+    63828,
+    220,
+    151658,
+    220
+   ],
+   "skip_special_tokens": true,
+   "text": " <tool_call> spaced </tool_call> "
+  },
+  {
+   "ids": [
+    27,
+    91,
+    318,
+    4906,
+    91
+   ],
+   "skip_special_tokens": false,
+   "text": "<|im_start|"
+  },
+  {
+   "ids": [
+    27,
+    91,
+    318,
+    4906,
+    91
+   ],
+   "skip_special_tokens": true,
+   "text": "<|im_start|"
+  },
+  {
+   "ids": [
+    151659,
+    87,
+    151661,
+    88,
+    151660
+   ],
+   "skip_special_tokens": false,
+   "text": "<|fim_prefix|>x<|fim_suffix|>y<|fim_middle|>"
+  },
+  {
+   "ids": [
+    151659,
+    87,
+    151661,
+    88,
+    151660
+   ],
+   "skip_special_tokens": true,
+   "text": "<|fim_prefix|>x<|fim_suffix|>y<|fim_middle|>"
+  },
+  {
+   "ids": [
+    61804
+   ],
+   "skip_special_tokens": false,
+   "text": " �"
+  },
+  {
+   "ids": [
+    61804,
+    101
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨�"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235,
+    145233
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍👩"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍👩�"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍👩‍"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235,
+    145665
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍👩‍👧"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235,
+    145665,
+    11162
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍👩‍👧 �"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235,
+    145665,
+    11162,
+    229
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍👩‍👧 �"
+  },
+  {
+   "ids": [
+    61804,
+    101,
+    378,
+    235,
+    145233,
+    378,
+    235,
+    145665,
+    11162,
+    229,
+    107
+   ],
+   "skip_special_tokens": false,
+   "text": " 👨‍👩‍👧 🇯"
+  }
+ ],
+ "templates": [
+  {
+   "name": "user_only",
+   "messages": [
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "name": "system_and_user",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "name": "thinking_on",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": true,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "name": "thinking_undefined",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": null,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "name": "no_generation_prompt",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": false,
+   "add_generation_prompt": false,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n"
+  },
+  {
+   "name": "tools_without_system",
+   "messages": [
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "metric",
+          "imperial"
+         ]
+        }
+       },
+       "required": [
+        "city",
+        "unit"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "潮汐表を取得する (tide table) — returns high/low times.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string",
+         "description": "港の名前"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "port",
+        "days"
+       ]
+      }
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"metric\", \"imperial\"]}}, \"required\": [\"city\", \"unit\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"get_tides\", \"description\": \"潮汐表を取得する (tide table) — returns high/low times.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\", \"description\": \"港の名前\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"port\", \"days\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "name": "tools_with_system",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "metric",
+          "imperial"
+         ]
+        }
+       },
+       "required": [
+        "city",
+        "unit"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "潮汐表を取得する (tide table) — returns high/low times.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string",
+         "description": "港の名前"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "port",
+        "days"
+       ]
+      }
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"metric\", \"imperial\"]}}, \"required\": [\"city\", \"unit\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"get_tides\", \"description\": \"潮汐表を取得する (tide table) — returns high/low times.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\", \"description\": \"港の名前\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"port\", \"days\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "name": "tools_thinking_on",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "metric",
+          "imperial"
+         ]
+        }
+       },
+       "required": [
+        "city",
+        "unit"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "潮汐表を取得する (tide table) — returns high/low times.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string",
+         "description": "港の名前"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "port",
+        "days"
+       ]
+      }
+     }
+    }
+   ],
+   "enable_thinking": true,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"metric\", \"imperial\"]}}, \"required\": [\"city\", \"unit\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"get_tides\", \"description\": \"潮汐表を取得する (tide table) — returns high/low times.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\", \"description\": \"港の名前\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"port\", \"days\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "name": "multi_turn_reasoning",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Hi."
+    },
+    {
+     "role": "assistant",
+     "content": "Hello!",
+     "reasoning_content": "Greet back."
+    },
+    {
+     "role": "user",
+     "content": "And 2+2?"
+    },
+    {
+     "role": "assistant",
+     "content": "4.",
+     "reasoning_content": "\nSimple sum.\n"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": true,
+   "add_generation_prompt": false,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHi.<|im_end|>\n<|im_start|>assistant\nHello!<|im_end|>\n<|im_start|>user\nAnd 2+2?<|im_end|>\n<|im_start|>assistant\n<think>\nSimple sum.\n</think>\n\n4.<|im_end|>\n"
+  },
+  {
+   "name": "multi_turn_reasoning_then_user",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi."
+    },
+    {
+     "role": "assistant",
+     "content": "Hello!",
+     "reasoning_content": "Greet back."
+    },
+    {
+     "role": "user",
+     "content": "And 2+2?"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": true,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>user\nHi.<|im_end|>\n<|im_start|>assistant\nHello!<|im_end|>\n<|im_start|>user\nAnd 2+2?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "name": "reasoning_inline_in_content",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi."
+    },
+    {
+     "role": "assistant",
+     "content": "<think>\nOld thought.\n</think>\n\nHello!"
+    },
+    {
+     "role": "user",
+     "content": "Bye."
+    },
+    {
+     "role": "assistant",
+     "content": "<think>\nNew thought.\n</think>\n\nBye!"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": false,
+   "add_generation_prompt": false,
+   "prompt": "<|im_start|>user\nHi.<|im_end|>\n<|im_start|>assistant\nHello!<|im_end|>\n<|im_start|>user\nBye.<|im_end|>\n<|im_start|>assistant\n<think>\nNew thought.\n</think>\n\nBye!<|im_end|>\n"
+  },
+  {
+   "name": "assistant_empty_reasoning_after_query",
+   "messages": [
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Kobe"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "Rain, 14 C"
+    },
+    {
+     "role": "assistant",
+     "content": "It is raining.",
+     "reasoning_content": ""
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "metric",
+          "imperial"
+         ]
+        }
+       },
+       "required": [
+        "city",
+        "unit"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "潮汐表を取得する (tide table) — returns high/low times.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string",
+         "description": "港の名前"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "port",
+        "days"
+       ]
+      }
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "add_generation_prompt": false,
+   "prompt": "<|im_start|>system\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"metric\", \"imperial\"]}}, \"required\": [\"city\", \"unit\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"get_tides\", \"description\": \"潮汐表を取得する (tide table) — returns high/low times.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\", \"description\": \"港の名前\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"port\", \"days\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Kobe\"}}\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nRain, 14 C\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nIt is raining.<|im_end|>\n"
+  },
+  {
+   "name": "tool_round_trip",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "reasoning_content": "Need the weather tool.",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Kobe",
+         "unit": "metric"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "{\"temperature\": 14, \"condition\": \"rain\"}"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "metric",
+          "imperial"
+         ]
+        }
+       },
+       "required": [
+        "city",
+        "unit"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "潮汐表を取得する (tide table) — returns high/low times.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string",
+         "description": "港の名前"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "port",
+        "days"
+       ]
+      }
+     }
+    }
+   ],
+   "enable_thinking": true,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"metric\", \"imperial\"]}}, \"required\": [\"city\", \"unit\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"get_tides\", \"description\": \"潮汐表を取得する (tide table) — returns high/low times.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\", \"description\": \"港の名前\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"port\", \"days\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\n<think>\nNeed the weather tool.\n</think>\n\n<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Kobe\", \"unit\": \"metric\"}}\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temperature\": 14, \"condition\": \"rain\"}\n</tool_response><|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "name": "parallel_tool_calls",
+   "messages": [
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    },
+    {
+     "role": "assistant",
+     "content": "Checking both.",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Kobe"
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "get_tides",
+        "arguments": "{\"port\": \"神戸\", \"days\": 2}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "Rain, 14 C"
+    },
+    {
+     "role": "tool",
+     "content": "High tide 06:12"
+    },
+    {
+     "role": "assistant",
+     "content": "Rain, and high tide at 06:12."
+    },
+    {
+     "role": "user",
+     "content": "Thanks!"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city. Units are \"metric\" or \"imperial\".",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "metric",
+          "imperial"
+         ]
+        }
+       },
+       "required": [
+        "city",
+        "unit"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_tides",
+      "description": "潮汐表を取得する (tide table) — returns high/low times.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "string",
+         "description": "港の名前"
+        },
+        "days": {
+         "type": "integer",
+         "minimum": 1
+        }
+       },
+       "required": [
+        "port",
+        "days"
+       ]
+      }
+     }
+    }
+   ],
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city. Units are \\\"metric\\\" or \\\"imperial\\\".\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"metric\", \"imperial\"]}}, \"required\": [\"city\", \"unit\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"get_tides\", \"description\": \"潮汐表を取得する (tide table) — returns high/low times.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"port\": {\"type\": \"string\", \"description\": \"港の名前\"}, \"days\": {\"type\": \"integer\", \"minimum\": 1}}, \"required\": [\"port\", \"days\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>assistant\nChecking both.\n<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Kobe\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"get_tides\", \"arguments\": {\"port\": \"神戸\", \"days\": 2}}\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nRain, 14 C\n</tool_response>\n<tool_response>\nHigh tide 06:12\n</tool_response><|im_end|>\n<|im_start|>assistant\nRain, and high tide at 06:12.<|im_end|>\n<|im_start|>user\nThanks!<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "name": "user_tool_response_text",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Start."
+    },
+    {
+     "role": "assistant",
+     "content": "A.",
+     "reasoning_content": "kept"
+    },
+    {
+     "role": "user",
+     "content": "<tool_response>\nraw\n</tool_response>"
+    }
+   ],
+   "tools": null,
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>user\nStart.<|im_end|>\n<|im_start|>assistant\n<think>\nkept\n</think>\n\nA.<|im_end|>\n<|im_start|>user\n<tool_response>\nraw\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "name": "second_system_message",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is the weather in Kobe?"
+    },
+    {
+     "role": "system",
+     "content": "Be brief."
+    },
+    {
+     "role": "user",
+     "content": "Go."
+    }
+   ],
+   "tools": null,
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat is the weather in Kobe?<|im_end|>\n<|im_start|>system\nBe brief.<|im_end|>\n<|im_start|>user\nGo.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "name": "non_string_content",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "ignored"
+      }
+     ]
+    }
+   ],
+   "tools": null,
+   "enable_thinking": false,
+   "add_generation_prompt": true,
+   "prompt": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  }
+ ]
+}

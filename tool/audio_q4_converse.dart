@@ -24,10 +24,10 @@ Future<void> main(List<String> args) async {
     int8Inputs: int8,
   );
   final encoder = Lfm3AudioEncoder.load(speechMmprojIn(dir));
-  Lfm3Model? model;
+  TextModel? model;
   AudioConversationSession? session;
   try {
-    model = await Lfm3Model.load(
+    model = await TextModel.load(
       '$dir/language',
       maxSeq: 2048,
       weights: WeightFormat.q4,
@@ -36,7 +36,7 @@ Future<void> main(List<String> args) async {
     );
     session = AudioConversationSession(
       model,
-      Lfm3Tokenizer.load('$dir/language'),
+      BpeTokenizer.load('$dir/language'),
       generator,
     );
     for (var i = 2; i < pos.length; i++) {

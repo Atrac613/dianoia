@@ -61,7 +61,7 @@ Future<void> buildAudioGgufBundle(
   if (config['model_type'] != 'lfm3_audio' || config['format_version'] != 1) {
     throw const FormatException('expected LFM3-Audio format version 1');
   }
-  final text = Lfm3Config.fromJson(
+  final text = TextModelConfig.fromJson(
     (config['lfm'] as Map).cast<String, Object?>(),
   );
   if (encoder.projectionSize != text.hiddenSize || hidden != text.hiddenSize) {

@@ -78,7 +78,10 @@ final class _AttentionShard {
 
   /// Query heads [h0, h1) and the KV heads [kv0, kv1) they read.
   final int h0, h1, kv0, kv1;
-  final Linear q, k, v, gate, o;
+  final Linear q, k, v, o;
+
+  /// Per-head output gate rows, or null where heads are not gated.
+  final Linear? gate;
   final Float32List qNorm, kNorm;
 
   /// [maxSeq, (kv1 - kv0) * headDim].
@@ -124,7 +127,7 @@ final class LayerShard {
     if ((q8Cache != null || q8Built != null) && shards != 1) {
       throw ArgumentError('the Q8 cache holds whole matrices: one shard only');
     }
-    final c = Lfm3Config.load(modelDir);
+    final c = TextModelConfig.load(modelDir);
     final h = c.hiddenSize;
     final hd = c.headDim;
     final group = c.numHeads ~/ c.numKvHeads;
@@ -257,18 +260,20 @@ final class LayerShard {
                   rowRanges: [(kv0 * hd, kv1 * hd)],
                 ),
               ),
-              gate: linear(
-                '${a}gate_proj',
-                h1 - h0,
-                h,
-                () => readSlice(
-                  st,
-                  '${a}gate_proj.weight',
-                  c.numHeads,
-                  h,
-                  rowRanges: [(h0, h1)],
-                ),
-              ),
+              gate: c.attentionOutputGate
+                  ? linear(
+                      '${a}gate_proj',
+                      h1 - h0,
+                      h,
+                      () => readSlice(
+                        st,
+                        '${a}gate_proj.weight',
+                        c.numHeads,
+                        h,
+                        rowRanges: [(h0, h1)],
+                      ),
+                    )
+                  : null,
               o: linear(
                 '${a}o_proj',
                 h,
@@ -348,7 +353,7 @@ final class LayerShard {
     }
   }
 
-  final Lfm3Config config;
+  final TextModelConfig config;
   final int maxSeq;
   final int maxChunk;
   final List<_ConvShard?> _conv;
@@ -407,7 +412,7 @@ final class LayerShard {
   /// Views of everything the first [position] tokens left behind: the conv
   /// histories, then each attention layer's keys and values rows before
   /// [position]. Writing them out and reading them back into another model
-  /// on the same backend restores that position (see Lfm3Model.saveState).
+  /// on the same backend restores that position (see TextModel.saveState).
   List<Float32List> stateBlocks(int position) => [
     for (final conv in _conv)
       if (conv != null) conv.history,
@@ -537,7 +542,7 @@ final class LayerShard {
     att.q.apply(a, _q, n);
     att.k.apply(a, _k, n);
     att.v.apply(a, _v, n);
-    att.gate.apply(a, _gate, n);
+    att.gate?.apply(a, _gate, n);
     for (var t = 0; t < n; t++) {
       final pos = position + t;
       rope.setPosition(pos);
@@ -565,7 +570,7 @@ final class LayerShard {
         _q,
         keys,
         values,
-        _gate,
+        att.gate == null ? null : _gate,
         _attnOut,
         n: n,
         position: position,
@@ -605,14 +610,15 @@ final class LayerShard {
           _scores[s] = e;
           sum += e;
         }
-        final g = 1 / (1 + math.exp(-_gate[t * heads + head]));
+        final gated = att.gate != null;
+        final g = gated ? 1 / (1 + math.exp(-_gate[t * heads + head])) : 1.0;
         for (var d = 0; d < hd; d++) {
           var acc = 0.0;
           for (var s = start; s <= pos; s++) {
             acc += _scores[s] * values[s * kvDim + kvo + d];
           }
           _attnOut[qo + d] = acc / sum;
-          _attnOut[qo + d] = _attnOut[qo + d] * g;
+          if (gated) _attnOut[qo + d] = _attnOut[qo + d] * g;
         }
       }
     }

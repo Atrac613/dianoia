@@ -1,4 +1,4 @@
-/// A conversation on one [Lfm3Model] that keeps the model's state between
+/// A conversation on one [TextModel] that keeps the model's state between
 /// requests, so each turn feeds only the tokens the model has not seen.
 ///
 /// Every prompt starts with the same block: the system prompt and the tool
@@ -14,9 +14,10 @@ library;
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'chat_template.dart';
+import 'chat_format.dart';
 import 'model.dart';
 import 'model_use.dart';
+import 'sampler.dart';
 import 'tokenizer.dart';
 import 'tool_calls.dart';
 
@@ -69,13 +70,33 @@ final class ChatSession {
     String? system,
     this.tools,
     this.maxNew = 256,
-  }) : _system = system;
+    ChatFormat? format,
+    this.sampling = SamplingParams.greedy,
+    this.enableThinking = false,
+  }) : _system = system,
+       format = format ?? chatFormatFor(model.config),
+       _sampler = Sampler(sampling);
 
-  final Lfm3Model model;
-  final Lfm3Tokenizer tokenizer;
+  final TextModel model;
+  final BpeTokenizer tokenizer;
   final List<Map<String, Object?>>? tools;
   final int maxNew;
   final String? _system;
+
+  /// How prompts are rendered and replies parsed; the model family's own
+  /// unless the constructor was given another.
+  final ChatFormat format;
+
+  /// How replies pick their tokens: greedy unless set. Draws continue one
+  /// random sequence across the conversation's replies.
+  final SamplingParams sampling;
+  final Sampler _sampler;
+
+  /// Whether the model may reason before it answers. Off, the prompt asks
+  /// for a direct answer (LFM3 and Qwen3 both close an empty think block);
+  /// on, the reply starts with its reasoning, which [ChatTurn.reply]
+  /// separates.
+  final bool enableThinking;
 
   /// The conversation so far, after the system prompt.
   final messages = <Map<String, Object?>>[];
@@ -91,12 +112,12 @@ final class ChatSession {
 
   /// The tokens of the system prompt and tools block.
   late final List<int> prefix = tokenizer.encode(
-    renderChat(_systemMessages, tools: tools, addGenerationPrompt: false),
+    format.render(_systemMessages, tools: tools, addGenerationPrompt: false),
   );
 
   /// Feeds the system prompt and tools block and checkpoints after it.
   /// With [statePath], first tries to load exactly that block from the file
-  /// (Lfm3Model.loadState), and after computing it saves it there. Returns
+  /// (TextModel.loadState), and after computing it saves it there. Returns
   /// whether the state came from the file.
   Future<bool> warmUp({String? statePath}) async {
     beginModelUse(model);
@@ -126,15 +147,15 @@ final class ChatSession {
   /// system prompt), ending in the assistant's generation prompt.
   List<int> promptIds(List<Map<String, Object?>> conversation) =>
       tokenizer.encode(
-        renderChat(
+        format.render(
           [..._systemMessages, ...conversation],
           tools: tools,
-          enableThinking: false,
+          enableThinking: enableThinking,
         ),
       );
 
   /// Adds [message] (a user or tool message) and generates the reply
-  /// greedily, up to [maxNew] tokens or the end of the model's context
+  /// under [sampling], up to [maxNew] tokens or the end of the model's context
   /// (`maxSeq`).
   /// [onText] streams the reply: after each generated token it gets the
   /// text so far, without an incomplete UTF-8 sequence at the end.
@@ -143,9 +164,8 @@ final class ChatSession {
   /// between tokens, so that a request to stop can arrive.
   /// [suppressedTokens] are never generated in this reply, for example
   /// `<tool_call>` when the caller offers no tools and the model would
-  /// otherwise still start a call it cannot run. Greedy decoding picks the
-  /// best token outside the set; the end-of-sequence token is never
-  /// suppressed. An empty set leaves decoding unchanged.
+  /// otherwise still start a call it cannot run. Decoding picks only
+  /// tokens outside the set; end-of-reply tokens are never suppressed. An empty set leaves decoding unchanged.
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
   /// Observer work, [onText]'s included, counts in the generation timings.
@@ -173,7 +193,8 @@ final class ChatSession {
     FutureOr<bool> Function(String text)? onText,
     Set<int> suppressedTokens,
   ) async {
-    final suppressed = {...suppressedTokens}..remove(model.config.eosTokenId);
+    final suppressed = {...suppressedTokens}
+      ..removeAll(model.config.eosTokenIds);
     final ids = promptIds([...messages, message]);
     if (ids.length >= model.maxSeq) {
       throw ContextLengthExceeded(ids.length, model.maxSeq);
@@ -199,8 +220,8 @@ final class ChatSession {
       ..start();
     try {
       while (gen.length < maxNew && model.history.length < model.maxSeq) {
-        final next = greedyToken(model.logits, suppressed: suppressed);
-        if (next == model.config.eosTokenId) break;
+        final next = _sampler.next(model.logits, suppressed: suppressed);
+        if (model.config.isEos(next)) break;
         gen.add(next);
         await model.step(next);
         onLogits?.call(model.logits);
@@ -219,7 +240,7 @@ final class ChatSession {
     messages.add({'role': 'assistant', 'content': text});
     return ChatTurn(
       text: text,
-      reply: parseAssistantReply(text),
+      reply: format.parseReply(text),
       promptTokens: ids.length,
       reusedTokens: reused,
       prefillSeconds: prefillSeconds,
@@ -243,13 +264,8 @@ final class ChatSession {
 
   /// The index of the largest of [logits] outside [suppressed]; the first
   /// one on a tie.
-  static int greedyToken(Float32List logits, {Set<int> suppressed = const {}}) {
-    var best = -1;
-    for (var i = 0; i < logits.length; i++) {
-      if (suppressed.contains(i)) continue;
-      if (best < 0 || logits[i] > logits[best]) best = i;
-    }
-    if (best < 0) throw StateError('every token is suppressed');
-    return best;
-  }
+  static int greedyToken(
+    Float32List logits, {
+    Set<int> suppressed = const {},
+  }) => argmaxToken(logits, suppressed: suppressed);
 }

@@ -8,6 +8,7 @@ import 'model.dart';
 import 'model_loading.dart';
 import 'model_use.dart';
 import 'native.dart';
+import 'sampler.dart';
 import 'tokenizer.dart';
 import 'vision_backbone.dart';
 import 'vision_bundle.dart';
@@ -38,8 +39,8 @@ enum InferenceBackend {
 final class LocalModel {
   LocalModel._(this._model, this._tokenizer, this.backend);
 
-  final Lfm3Model _model;
-  final Lfm3Tokenizer _tokenizer;
+  final TextModel _model;
+  final BpeTokenizer _tokenizer;
 
   /// Where the model runs: [InferenceBackend.gpu] or [InferenceBackend.cpu].
   final InferenceBackend backend;
@@ -63,8 +64,10 @@ final class LocalModel {
   Future<void> close() => _model.close();
 
   /// Loads the model bundle in [dir]: `config.json`, `tokenizer.json`,
-  /// `model.safetensors` and the quantized weights, `lfm3-q4.cache` (from
-  /// `dianoia import-gguf`) or `lfm3-q8.cache` (from `dianoia pack`).
+  /// `model.safetensors` and the quantized weights, named by architecture
+  /// and format (`lfm3-q4.cache` from `dianoia import-gguf`,
+  /// `qwen3-q8.cache` from `dianoia pack`, and so on). [ModelStore]
+  /// installs such bundles.
   ///
   /// With [InferenceBackend.auto] a GPU that cannot run the model (none, or
   /// without the features the kernels need) leaves it on the CPU kernels.
@@ -78,7 +81,7 @@ final class LocalModel {
     int threads = 4,
   }) async {
     final weights = bundleWeights(dir); // fails before anything loads
-    final tokenizer = Lfm3Tokenizer.load(dir);
+    final tokenizer = BpeTokenizer.load(dir);
     ensureNativeKernels(threads);
     final model = await openLanguageBundle(
       dir,
@@ -95,17 +98,25 @@ final class LocalModel {
 
   /// A new conversation with [system] as its system prompt and [tools]
   /// (OpenAI-style function definitions) offered to the model. Replies
-  /// stop after [maxNewTokens].
+  /// stop after [maxNewTokens] and pick their tokens under [sampling]
+  /// (greedy by default). With [enableThinking] the model reasons before
+  /// answering; the reasoning arrives in [ChatTurn.reply]. Reasoning models
+  /// tend to repeat themselves under greedy decoding, so pair it with
+  /// sampling, such as [SamplingParams.qwen3Thinking].
   ChatSession chat({
     String? system,
     List<Map<String, Object?>>? tools,
     int maxNewTokens = 512,
+    SamplingParams sampling = SamplingParams.greedy,
+    bool enableThinking = false,
   }) => ChatSession(
     _model,
     _tokenizer,
     system: system,
     tools: tools,
     maxNew: maxNewTokens,
+    sampling: sampling,
+    enableThinking: enableThinking,
   );
 }
 
@@ -136,7 +147,7 @@ extension LocalModelControlVector on LocalModel {
 
 /// Sets [vector] on [model], resetting its sequence if the vector changes
 /// the arithmetic, unless a conversation is using it.
-Future<void> _steer(Lfm3Model model, ControlVector? vector) async {
+Future<void> _steer(TextModel model, ControlVector? vector) async {
   if (modelInUse(model)) {
     throw StateError(
       'a reply is being generated; set the control vector between replies',
@@ -214,7 +225,7 @@ final class LocalVisionModel {
         config.vision.inChannels != 3) {
       throw const FormatException('processor and vision configuration differ');
     }
-    final tokenizer = Lfm3Tokenizer.load(modelDir);
+    final tokenizer = BpeTokenizer.load(modelDir);
     // Verify special tokens using the same path as real visual prompts.
     prepareVisionPrompt(
       [],

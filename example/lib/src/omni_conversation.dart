@@ -179,7 +179,7 @@ final class OmniContextFull implements Exception {
 
 /// Loads the bundle's Q4 language model on the GPU when [gpu] and it
 /// succeeds, else on the CPU. Returns the model and whether it is on the GPU.
-Future<(Lfm3Model, bool)> loadOmniLanguageModel(
+Future<(TextModel, bool)> loadOmniLanguageModel(
   String directory, {
   bool gpu = true,
 }) async {
@@ -187,7 +187,7 @@ Future<(Lfm3Model, bool)> loadOmniLanguageModel(
     throw UnsupportedError('Native inference is unavailable on this device');
   }
   NativeKernels.load(null);
-  Future<Lfm3Model> open(bool gpu) => Lfm3Model.load(
+  Future<TextModel> open(bool gpu) => TextModel.load(
     '$directory/language',
     maxSeq: 2048,
     weights: WeightFormat.q4,
@@ -214,8 +214,8 @@ final class OmniResponder {
     this.maxImageTokens = 256,
   });
 
-  final Lfm3Model model;
-  final Lfm3Tokenizer tokenizer;
+  final TextModel model;
+  final BpeTokenizer tokenizer;
   final String directory;
 
   /// The image budget: a mobile CPU encodes 256 tokens in a few seconds.

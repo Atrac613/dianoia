@@ -1,4 +1,4 @@
-/// LFM3 forward pass in float32: the main-isolate side.
+/// The text forward pass in float32: the main-isolate side.
 ///
 /// The structure follows `modeling_lfm3.py` (see
 /// docs/lfm3_1.7b_architecture.md). Every layer is
@@ -6,7 +6,9 @@
 ///     h += post_operator_norm(mixer(operator_norm(h)))
 ///     h += post_ffn_norm(ffn(ffn_norm(h)))
 ///
-/// where the mixer is a gated short convolution or attention. This class
+/// where the mixer is a gated short convolution or attention. Bundles name
+/// their tensors as LFM3 checkpoints do, whatever the architecture: other
+/// families are renamed to those names when they are imported. This class
 /// owns the residual stream, the norms and token lookup; the mixers and
 /// FFNs, with their weights and state, live in layer shards (shard.dart)
 /// run by a [LayerExecutor]. A prompt goes through the layers in chunks of
@@ -46,8 +48,11 @@ final class _LayerNorms {
   final Float32List? postOperator, postFfn;
 }
 
-final class Lfm3Model {
-  Lfm3Model._(
+/// Older name of [TextModel], from when LFM3 was the only family.
+typedef Lfm3Model = TextModel;
+
+final class TextModel {
+  TextModel._(
     this.config,
     this._embedBf16,
     this._embedQ8,
@@ -80,7 +85,7 @@ final class Lfm3Model {
   /// missing), so it needs Q8 or Q4 weights, a cache path and the native
   /// kernels, which map the cache. [gpuLib] does too, with the GPU layer of
   /// the library at that path instead of the package's kernels asset.
-  static Future<Lfm3Model> load(
+  static Future<TextModel> load(
     String modelDir, {
     int maxSeq = 4096,
     int maxChunk = 64,
@@ -104,7 +109,7 @@ final class Lfm3Model {
         '--weights=${weights.name} runs in one isolate; use --workers=0',
       );
     }
-    final c = Lfm3Config.load(modelDir);
+    final c = TextModelConfig.load(modelDir);
     final h = c.hiddenSize;
     final st = SafetensorsFile.open('$modelDir/model.safetensors');
     final List<_LayerNorms> norms;
@@ -191,7 +196,7 @@ final class Lfm3Model {
           maxSeq: maxSeq,
           maxChunk: maxChunk,
         );
-        return Lfm3Model._(
+        return TextModel._(
           c,
           embedBf16,
           embedQ8,
@@ -229,7 +234,7 @@ final class Lfm3Model {
               keepF32: keepF32,
             );
       if (built != null) Q8Cache.write(q8CachePath!, cacheKey!, built);
-      return Lfm3Model._(
+      return TextModel._(
         c,
         embedBf16,
         embedQ8,
@@ -255,7 +260,7 @@ final class Lfm3Model {
   static (MappedFile, Uint16List)? _mapEmbedding(
     String modelDir,
     SafetensorsFile st,
-    Lfm3Config c,
+    TextModelConfig c,
   ) {
     if (!NativeKernels.isLoaded) return null;
     final info = st.tensors['model.embed_tokens.weight'];
@@ -270,7 +275,7 @@ final class Lfm3Model {
     );
   }
 
-  final Lfm3Config config;
+  final TextModelConfig config;
   final int maxSeq;
 
   /// Largest number of tokens [forward] pushes through the layers at once.
@@ -446,7 +451,8 @@ final class Lfm3Model {
   /// Feeds the prompt [ids] for a new reply, reusing what the model has
   /// already computed: the longest common prefix of [ids] and [history]
   /// if [history] does not go past it, else the state at the latest
-  /// checkpoint inside it, else nothing. At least the last token is always
+  /// checkpoint inside it, else nothing. A model without conv layers keeps
+  /// the common prefix either way. At least the last token is always
   /// fed, so [logits] are the prompt's. Saves checkpoints at [checkpoints]
   /// (positions in [ids], such as the end of the system prompt) and at the
   /// end of the prompt. Returns how many tokens were reused.
@@ -520,14 +526,20 @@ final class Lfm3Model {
       common++;
     }
     if (common < length) {
-      final start = _checkpoints.keys
-          .where((p) => p <= common)
-          .fold(0, math.max);
+      // Without conv layers the KV rows are the whole state, and those
+      // before any position stay valid: rewind to the divergence itself.
+      final start = _attentionOnly
+          ? common
+          : _checkpoints.keys.where((p) => p <= common).fold(0, math.max);
       await _rewind(start);
       common = start;
     }
     return common;
   }
+
+  /// Whether every layer is attention, so that the state at a position is
+  /// just the KV rows before it.
+  late final bool _attentionOnly = !config.layerTypes.contains(LayerType.conv);
 
   /// Saves the state at the current position, for [prefill] to return to.
   /// Costs a copy of the conv histories (640 KB for LFM3-1.7B); a no-op
@@ -668,11 +680,15 @@ final class Lfm3Model {
       await reset();
       return;
     }
-    final state = _checkpoints[position]!;
-    if (_gpu case final gpu?) {
-      gpu.restoreState(state as List<Float32List>);
-    } else {
-      await _executor!.restoreState(state);
+    // An attention-only model has nothing to restore: later KV rows are
+    // simply overwritten.
+    if (!_attentionOnly) {
+      final state = _checkpoints[position]!;
+      if (_gpu case final gpu?) {
+        gpu.restoreState(state as List<Float32List>);
+      } else {
+        await _executor!.restoreState(state);
+      }
     }
     length = position;
     _history.length = position;
@@ -691,7 +707,7 @@ final class Lfm3Model {
   /// size starting at position `first`. With [computeLogits] the last
   /// token's logits are left in [logits].
   /// [embeddingOverrides] replaces token lookup at zero-based positions in
-  /// this call with projected multimodal features of [Lfm3Config.hiddenSize].
+  /// this call with projected multimodal features of [TextModelConfig.hiddenSize].
   /// Positions are relative to [tokens], not the current sequence length.
   /// Such positions are recorded as -1 in [history] so text-only [prefill]
   /// cannot reuse state conditioned on a different image. [embeddingKeys]

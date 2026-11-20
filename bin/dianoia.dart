@@ -1,9 +1,12 @@
-/// The dianoia command-line tool, for LFM3 checkpoints.
+/// The dianoia command-line tool, for LFM3 and Qwen3 checkpoints.
 ///
 ///   dianoia ask --model=DIR --prompt=TEXT [--system=TEXT] [--tools=FILE.json]
 ///            [--think] [--max-new=256] [--workers=N]
+///            [--temperature=0] [--top-k=0] [--top-p=1] [--min-p=0]
+///            [--seed=N]
 ///       Chat from text: renders the chat template, tokenizes, generates
-///       greedily with streaming output, and prints parsed tool calls.
+///       with streaming output (greedily unless --temperature is above 0),
+///       and prints parsed tool calls.
 ///
 ///   --workers=N splits every matrix product across N worker isolates by
 ///   rows (0, the default, runs everything in the main isolate).
@@ -32,9 +35,15 @@
 ///       2.5 GB instead of 5.4 GB for Q8.
 ///
 ///   dianoia import-gguf --gguf=FILE --model=DIR --out=DIR
-///       Turns Liquid's QAD Q4_0 GGUF of the model in DIR into a bundle
-///       for --weights=q4 (see lib/src/gguf.dart), and prints how far each
-///       imported tensor family is from DIR's weights.
+///       Turns Liquid's QAD Q4_0 GGUF of LFM3 (for --weights=q4) or Qwen's
+///       Q8_0 GGUF of Qwen3 (for --weights=q8) of the model in DIR into a
+///       bundle (see lib/src/gguf.dart), and prints how far each imported
+///       tensor family is from DIR's weights.
+///
+///   dianoia import-hf --model=HF_DIR --out=DIR
+///       Renames a Qwen3 checkpoint's tensors (merging its shards) into
+///       the engine's layout (see lib/src/hf_import.dart); run and pack
+///       then treat DIR like an LFM3 model directory.
 ///
 ///   dianoia import-vl-backbone --model=VL_DIR --out=NEW_DIR
 ///       Copies the VL language backbone into standalone engine layout;
@@ -127,6 +136,7 @@ Future<void> main(List<String> args) async {
     'selftest': _selftest,
     'pack': _pack,
     'import-gguf': _importGguf,
+    'import-hf': _importHf,
     'import-vl-backbone': _importVlBackbone,
     'vision-run': _visionRun,
     'vision-bench': _visionBench,
@@ -137,7 +147,7 @@ Future<void> main(List<String> args) async {
   final command = args.isEmpty ? null : commands[args.first];
   if (command == null) {
     stderr.writeln(
-      'usage: dianoia ask|selftest|run|pack|import-gguf|import-vl-backbone|vision-run|vision-bench|pack-vl|toolbench|chatbench '
+      'usage: dianoia ask|selftest|run|pack|import-gguf|import-hf|import-vl-backbone|vision-run|vision-bench|pack-vl|toolbench|chatbench '
       '--key=value ...',
     );
     exitCode = 2;
@@ -166,15 +176,18 @@ void _loadNative(Map<String, String> flags, {bool needed = false}) {
   );
 }
 
-/// --q8-cache=PATH for --weights=q8 or q4; defaults to `lfm3-<weights>.cache`
-/// in the model directory, and --q8-cache=none quantizes on every start.
+/// --q8-cache=PATH for --weights=q8 or q4; defaults to the model's
+/// `<architecture>-<weights>.cache` (`lfm3-q8.cache`, say) in the model
+/// directory, and --q8-cache=none quantizes on every start.
 String? _q8CachePath(
   Map<String, String> flags,
   String modelDir,
   WeightFormat weights,
 ) {
   if (!weights.isNative) return null;
-  final path = flags['q8-cache'] ?? '$modelDir/lfm3-${weights.name}.cache';
+  final path =
+      flags['q8-cache'] ??
+      '$modelDir/${quantizedCacheName(TextModelConfig.load(modelDir), weights)}';
   return path == 'none' ? null : path;
 }
 
@@ -225,7 +238,7 @@ Future<int> _run(Map<String, String> flags) async {
 
   final ids = Int32List.sublistView(File(require('ids')).readAsBytesSync());
   final sw = Stopwatch()..start();
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     modelDir,
     maxSeq: maxSeq,
     maxChunk: chunk,
@@ -236,7 +249,7 @@ Future<int> _run(Map<String, String> flags) async {
     gpu: flags['gpu'] == 'true',
     gpuLib: flags['gpu-lib'],
   );
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
+  final tokenizer = BpeTokenizer.load(modelDir);
   final loadS = sw.elapsedMilliseconds / 1000;
   final c = model.config;
   final h = c.hiddenSize;
@@ -401,8 +414,8 @@ Future<int> _ask(Map<String, String> flags) async {
   };
 
   final sw = Stopwatch()..start();
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
-  final model = await Lfm3Model.load(
+  final tokenizer = BpeTokenizer.load(modelDir);
+  final model = await TextModel.load(
     modelDir,
     workers: workers,
     weights: weights,
@@ -411,12 +424,12 @@ Future<int> _ask(Map<String, String> flags) async {
     gpu: flags['gpu'] == 'true',
     gpuLib: flags['gpu-lib'],
   );
-  final eos = model.config.eosTokenId;
   stdout.writeln(
     'loaded in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s',
   );
 
-  final prompt = renderChat(
+  final format = chatFormatFor(model.config);
+  final prompt = format.render(
     messages,
     tools: tools,
     enableThinking: flags['think'] == 'true',
@@ -432,14 +445,23 @@ Future<int> _ask(Map<String, String> flags) async {
     '(${(ids.length / prefillS).toStringAsFixed(2)} tok/s)\n',
   );
 
+  final sampler = Sampler(
+    SamplingParams(
+      temperature: double.parse(flags['temperature'] ?? '0'),
+      topK: int.parse(flags['top-k'] ?? '0'),
+      topP: double.parse(flags['top-p'] ?? '1'),
+      minP: double.parse(flags['min-p'] ?? '0'),
+      seed: flags['seed'] == null ? null : int.parse(flags['seed']!),
+    ),
+  );
   final gen = <int>[];
   var shown = 0;
   sw
     ..reset()
     ..start();
   while (gen.length < maxNew) {
-    final next = _argmax(model.logits);
-    if (next == eos) break;
+    final next = sampler.next(model.logits);
+    if (model.config.isEos(next)) break;
     gen.add(next);
     // Print only complete characters; a multi-byte character can span
     // several tokens.
@@ -457,7 +479,7 @@ Future<int> _ask(Map<String, String> flags) async {
     '(${(gen.length / decodeS).toStringAsFixed(2)} tok/s)',
   );
 
-  final reply = parseAssistantReply(tokenizer.decode(gen));
+  final reply = format.parseReply(tokenizer.decode(gen));
   if (reply.toolCalls.isNotEmpty) {
     stdout.writeln(
       'tool calls: '
@@ -477,8 +499,8 @@ Future<int> _toolbench(Map<String, String> flags) async {
           as Map<String, Object?>;
   final catalog = (spec['tools'] as Map).cast<String, Object?>();
   final cases = (spec['cases'] as List).cast<Map<String, Object?>>();
-  final tokenizer = Lfm3Tokenizer.load(modelDir);
-  final model = await Lfm3Model.load(
+  final tokenizer = BpeTokenizer.load(modelDir);
+  final model = await TextModel.load(
     modelDir,
     workers: int.parse(flags['workers'] ?? '0'),
     weights: weights,
@@ -499,7 +521,7 @@ Future<int> _toolbench(Map<String, String> flags) async {
         },
     ];
     final ids = tokenizer.encode(
-      renderChat(
+      chatFormatFor(model.config).render(
         [
           {'role': 'user', 'content': c['prompt']},
         ],
@@ -512,12 +534,12 @@ Future<int> _toolbench(Map<String, String> flags) async {
     final gen = <int>[];
     while (gen.length < 96) {
       final next = _argmax(model.logits);
-      if (next == model.config.eosTokenId) break;
+      if (model.config.isEos(next)) break;
       gen.add(next);
       await model.step(next);
     }
     final text = tokenizer.decode(gen);
-    final calls = parseAssistantReply(text).toolCalls;
+    final calls = chatFormatFor(model.config).parseReply(text).toolCalls;
     final ok = toolCallMatches(calls, c['expect'] as Map<String, Object?>?);
     if (ok) passed++;
     final shown = calls.isEmpty
@@ -543,7 +565,7 @@ Future<int> _chatbench(Map<String, String> flags) async {
   final spec =
       jsonDecode(File(require('cases')).readAsStringSync())
           as Map<String, Object?>;
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     modelDir,
     weights: weights,
     q8CachePath: _q8CachePath(flags, modelDir, weights),
@@ -552,7 +574,7 @@ Future<int> _chatbench(Map<String, String> flags) async {
   );
   final record = await chatBench(
     model,
-    Lfm3Tokenizer.load(modelDir),
+    BpeTokenizer.load(modelDir),
     spec,
     stdout.writeln,
     statePath: flags['state'] ?? '$modelDir/chatbench.state',
@@ -567,41 +589,7 @@ Future<int> _pack(Map<String, String> flags) async {
   final outDir = require('out');
   _loadNative(flags, needed: true);
   final weights = WeightFormat.values.byName(flags['weights'] ?? 'q8');
-  if (!weights.isNative) throw ArgumentError('pack needs --weights=q8 or q4');
-  final cachePath = _q8CachePath(flags, modelDir, weights)!;
-  final cache =
-      Q8Cache.open(
-        cachePath,
-        Q8Cache.keyFor(modelDir, weights: weights.name),
-      ) ??
-      (throw StateError(
-        'no ${weights.name} cache for $modelDir: run with --weights=${weights.name}',
-      ));
-  Directory(outDir).createSync(recursive: true);
-  for (final name in ['config.json', 'tokenizer.json']) {
-    File('$modelDir/$name').copySync('$outDir/$name');
-  }
-  final st = SafetensorsFile.open('$modelDir/model.safetensors');
-  try {
-    // Matrices live in the cache, except that the embedding is also read as
-    // bf16 rows for token lookup.
-    st.writeSubset(
-      '$outDir/model.safetensors',
-      (name, info) =>
-          info.shape.length != 2 || name == 'model.embed_tokens.weight',
-    );
-  } finally {
-    st.close();
-  }
-  // The cache key fingerprints the safetensors header, so it changes.
-  Q8Cache.write(
-    '$outDir/lfm3-${weights.name}.cache',
-    Q8Cache.keyFor(outDir, weights: weights.name),
-    {
-      for (final (name, rows, cols) in cache.shapes)
-        name: cache.matrix(name, rows, cols)!,
-    },
-  );
+  packTextBundle(modelDir, outDir, weights);
   var bytes = 0;
   for (final f in Directory(outDir).listSync().whereType<File>()) {
     bytes += f.lengthSync();
@@ -634,7 +622,7 @@ Future<int> _visionRun(Map<String, String> flags) async {
     height: height,
     width: width,
   );
-  final tokenizer = Lfm3Tokenizer.load(vlDir);
+  final tokenizer = BpeTokenizer.load(vlDir);
   final encoder = Lfm3VisionEncoder.load(vlDir);
   final prompt = prepareVisionPrompt(
     [
@@ -670,7 +658,7 @@ Future<int> _visionRun(Map<String, String> flags) async {
   final weights = WeightFormat.values.byName(flags['weights'] ?? 'f32');
   _loadNative(flags, needed: weights.isNative || NativeKernels.isAvailable);
   clock.reset();
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     backbone,
     weights: weights,
     q8CachePath: _q8CachePath(flags, backbone, weights),
@@ -809,9 +797,20 @@ Future<int> _importGguf(Map<String, String> flags) async {
   return 0;
 }
 
+Future<int> _importHf(Map<String, String> flags) async {
+  final require = _requirer(flags);
+  final outDir = require('out');
+  final sw = Stopwatch()..start();
+  importHfCheckpoint(require('model'), outDir);
+  stdout.writeln(
+    'wrote $outDir in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s',
+  );
+  return 0;
+}
+
 Future<int> _selftest(Map<String, String> flags) async {
   final require = _requirer(flags);
-  final tokenizer = Lfm3Tokenizer.load(require('model'));
+  final tokenizer = BpeTokenizer.load(require('model'));
   final oracle =
       jsonDecode(File(require('oracle')).readAsStringSync())
           as Map<String, Object?>;

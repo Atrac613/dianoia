@@ -89,7 +89,7 @@ Future<void> main(List<String> args) async {
   }
 
   final mmproj = speechMmprojIn(dir);
-  final tokenizer = Lfm3Tokenizer.load('$dir/language');
+  final tokenizer = BpeTokenizer.load('$dir/language');
   final config = loadOmniVisionConfig(
     '$dir/${Lfm3OmniQ4Source.config.name}',
     tokenizer,
@@ -199,7 +199,7 @@ Future<void> main(List<String> args) async {
   final generator = mode == AudioReplyMode.text
       ? null
       : Lfm3AudioGenerator.load(mmproj, int8Inputs: int8);
-  final model = await Lfm3Model.load(
+  final model = await TextModel.load(
     '$dir/language',
     maxSeq: prompt.ids.length + maxNew + 1,
     weights: WeightFormat.q4,

@@ -32,7 +32,7 @@ final class AudioTranscriptionPrompt {
 
   /// Validates/copies all rows before clearing model state. Use the matching
   /// Audio backbone; this lab API checks dimensions, not checkpoint identity.
-  Future<void> prefill(Lfm3Model model, Float32List projected) async {
+  Future<void> prefill(TextModel model, Float32List projected) async {
     if (model.isClosed) throw StateError('Language model is closed');
     if (model.config.hiddenSize != hiddenSize ||
         ids.length > model.maxSeq ||
@@ -77,7 +77,7 @@ final class AudioTranscriptionPrompt {
 }
 
 AudioTranscriptionPrompt prepareAudioTranscriptionPrompt({
-  required Lfm3Tokenizer tokenizer,
+  required BpeTokenizer tokenizer,
   required int audioTokens,
   required int hiddenSize,
   String? language,
@@ -147,8 +147,8 @@ final class AudioTranscriptionPrefill {
   AudioTranscriptionPrefill._(this._model, this._template, this.reservedTokens);
 
   static Future<AudioTranscriptionPrefill> start({
-    required Lfm3Model model,
-    required Lfm3Tokenizer tokenizer,
+    required TextModel model,
+    required BpeTokenizer tokenizer,
     required int hiddenSize,
     String? language,
     int reservedTokens = 128,
@@ -178,7 +178,7 @@ final class AudioTranscriptionPrefill {
     return result;
   }
 
-  final Lfm3Model _model;
+  final TextModel _model;
   final AudioTranscriptionPrompt _template;
   final int reservedTokens;
   int _audioTokens = 0;

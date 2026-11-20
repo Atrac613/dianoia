@@ -184,7 +184,7 @@ final class OmniPrompt {
   /// Equal keys for the same kind must always identify equal projected rows.
   /// Returns the reused token count. Logits are computed for the last position.
   Future<int> prefill(
-    Lfm3Model model, {
+    TextModel model, {
     List<Float32List> images = const [],
     List<Float32List> audio = const [],
     List<Float32List> videos = const [],
@@ -297,7 +297,7 @@ final class OmniPrompt {
 /// Rejects placeholders that are unbound, malformed or in plain text.
 OmniPrompt prepareOmniPrompt(
   List<Map<String, Object?>> messages, {
-  required Lfm3Tokenizer tokenizer,
+  required BpeTokenizer tokenizer,
   required Lfm3VlConfig config,
   List<int> imageTokenCounts = const [],
   List<int> audioTokenCounts = const [],

@@ -74,9 +74,9 @@ void main() {
     });
 
     group('after a failure', () {
-      late Lfm3Model model;
+      late TextModel model;
       setUpAll(() async {
-        model = await Lfm3Model.load(
+        model = await TextModel.load(
           backbone,
           maxSeq: 64,
           maxChunk: 4,
@@ -114,7 +114,7 @@ void main() {
       test('a reply that fails mid-generation leaves the messages', () async {
         final session = ChatSession(
           model,
-          Lfm3Tokenizer.load(backbone),
+          BpeTokenizer.load(backbone),
           system: 'S',
           maxNew: 8,
         );

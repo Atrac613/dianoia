@@ -75,7 +75,7 @@ Future<void> main(List<String> args) async {
     firstLayer: layers.$1,
     lastLayer: layers.$2,
   );
-  final tokenizer = Lfm3Tokenizer.load(bundle);
+  final tokenizer = BpeTokenizer.load(bundle);
   final model = await _load(bundle, gpu: gpu);
   try {
     final steered = [
@@ -133,12 +133,12 @@ Future<void> main(List<String> args) async {
 
 /// The bundle's Q4 or Q8 weights, on the CPU kernels or with [gpu] on the
 /// GPU (Metal or Vulkan).
-Future<Lfm3Model> _load(String bundle, {required bool gpu}) {
+Future<TextModel> _load(String bundle, {required bool gpu}) {
   final weights = [WeightFormat.q4, WeightFormat.q8].firstWhere(
     (w) => File('$bundle/lfm3-${w.name}.cache').existsSync(),
     orElse: () => throw ArgumentError('$bundle has no lfm3-q4/q8.cache'),
   );
-  return Lfm3Model.load(
+  return TextModel.load(
     bundle,
     maxSeq: 2048,
     weights: weights,

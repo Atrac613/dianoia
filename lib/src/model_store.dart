@@ -509,8 +509,11 @@ final class VisionModelSpec extends InstallableModel {
   }
 }
 
-/// A model [ModelStore] can install: a GGUF checkpoint and the matching
-/// Hugging Face model's config, tokenizer and license.
+/// A text model [ModelStore] can install: a GGUF checkpoint and the
+/// matching Hugging Face model's config, tokenizer and license, plus its
+/// generation_config.json when that declares more end tokens. Liquid's QAD
+/// Q4_0 LFM3 and Qwen's Q8_0 Qwen3 builds are supported; installing only
+/// rearranges their quantized values, so nothing is quantized on the device.
 final class ModelSpec extends InstallableModel {
   const ModelSpec({
     required this.id,
@@ -523,6 +526,7 @@ final class ModelSpec extends InstallableModel {
     required this.config,
     required this.tokenizer,
     required this.licenseFile,
+    this.generationConfig,
   });
 
   /// The model's directory name in a store.
@@ -543,9 +547,16 @@ final class ModelSpec extends InstallableModel {
   final int? setupBytes;
 
   final RemoteFile gguf, config, tokenizer, licenseFile;
+  final RemoteFile? generationConfig;
 
   @override
-  List<RemoteFile> get files => [config, tokenizer, licenseFile, gguf];
+  List<RemoteFile> get files => [
+    config,
+    ?generationConfig,
+    tokenizer,
+    licenseFile,
+    gguf,
+  ];
 
   /// This model with every file fetched from [baseUrl] instead, as
   /// `[baseUrl]/[RemoteFile.name]`: a mirror an app hosts, or a test
@@ -565,6 +576,10 @@ final class ModelSpec extends InstallableModel {
       config: at(config),
       tokenizer: at(tokenizer),
       licenseFile: at(licenseFile),
+      generationConfig: switch (generationConfig) {
+        final f? => at(f),
+        null => null,
+      },
     );
   }
 
@@ -605,6 +620,100 @@ final class ModelSpec extends InstallableModel {
           '4d28ca14dedc0b3d0fcc2b3339f0e79931faa33874f3d24f522183a8fc70068c',
     ),
   );
+
+  /// Qwen3-0.6B in Qwen's Q8_0 build, from Qwen/Qwen3-0.6B-GGUF and
+  /// Qwen/Qwen3-0.6B on Hugging Face: 0.65 GB to download, 0.68 GB
+  /// installed.
+  static const qwen3_0_6bQ8 = ModelSpec(
+    id: 'qwen3-0.6b-q8-23749fe',
+    name: 'Qwen3-0.6B (Q8_0)',
+    license: 'Apache License 2.0',
+    licenseUrl:
+        'https://huggingface.co/Qwen/Qwen3-0.6B/blob/c1899de289a04d12100db370d81485cdf75e47ca/LICENSE',
+    installedBytes: 683239402,
+    setupBytes: 2000000000,
+    gguf: RemoteFile(
+      'Qwen3-0.6B-Q8_0.gguf',
+      '$_qwen3_0_6bGguf/Qwen3-0.6B-Q8_0.gguf',
+      size: 639446688,
+      sha256:
+          '9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031',
+    ),
+    config: RemoteFile(
+      'config.json',
+      '$_qwen3_0_6bBase/config.json',
+      size: 726,
+      sha256:
+          '660db3b73d788119c04535e48cf9be5f55bc3100841a718637ae695b442f27dd',
+    ),
+    generationConfig: _qwen3GenerationConfig,
+    tokenizer: _qwen3Tokenizer,
+    licenseFile: _qwen3License,
+  );
+
+  /// Qwen3-1.7B in Qwen's Q8_0 build, from Qwen/Qwen3-1.7B-GGUF and
+  /// Qwen/Qwen3-1.7B on Hugging Face: 1.85 GB to download, 1.88 GB
+  /// installed.
+  static const qwen3_1_7bQ8 = ModelSpec(
+    id: 'qwen3-1.7b-q8-90862c4',
+    name: 'Qwen3-1.7B (Q8_0)',
+    license: 'Apache License 2.0',
+    licenseUrl:
+        'https://huggingface.co/Qwen/Qwen3-1.7B/blob/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e/LICENSE',
+    installedBytes: 1948497938,
+    setupBytes: 4500000000,
+    gguf: RemoteFile(
+      'Qwen3-1.7B-Q8_0.gguf',
+      '$_qwen3_1_7bGguf/Qwen3-1.7B-Q8_0.gguf',
+      size: 1834426016,
+      sha256:
+          '061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a',
+    ),
+    config: RemoteFile(
+      'config.json',
+      '$_qwen3_1_7bBase/config.json',
+      size: 726,
+      sha256:
+          '1ddb5b89ebc90dcb417a45c213d818577e65976454d29385c8f6140771d95197',
+    ),
+    generationConfig: _qwen3GenerationConfig,
+    tokenizer: _qwen3Tokenizer,
+    licenseFile: _qwen3License,
+  );
+
+  // Both sizes share the tokenizer, generation config and license, byte for
+  // byte; they are pinned at Qwen3-0.6B's revision.
+  static const _qwen3GenerationConfig = RemoteFile(
+    'generation_config.json',
+    '$_qwen3_0_6bBase/generation_config.json',
+    size: 239,
+    sha256: '2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2',
+  );
+  static const _qwen3Tokenizer = RemoteFile(
+    'tokenizer.json',
+    '$_qwen3_0_6bBase/tokenizer.json',
+    size: 11422654,
+    sha256: 'aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4',
+  );
+  static const _qwen3License = RemoteFile(
+    'LICENSE',
+    '$_qwen3_0_6bBase/LICENSE',
+    size: 11343,
+    sha256: '832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e',
+  );
+
+  static const _qwen3_0_6bGguf =
+      'https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/'
+      '23749fefcc72300e3a2ad315e1317431b06b590a';
+  static const _qwen3_0_6bBase =
+      'https://huggingface.co/Qwen/Qwen3-0.6B/resolve/'
+      'c1899de289a04d12100db370d81485cdf75e47ca';
+  static const _qwen3_1_7bGguf =
+      'https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/'
+      '90862c4b9d2787eaed51d12237eafdfe7c5f6077';
+  static const _qwen3_1_7bBase =
+      'https://huggingface.co/Qwen/Qwen3-1.7B/resolve/'
+      '70d244cc86ccca08cf5af4e1e306ecf908b1ad5e';
 
   static const _ggufRepo =
       'https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/'
@@ -702,6 +811,24 @@ final class ModelStore {
   /// [OmniGgufSpec] does the same for the Omni pair, with about 4.2 GB.
   Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
     _checkId(model.id);
+    // importGguf reads the side files by these names.
+    if (model is ModelSpec &&
+        (model.config.name != 'config.json' ||
+            model.tokenizer.name != 'tokenizer.json' ||
+            model.licenseFile.name != 'LICENSE' ||
+            (model.generationConfig?.name ?? 'generation_config.json') !=
+                'generation_config.json' ||
+            model.files.map((f) => f.name).toSet().length !=
+                model.files.length ||
+            model.files.any(
+              (f) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(f.name),
+            ))) {
+      throw ArgumentError(
+        'GGUF model files need distinct safe names and config.json, '
+        'tokenizer.json, LICENSE and generation_config.json as their '
+        'metadata names',
+      );
+    }
     if (model is AudioGgufSpec &&
         (model.config.name != 'audio_config.json' ||
             model.tokenizer.name != 'tokenizer.json' ||

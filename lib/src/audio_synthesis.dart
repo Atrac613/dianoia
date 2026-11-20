@@ -115,8 +115,8 @@ final class AudioSynthesizer {
   /// use [load]; this is for `package:dianoia/lab.dart`, where the language
   /// model is shared with transcription or conversation.
   AudioSynthesizer(
-    Lfm3Model model,
-    Lfm3Tokenizer tokenizer,
+    TextModel model,
+    BpeTokenizer tokenizer,
     Lfm3AudioGenerator generator,
   ) : this._(model, tokenizer, generator, owned: false);
 
@@ -157,7 +157,7 @@ final class AudioSynthesizer {
         'holds no LFM3-Audio or LFM3-Omni speech mmproj',
       );
     }
-    final tokenizer = Lfm3Tokenizer.load(language);
+    final tokenizer = BpeTokenizer.load(language);
     ensureNativeKernels(threads);
     final generator = Lfm3AudioGenerator.load(mmproj, int8Inputs: int8Inputs);
     try {
@@ -174,8 +174,8 @@ final class AudioSynthesizer {
     }
   }
 
-  final Lfm3Model _model;
-  final Lfm3Tokenizer _tokenizer;
+  final TextModel _model;
+  final BpeTokenizer _tokenizer;
   final Lfm3AudioGenerator _generator;
   final bool _owned;
   bool _cancelled = false, _closed = false;
