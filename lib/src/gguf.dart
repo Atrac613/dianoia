@@ -22,6 +22,9 @@ import 'quant.dart';
 import 'safetensors.dart';
 import 'text_bundle.dart';
 
+/// The most of a GGUF that [GgufFile.open] views for its header.
+const _maxHeaderView = (1 << 30) - 1;
+
 enum GgufType {
   f32(0, 1, 4),
   f16(1, 1, 2),
@@ -62,7 +65,12 @@ final class GgufFile {
         MappedFile.open(path) ??
         (throw FileSystemException('cannot map', path));
     try {
-      final data = ByteData.sublistView(file.bytes(0, file.length));
+      // Only the header is parsed here, so view no more of the file than a
+      // typed list can hold where pointers are compressed (Flutter on
+      // Android): 2^30 - 1 bytes. Qwen3-1.7B's GGUF is 1.8 GB.
+      final data = ByteData.sublistView(
+        file.bytes(0, math.min(file.length, _maxHeaderView)),
+      );
       var at = 0;
       // Each reader returns the value at the cursor and moves past it.
       T read<T>(int size, T Function(int offset) get) {
