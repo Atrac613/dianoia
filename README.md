@@ -124,6 +124,11 @@ processing are additional work and are not included.
 | Windows, x86-64 with AVX2 | AVX2, the Windows thread pool | Vulkan 1.2 (Resizable BAR on a discrete GPU) | Radeon RX 6600 XT: ~400-800 tok/s prompt, ~130 tok/s decode |
 | Other targets (lab/CLI) | Dart reference paths | none | Public model loaders require native kernels |
 
+Qwen3-0.6B Q8 decodes at 39-46 tok/s on the iPhone's GPU and 30-33 tok/s on
+the Pixel 8's CPU. On Android the CPU kernels decode Qwen3 faster than
+Vulkan and with less memory, so `InferenceBackend.auto` runs it there; the
+[Qwen3 support](docs/qwen3_support.md) page has both phones' figures.
+
 Apps should check `LocalModel.isSupported` before offering model downloads.
 
 The x86-64 kernels do NEON's float operations in NEON's order, so their
@@ -318,6 +323,11 @@ print(turn.reply.content);
 
 Tool calls parse into the same `ToolCall`s for both families; Qwen3's JSON
 argument values that are not strings arrive as their JSON text.
+
+On Android, `LocalModel.load` with the default `InferenceBackend.auto`
+runs Qwen3 on the CPU kernels. Pass `backend: InferenceBackend.gpu` to use
+Vulkan anyway: it prefills long prompts about twice as fast but decodes
+more slowly.
 
 `send` throws `ContextLengthExceeded` once the prompt outgrows the model context
 (2048 tokens by default), preserving the conversation. `chat.clear()` starts over.
