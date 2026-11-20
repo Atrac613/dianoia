@@ -811,6 +811,24 @@ final class ModelStore {
   /// [OmniGgufSpec] does the same for the Omni pair, with about 4.2 GB.
   Stream<InstallProgress> install(InstallableModel model, {int retries = 3}) {
     _checkId(model.id);
+    // importGguf reads the side files by these names.
+    if (model is ModelSpec &&
+        (model.config.name != 'config.json' ||
+            model.tokenizer.name != 'tokenizer.json' ||
+            model.licenseFile.name != 'LICENSE' ||
+            (model.generationConfig?.name ?? 'generation_config.json') !=
+                'generation_config.json' ||
+            model.files.map((f) => f.name).toSet().length !=
+                model.files.length ||
+            model.files.any(
+              (f) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(f.name),
+            ))) {
+      throw ArgumentError(
+        'GGUF model files need distinct safe names and config.json, '
+        'tokenizer.json, LICENSE and generation_config.json as their '
+        'metadata names',
+      );
+    }
     if (model is AudioGgufSpec &&
         (model.config.name != 'audio_config.json' ||
             model.tokenizer.name != 'tokenizer.json' ||

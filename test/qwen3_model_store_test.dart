@@ -54,6 +54,29 @@ void main() {
     );
   });
 
+  test('rejects GGUF specs whose metadata files are misnamed', () {
+    const file = RemoteFile(
+      'generation.json',
+      'https://example.invalid/generation.json',
+      size: 1,
+      sha256: '',
+    );
+    final spec = ModelSpec(
+      id: 'misnamed',
+      name: 'Misnamed',
+      license: 'test',
+      licenseUrl: 'https://example.invalid/',
+      gguf: ModelSpec.qwen3_0_6bQ8.gguf,
+      config: ModelSpec.qwen3_0_6bQ8.config,
+      tokenizer: ModelSpec.qwen3_0_6bQ8.tokenizer,
+      licenseFile: ModelSpec.qwen3_0_6bQ8.licenseFile,
+      generationConfig: file,
+    );
+    final root = Directory.systemTemp.createTempSync('dianoia-misnamed-');
+    addTearDown(() => root.deleteSync(recursive: true));
+    expect(() => ModelStore(root.path).install(spec), throwsArgumentError);
+  });
+
   test('installs and loads a Qwen3 GGUF', () async {
     final root = Directory.systemTemp.createTempSync('dianoia-text-store-');
     addTearDown(() => root.deleteSync(recursive: true));
