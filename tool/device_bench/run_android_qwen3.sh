@@ -9,6 +9,8 @@
 #   tool/device_bench/run_android_qwen3.sh
 #   SPEC=1.7b ANDROID_SERIAL=... tool/device_bench/run_android_qwen3.sh
 #   REINSTALL=1 tool/device_bench/run_android_qwen3.sh   # download again
+#   GPU_PROFILE=1 tool/device_bench/run_android_qwen3.sh # GPU time and memory
+#     by kernel and kind instead of the checks (qwen3GpuProfile)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP="$ROOT/tool/device_bench"
@@ -39,8 +41,8 @@ fi
 
 staging="$(mktemp -d)"
 trap 'rm -rf "${staging:?}"' EXIT
-printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "build": "%s"}\n' \
-  "$SPEC" "${REINSTALL:-false}" "$(git -C "$ROOT" rev-parse --short HEAD)" >"$staging/bench_config.json"
+printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "gpu_profile": %s, "build": "%s"}\n' \
+  "$SPEC" "${REINSTALL:-false}" "$([[ -n "${GPU_PROFILE:-}" ]] && echo true || echo false)" "$(git -C "$ROOT" rev-parse --short HEAD)" >"$staging/bench_config.json"
 adb push "$staging/bench_config.json" "$REMOTE/" >/dev/null
 
 started() { python3 -I -c "import json,sys; print(json.load(open(sys.argv[1])).get('started', ''))" "$1" 2>/dev/null || true; }
@@ -53,7 +55,7 @@ adb shell input keyevent KEYCODE_WAKEUP >/dev/null
 adb shell am start -S -n "$PACKAGE/.MainActivity" >/dev/null
 
 mkdir -p "$APP/results"
-out="$APP/results/android_qwen3_$SPEC.json"
+out="$APP/results/android_qwen3_$SPEC${GPU_PROFILE:+_profile}.json"
 for _ in $(seq 1 160); do
   sleep 15
   pull "$staging/latest.json" || continue

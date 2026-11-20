@@ -1,0 +1,86 @@
+{
+  "started": "2026-11-20T21:35:25.453642",
+  "os": "CP3A.261005.005",
+  "build": "158af44",
+  "spec": "qwen3-0.6b-q8-23749fe",
+  "install": {
+    "already_installed": true,
+    "bundle_files": {
+      "config.json": 726,
+      "tokenizer.json": 11422654,
+      "generation_config.json": 239,
+      "model.safetensors": 273432,
+      "LICENSE": 11343,
+      "qwen3-q8.cache": 671531008
+    }
+  },
+  "gpu_profile": {
+    "memory_before": {
+      "VmRSS": 134,
+      "RssAnon": 34,
+      "RssFile": 98,
+      "RssShmem": 1
+    },
+    "memory_loaded": {
+      "VmRSS": 1951,
+      "RssAnon": 61,
+      "RssFile": 1889,
+      "RssShmem": 1
+    },
+    "weight_segments": 1,
+    "decode": {
+      "wall_ms_per_token": 47.25871875,
+      "gpu_ms_per_token": 38.7356875,
+      "encode_ms_per_token": 2.4204375,
+      "dispatches_per_token": 422.0,
+      "step_wall_ms": 44.71959375,
+      "argmax_ms": 1.32509375,
+      "copy_logits_ms": 1.253875,
+      "argmax_copied_ms": 1.21378125
+    },
+    "memory_decoding": {
+      "VmRSS": 2091,
+      "RssAnon": 83,
+      "RssFile": 2007,
+      "RssShmem": 1
+    },
+    "kernels": {
+      "gemv_q8_i8": {
+        "ms_per_token": 32.86679688483476,
+        "dispatches_per_token": 197.0
+      },
+      "attention": {
+        "ms_per_token": 1.865200101012111,
+        "dispatches_per_token": 28.0
+      },
+      "quantize": {
+        "ms_per_token": 1.6573537708678268,
+        "dispatches_per_token": 113.0
+      },
+      "rms_norm": {
+        "ms_per_token": 0.8848025280569807,
+        "dispatches_per_token": 57.0
+      },
+      "head_norm_rope": {
+        "ms_per_token": 0.47486624612212136,
+        "dispatches_per_token": 56.0
+      },
+      "add": {
+        "ms_per_token": 0.20724869422066233,
+        "dispatches_per_token": 56.0
+      },
+      "swiglu": {
+        "ms_per_token": 0.13709259461617437,
+        "dispatches_per_token": 28.0
+      }
+    },
+    "memory_closed": {
+      "VmRSS": 744,
+      "RssAnon": 83,
+      "RssFile": 660,
+      "RssShmem": 1
+    },
+    "cache_mapped_after_close": false
+  },
+  "finished": true
+}

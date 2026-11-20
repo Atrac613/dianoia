@@ -136,7 +136,7 @@ thinking, and check each reply. iPhone 15 Pro Max (A17 Pro) and Pixel 8
 |---|---:|---:|---:|---:|
 | Download, import | 57 s, 3.0 s | 83 s, 3.8 s | 128 s, 6.0 s | 16 s import |
 | Load: GPU, CPU | 0.86 s, 0.31 s | 2.4 s, 0.39 s | 0.85 s, 0.20 s | 4.0 s, 1.1 s |
-| Decode, GPU (Metal, Vulkan) | 39-46 tok/s | 12-16 tok/s | 15-18 tok/s | 8-10 tok/s |
+| Decode, GPU (Metal, Vulkan) | 39-46 tok/s | 20-27 tok/s | 15-18 tok/s | 8-10 tok/s |
 | Decode, CPU | 34-39 tok/s | 30-32 tok/s | 16-19 tok/s | 7-8 tok/s |
 | Footprint, GPU / CPU | 680 / 240 MB | 2.1 GB / 1.0 GB | 0.9 GB / 210 MB | 3.9 / 2.1 GB |
 
@@ -145,10 +145,15 @@ reusing the first turn's 20 common tokens, and `get_weather(city: Paris)`.
 Thinking reaches 391 on both GPUs. The iPhone's runs match the Mac's token
 for token (998 tokens for 0.6B, 1,699 for 1.7B), while Vulkan's arithmetic
 takes the sampler down other paths (588 and 2,732 tokens). The Pixel 8's
-Mali GPU decodes Qwen3-0.6B's 28 attention layers at half the CPU's speed,
-as it did LFM3 at about the CPU's; for 1.7B the two are close. A Pixel 8
-that has been running for a while throttles: a second 1.7B run decoded at
-5 tok/s on Vulkan and loaded in 19 s.
+Mali GPU still decodes Qwen3-0.6B a little slower than the CPU. It was half
+the CPU's speed (12-16 tok/s) while Dart read the logits in the GPU's
+buffer, which is uncached for the CPU on a phone: an argmax over Qwen3's
+151,936 logits took 21 ms a token there. The logits are now copied out in
+one 1 ms copy first. Of the 47 ms a token left, the GPU spends 39 ms, 36 of
+them in the Q8 matrix-vector products, which read the weights at about
+19 GB/s against the 41 GB/s the GPU copies at. The 1.7B row predates the
+copy. A Pixel 8 that has been running for a while throttles: a second 1.7B
+run decoded at 5 tok/s on Vulkan and loaded in 19 s.
 
 ## Using it
 
@@ -175,9 +180,10 @@ since `ToolCall.arguments` holds strings for both families.
 ## Known gaps
 
 - NFC normalization of input text (above).
-- Vulkan on Windows is unchecked. On a Pixel 8 it is right but slower than
-  the CPU for Qwen3-0.6B (below), so an Android app may prefer
-  `InferenceBackend.cpu` for it.
+- Vulkan on Windows is unchecked. On a Pixel 8 it is right but not faster
+  than the CPU for Qwen3 (above): its Q8 matrix-vector products reach half
+  the GPU's bandwidth, and it holds the weights twice (the mapped cache and
+  the GPU's copy of it), so an Android app may prefer `InferenceBackend.cpu`.
 - KV cache in float32: every Qwen3 layer is attention, so a token costs
   about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
   against about 45 KB for LFM3-1.7B. The default 2048-token context needs

@@ -7,6 +7,7 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
 
@@ -80,6 +81,11 @@ Future<void> qwen3Check(
   (record['install'] as Map)['bundle_files'] = files;
   save();
 
+  if (config['gpu_profile'] == true) {
+    record['gpu_profile'] = await qwen3GpuProfile(bundle, log);
+    save();
+    return;
+  }
   final backends = (config['backends'] as List? ?? ['gpu', 'cpu']).map(
     (b) => InferenceBackend.values.byName(b as String),
   );
@@ -182,4 +188,129 @@ Future<void> qwen3Check(
       await model.close();
     }
   }
+}
+
+/// The process's memory by kind, in MB, where Linux reports it
+/// (/proc/self/status): anonymous (heap, GPU copies), file-backed (mapped
+/// weights, which the OS can drop) and shared. Empty elsewhere.
+Map<String, int> memoryBreakdown() {
+  if (!Platform.isAndroid && !Platform.isLinux) return const {};
+  final status = File('/proc/self/status').readAsStringSync();
+  return {
+    for (final key in ['VmRSS', 'RssAnon', 'RssFile', 'RssShmem'])
+      if (RegExp('$key:\\s*(\\d+)').firstMatch(status)?[1] case final kb?)
+        key: int.parse(kb) >> 10,
+  };
+}
+
+/// Where a Qwen3 decode step's time and memory go on the GPU: the bundle
+/// loaded on the GPU, 32 greedy steps timed per kernel kind (Vulkan times
+/// every dispatch), the same steps unprofiled split into GPU time and
+/// Dart's encoding, and the memory by kind before and after loading.
+Future<Map<String, Object?>> qwen3GpuProfile(
+  String bundle,
+  void Function(String) log,
+) async {
+  final record = <String, Object?>{'memory_before': memoryBreakdown()};
+  final config = TextModelConfig.load(bundle);
+  final model = await TextModel.load(
+    bundle,
+    maxSeq: 2048,
+    weights: WeightFormat.q8,
+    q8CachePath: '$bundle/${quantizedCacheName(config, WeightFormat.q8)}',
+    gpu: true,
+  );
+  try {
+    final gpu = model.gpu!;
+    record['memory_loaded'] = memoryBreakdown();
+    record['weight_segments'] = gpu.weightSegments;
+    final prompt = BpeTokenizer.load(bundle).encode(
+      renderQwen3Chat([
+        {'role': 'user', 'content': 'Tell me about the history of Kyoto.'},
+      ], enableThinking: false),
+    );
+    Future<List<int>> decode(int steps) async {
+      await model.reset();
+      await model.forward(prompt);
+      final tokens = <int>[];
+      for (var i = 0; i < steps; i++) {
+        final next = argmaxToken(model.logits);
+        tokens.add(next);
+        await model.step(next);
+      }
+      return tokens;
+    }
+
+    // Unprofiled: GPU time against the wall clock and Dart's encoding.
+    await decode(8); // warm-up
+    await model.reset();
+    await model.forward(prompt);
+    gpu.clearStats();
+    final wall = Stopwatch()..start();
+    for (var i = 0; i < 32; i++) {
+      await model.step(argmaxToken(model.logits));
+    }
+    final steps = gpu.calls;
+    record['decode'] = {
+      'wall_ms_per_token': wall.elapsedMicroseconds / 1000 / 32,
+      'gpu_ms_per_token': gpu.gpuMicros / 1000 / steps,
+      'encode_ms_per_token': gpu.encodeMicros / 1000 / steps,
+      'dispatches_per_token': gpu.dispatches / steps,
+    };
+    // The wall clock against the GPU's: the step alone, and reading the
+    // logits it leaves in the GPU's host-visible memory (an argmax, and a
+    // copy into ordinary memory followed by the same argmax).
+    final stepWall = Stopwatch(), argmaxWall = Stopwatch();
+    final copyWall = Stopwatch(), copiedArgmaxWall = Stopwatch();
+    var next = argmaxToken(model.logits);
+    for (var i = 0; i < 32; i++) {
+      stepWall.start();
+      await model.step(next);
+      stepWall.stop();
+      argmaxWall.start();
+      next = argmaxToken(model.logits);
+      argmaxWall.stop();
+      copyWall.start();
+      final copy = Float32List.fromList(model.logits);
+      copyWall.stop();
+      copiedArgmaxWall.start();
+      argmaxToken(copy);
+      copiedArgmaxWall.stop();
+    }
+    (record['decode'] as Map)
+      ..['step_wall_ms'] = stepWall.elapsedMicroseconds / 1000 / 32
+      ..['argmax_ms'] = argmaxWall.elapsedMicroseconds / 1000 / 32
+      ..['copy_logits_ms'] = copyWall.elapsedMicroseconds / 1000 / 32
+      ..['argmax_copied_ms'] = copiedArgmaxWall.elapsedMicroseconds / 1000 / 32;
+    log('decode: ${record['decode']}');
+    record['memory_decoding'] = memoryBreakdown();
+
+    // Profiled: GPU milliseconds per kernel kind and token.
+    GpuForward.profiling = true;
+    await model.reset();
+    await model.forward(prompt);
+    GpuForward.takeProfile();
+    for (var i = 0; i < 32; i++) {
+      await model.step(argmaxToken(model.logits));
+    }
+    final profile = GpuForward.takeProfile();
+    GpuForward.profiling = false;
+    final kinds = profile.entries.toList()
+      ..sort((a, b) => b.value.$1.compareTo(a.value.$1));
+    record['kernels'] = {
+      for (final MapEntry(key: kind, value: (ms, count)) in kinds)
+        kind: {'ms_per_token': ms / 32, 'dispatches_per_token': count / 32},
+    };
+    log(
+      'kernels: ${kinds.map((e) => '${e.key} ${(e.value.$1 / 32).toStringAsFixed(2)} ms x${e.value.$2 ~/ 32}').join(', ')}',
+    );
+    log('memory: ${record['memory_loaded']} -> ${record['memory_decoding']}');
+  } finally {
+    await model.close();
+  }
+  record['memory_closed'] = memoryBreakdown();
+  record['cache_mapped_after_close'] = MappedFile.isMapped(
+    '$bundle/${quantizedCacheName(TextModelConfig.load(bundle), WeightFormat.q8)}',
+  );
+  return record;
 }
