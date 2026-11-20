@@ -42,7 +42,7 @@ fi
 staging="$(mktemp -d)"
 trap 'rm -rf "${staging:?}"' EXIT
 printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "gpu_profile": %s, "build": "%s"}\n' \
-  "$SPEC" "${REINSTALL:-false}" "$([[ -n "${GPU_PROFILE:-}" ]] && echo true || echo false)" "$(git -C "$ROOT" rev-parse --short HEAD)" >"$staging/bench_config.json"
+  "$SPEC" "${REINSTALL:-false}" "$([[ -n "${GPU_PROFILE:-}" ]] && echo true || echo false)" "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
 adb push "$staging/bench_config.json" "$REMOTE/" >/dev/null
 
 started() { python3 -I -c "import json,sys; print(json.load(open(sys.argv[1])).get('started', ''))" "$1" 2>/dev/null || true; }
