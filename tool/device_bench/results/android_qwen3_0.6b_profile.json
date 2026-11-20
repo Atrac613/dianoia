@@ -1,7 +1,7 @@
 {
-  "started": "2026-11-20T21:35:25.453642",
+  "started": "2026-11-20T21:42:05.893136",
   "os": "CP3A.261005.005",
-  "build": "158af44",
+  "build": "v0.5.0-36-g4317a64",
   "spec": "qwen3-0.6b-q8-23749fe",
   "install": {
     "already_installed": true,
@@ -16,68 +16,65 @@
   },
   "gpu_profile": {
     "memory_before": {
-      "VmRSS": 134,
+      "VmRSS": 133,
       "RssAnon": 34,
       "RssFile": 98,
       "RssShmem": 1
     },
     "memory_loaded": {
-      "VmRSS": 1951,
-      "RssAnon": 61,
-      "RssFile": 1889,
+      "VmRSS": 2160,
+      "RssAnon": 58,
+      "RssFile": 2101,
       "RssShmem": 1
     },
     "weight_segments": 1,
     "decode": {
-      "wall_ms_per_token": 47.25871875,
-      "gpu_ms_per_token": 38.7356875,
-      "encode_ms_per_token": 2.4204375,
-      "dispatches_per_token": 422.0,
-      "step_wall_ms": 44.71959375,
-      "argmax_ms": 1.32509375,
-      "copy_logits_ms": 1.253875,
-      "argmax_copied_ms": 1.21378125
+      "step_ms": 44.44171875,
+      "argmax_ms": 4.620875,
+      "gpu_ms_per_call": 35.554272727272725,
+      "encode_ms_per_call": 6.322484848484848,
+      "dispatches_per_call": 422.0
     },
     "memory_decoding": {
-      "VmRSS": 2091,
-      "RssAnon": 83,
-      "RssFile": 2007,
+      "VmRSS": 2335,
+      "RssAnon": 116,
+      "RssFile": 2217,
       "RssShmem": 1
     },
     "kernels": {
       "gemv_q8_i8": {
-        "ms_per_token": 32.86679688483476,
+        "ms_per_token": 28.97907093326517,
         "dispatches_per_token": 197.0
       },
       "attention": {
-        "ms_per_token": 1.865200101012111,
+        "ms_per_token": 1.5754484033180478,
         "dispatches_per_token": 28.0
       },
       "quantize": {
-        "ms_per_token": 1.6573537708678268,
+        "ms_per_token": 1.3262685554432887,
         "dispatches_per_token": 113.0
       },
       "rms_norm": {
-        "ms_per_token": 0.8848025280569807,
+        "ms_per_token": 0.7450358305740385,
         "dispatches_per_token": 57.0
       },
       "head_norm_rope": {
-        "ms_per_token": 0.47486624612212136,
+        "ms_per_token": 0.43034491294372107,
         "dispatches_per_token": 56.0
       },
       "add": {
-        "ms_per_token": 0.20724869422066233,
+        "ms_per_token": 0.18575796072030126,
         "dispatches_per_token": 56.0
       },
       "swiglu": {
-        "ms_per_token": 0.13709259461617437,
+        "ms_per_token": 0.10406240152668947,
         "dispatches_per_token": 28.0
       }
     },
     "memory_closed": {
-      "VmRSS": 744,
-      "RssAnon": 83,
-      "RssFile": 660,
+      "VmRSS": 988,
+      "RssAnon": 117,
+      "RssFile": 870,
       "RssShmem": 1
     },
     "cache_mapped_after_close": false
