@@ -90,7 +90,8 @@ Future<void> qwen3Check(
     final model = await LocalModel.load(
       bundle,
       backend: backend,
-      contextLength: 2048,
+      // Room for thinking, which took 1,699 tokens on the Mac for 1.7B.
+      contextLength: (config['context_length'] as num?)?.toInt() ?? 3072,
     );
     result['load_s'] = sw.elapsedMilliseconds / 1000;
     log('${backend.name}: loaded in ${result['load_s']} s');
@@ -106,14 +107,20 @@ Future<void> qwen3Check(
         'reused_tokens': t.reusedTokens,
         'generated_tokens': t.generatedTokens,
         'prefill_s': t.prefillSeconds,
-        'decode_tok_per_s': t.generatedTokens / t.decodeSeconds,
+        // JSON has no NaN or Infinity: an empty reply decodes at 0.
+        'decode_tok_per_s': t.decodeSeconds > 0
+            ? t.generatedTokens / t.decodeSeconds
+            : 0.0,
         if (footprint != null) 'footprint_mb': footprint() >> 20,
       };
-      void report(String name, ChatTurn t) {
-        final d = describe(t);
+      // Each prompt's reply is checked, so that a run needs no reading to
+      // tell whether it passed; `passed` gathers every check.
+      void report(String name, ChatTurn t, bool passed) {
+        final d = describe(t)..['passed'] = passed;
         result[name] = d;
+        record['passed'] = (record['passed'] as bool? ?? true) && passed;
         log(
-          '  $name: ${t.generatedTokens} tokens at '
+          '  $name ${passed ? 'ok' : 'FAILED'}: ${t.generatedTokens} tokens at '
           '${(d['decode_tok_per_s'] as double).toStringAsFixed(1)} tok/s, '
           'reused ${t.reusedTokens}/${t.promptTokens}: '
           '${t.reply.toolCalls.isEmpty ? t.reply.content : d['tool_calls']}',
@@ -122,43 +129,53 @@ Future<void> qwen3Check(
       }
 
       final chat = model.chat(maxNewTokens: 64);
-      report(
-        'greedy',
-        await chat.send({
-          'role': 'user',
-          'content': 'What is the capital of Japan? Answer in one sentence.',
-        }),
-      );
+      final greedy = await chat.send({
+        'role': 'user',
+        'content': 'What is the capital of Japan? Answer in one sentence.',
+      });
+      report('greedy', greedy, greedy.reply.content.contains('Tokyo'));
+      final second = await chat.send({
+        'role': 'user',
+        'content': 'And of France? Answer in one sentence.',
+      });
       report(
         'second_turn',
-        await chat.send({
-          'role': 'user',
-          'content': 'And of France? Answer in one sentence.',
-        }),
+        second,
+        second.reply.content.contains('Paris') && second.reusedTokens > 0,
       );
+      final tool = await model
+          .chat(tools: [_weatherTool], maxNewTokens: 64)
+          .send({
+            'role': 'user',
+            'content': "What's the weather like in Paris right now?",
+          });
       report(
         'tool_call',
-        await model.chat(tools: [_weatherTool], maxNewTokens: 64).send({
-          'role': 'user',
-          'content': "What's the weather like in Paris right now?",
-        }),
+        tool,
+        tool.reply.toolCalls.length == 1 &&
+            tool.reply.toolCalls.single.name == 'get_weather' &&
+            tool.reply.toolCalls.single.arguments['city'] == 'Paris',
       );
       if (backend != InferenceBackend.cpu || config['cpu_thinking'] == true) {
+        final thinking = await model
+            .chat(
+              maxNewTokens: 3000,
+              enableThinking: true,
+              // Qwen3's thinking preset, seeded.
+              sampling: const SamplingParams(
+                temperature: 0.6,
+                topK: 20,
+                topP: 0.95,
+                seed: 7,
+              ),
+            )
+            .send({'role': 'user', 'content': 'What is 17 * 23?'});
+        // The think block must close, then the answer follow.
         report(
           'thinking',
-          await model
-              .chat(
-                maxNewTokens: 2048,
-                enableThinking: true,
-                // Qwen3's thinking preset, seeded.
-                sampling: const SamplingParams(
-                  temperature: 0.6,
-                  topK: 20,
-                  topP: 0.95,
-                  seed: 7,
-                ),
-              )
-              .send({'role': 'user', 'content': 'What is 17 * 23?'}),
+          thinking,
+          thinking.reply.reasoning != null &&
+              thinking.reply.content.contains('391'),
         );
       }
     } finally {
