@@ -438,7 +438,7 @@ state, logit and token to match byte for byte.
 | Symptom | Cause and fix |
 |---|---|
 | `dianoia has no native kernels for ...` | The target is not arm64 macOS, iOS or Android, or x86-64 Windows on a CPU with AVX2, FMA and F16C (Haswell, Zen or later). The quantized weights need the native kernels. |
-| `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; on Windows also no `vulkan-1.dll`, or a discrete GPU without Resizable BAR (the buffers live in the part of its memory the CPU can map). `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. |
+| `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; on Windows also no `vulkan-1.dll`, or a discrete GPU without Resizable BAR (the buffers live in the part of its memory the CPU can map). `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. On Android, `auto` also runs Qwen3 on the CPU, where it decodes faster ([Qwen3 support](docs/qwen3_support.md)). |
 | `--max-seq=N is too long for GPU attention` | GPU attention keeps one score per key in threadgroup memory. Lower `contextLength`. |
 | Edited C or Metal code has no effect | Hook outputs are cached under `.dart_tool/`; delete `.dart_tool/hooks_runner` and run again. |
 | A camera photo takes a long time before the first reply | Encoding grows with the image's tokens, and on the CPU backend it all runs on the CPU. Use `onProgress` and a lower `maxImageTokens` budget (the example uses 256); finer image detail costs more work. |

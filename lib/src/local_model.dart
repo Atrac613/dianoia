@@ -20,7 +20,8 @@ import 'vision_session.dart';
 
 /// Where the forward pass runs.
 enum InferenceBackend {
-  /// The GPU where it can run the model, the CPU kernels otherwise.
+  /// The GPU where it can run the model, the CPU kernels otherwise, and
+  /// the CPU kernels where the GPU is known to be slower: Qwen3 on Android.
   auto,
 
   /// Metal on Apple platforms, Vulkan on Android and Windows.
@@ -70,7 +71,9 @@ final class LocalModel {
   /// installs such bundles.
   ///
   /// With [InferenceBackend.auto] a GPU that cannot run the model (none, or
-  /// without the features the kernels need) leaves it on the CPU kernels.
+  /// without the features the kernels need) leaves it on the CPU kernels,
+  /// and so does Android for Qwen3, whose decoding is faster there on the
+  /// CPU.
   /// GPU attention keeps a score per key in on-chip memory, so a long
   /// [contextLength] may not fit on the GPU; 2048 does on the phones
   /// measured. [threads] native threads share each CPU matrix product.
