@@ -151,8 +151,15 @@ buffer, which is uncached for the CPU on a phone: an argmax over Qwen3's
 151,936 logits took 21 ms a token there. The logits are now copied out in
 one 1 ms copy first. Of the 47 ms a token left, the GPU spends 39 ms, 36 of
 them in the Q8 matrix-vector products, which read the weights at about
-19 GB/s against the 41 GB/s the GPU copies at. The 1.7B row predates the
-copy. A Pixel 8 that has been running for a while throttles: a second 1.7B
+19 GB/s. That is close to what this GPU reads at all: its copy kernel moves
+41 GB/s counting reads and writes, about 20 GB/s each way. Timing every
+matrix kind across its 28 layers (`GPU_SHAPES=1
+tool/device_bench/run_android_qwen3.sh`) shows the same 16-20 GB/s for
+small matrices (1,024 rows) and large ones, and 22-29 GB/s for the LM head.
+The best rows per subgroup and workgroup size for each kind would save
+about 6 of the 37 ms (17%), and no layout beats the CPU, which reads at a
+similar rate. Decoding Qwen3 faster on this phone means reading fewer bytes
+a token. The 1.7B row predates the copy. A Pixel 8 that has been running for a while throttles: a second 1.7B
 run decoded at 5 tok/s on Vulkan and loaded in 19 s.
 
 So `InferenceBackend.auto` runs Qwen3 on the CPU kernels on Android, where

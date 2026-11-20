@@ -87,6 +87,7 @@ Future<void> qwen3Check(
       bundle,
       log,
       contextLength: contextLength,
+      shapes: config['gpu_shapes'] == true,
     );
     save();
     return;
@@ -215,10 +216,14 @@ Map<String, int> memoryBreakdown() {
 /// time and Dart's encoding, then 32 more timed per kernel kind (Vulkan
 /// times every dispatch), and the memory by kind before loading, after it,
 /// while decoding and after closing.
+///
+/// With [shapes], it then times every kind of decode matrix across its
+/// layers in each layout (GpuForward.benchmarkDecodeShapes).
 Future<Map<String, Object?>> qwen3GpuProfile(
   String bundle,
   void Function(String) log, {
   required int contextLength,
+  bool shapes = false,
 }) async {
   final record = <String, Object?>{'memory_before': memoryBreakdown()};
   final cache =
@@ -298,6 +303,17 @@ Future<Map<String, Object?>> qwen3GpuProfile(
       GpuForward.profiling = false;
     }
     log('memory: ${record['memory_loaded']} -> ${record['memory_decoding']}');
+    if (shapes) {
+      record['shapes'] = gpu.benchmarkDecodeShapes(
+        onSample: (s) => log(
+          '${s['kind']} [${s['matrix_rows']}, ${s['matrix_cols']}] x${s['matrices']}, '
+          'rows ${s['decode_rows']}, group ${s['q8_workgroup']}: '
+          '${(s['gpu_ms_per_matrix'] as double).toStringAsFixed(3)} ms, '
+          '${(s['gb_per_s'] as double).toStringAsFixed(1)} GB/s, '
+          '${s['differing_outputs']} differing',
+        ),
+      );
+    }
   } finally {
     await model.close();
   }

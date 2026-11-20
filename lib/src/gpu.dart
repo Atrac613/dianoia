@@ -603,6 +603,124 @@ final class GpuForward {
     return best;
   }
 
+  /// Times each kind of decode matrix across every layer that has one, so
+  /// that, unlike [benchmarkDecodeMatrices], no product reads a matrix the
+  /// GPU just read: a kind's per-layer matrices one after another, [rounds]
+  /// times in one command buffer, the LM head [rounds] times alone. Each
+  /// sample is one layout: [rowsVariants] rows per subgroup (0 is the GEMM
+  /// path) at each of [workgroups] invocations per Q8 workgroup, the
+  /// layouts in a rotating order. The GPU milliseconds are the products'
+  /// own, from the per-dispatch profile, without the input quantization.
+  /// Each sample's outputs for the last matrix it ran are compared with
+  /// the default layout's, bit for bit.
+  List<Map<String, Object?>> benchmarkDecodeShapes({
+    int rounds = 4,
+    List<int> rowsVariants = const [1, 2, 4],
+    List<int> workgroups = const [64, 128, 256],
+    void Function(Map<String, Object?> sample)? onSample,
+  }) {
+    final kinds = <String, List<_Matrix>>{
+      for (final (name, pick) in <(String, _Matrix? Function(_Layer))>[
+        ('q_proj', (l) => l.q),
+        ('k_proj', (l) => l.k),
+        ('v_proj', (l) => l.v),
+        ('o_proj', (l) => l.o),
+        ('ffn_gate', (l) => l.w1),
+        ('ffn_up', (l) => l.w3),
+        ('ffn_down', (l) => l.w2),
+        ('conv_in', (l) => l.inProj),
+        ('conv_out', (l) => l.outProj),
+      ])
+        name: [for (final l in _layers) ?pick(l)],
+      'lm_head': [_lmHead],
+    }..removeWhere((_, matrices) => matrices.isEmpty);
+    final all = kinds.values.expand((m) => m);
+    final x = _newBuffer(all.map((w) => w.cols).reduce(math.max));
+    final y = _newBuffer(all.map((w) => w.rows).reduce(math.max));
+    for (var i = 0; i < x.length; i++) {
+      x.view[i] = math.sin(i * 0.17) + 0.25 * math.cos(i * 0.07);
+    }
+    final layouts = [
+      for (final rows in rowsVariants)
+        for (final group in workgroups) (rows, group),
+    ];
+    final samples = <Map<String, Object?>>[];
+    final references = <String, Uint32List>{};
+    profiling = true;
+    try {
+      for (var round = 0; round < 3; round++) {
+        for (var i = 0; i < layouts.length; i++) {
+          final (rows, group) = layouts[(i + round * 4) % layouts.length];
+          decodeRows = rows;
+          // Metal has one workgroup size: its layouts vary rows only.
+          if (!setQ8Workgroup(group) && group != 128) continue;
+          for (final MapEntry(key: kind, value: matrices) in kinds.entries) {
+            void run(int times) {
+              _begin();
+              for (var t = 0; t < times; t++) {
+                for (final w in matrices) {
+                  w.encode(x.handle, y.handle, 0, 1);
+                }
+              }
+              if (_commit(1) != 1) {
+                throw StateError('GPU shape benchmark failed');
+              }
+            }
+
+            run(1); // warm this layout
+            takeProfile();
+            run(rounds);
+            final profile = takeProfile();
+            final gemv = profile.entries
+                .where((e) => e.key.startsWith('gem'))
+                .fold((
+                  0.0,
+                  0,
+                ), (a, e) => (a.$1 + e.value.$1, a.$2 + e.value.$2));
+            final w = matrices.last;
+            final bits = Uint32List.fromList(
+              y.view.buffer.asUint32List(y.view.offsetInBytes, w.rows),
+            );
+            final reference = references.putIfAbsent(kind, () => bits);
+            var differing = 0;
+            for (var r = 0; r < w.rows; r++) {
+              if (bits[r] != reference[r]) differing++;
+            }
+            final bytes = matrices.fold(
+              0,
+              (sum, m) =>
+                  sum +
+                  (m.q4 ? m.rows * m.cols * 9 ~/ 16 : m.rows * m.cols * 9 ~/ 8),
+            );
+            final ms = gemv.$1 / rounds;
+            final sample = <String, Object?>{
+              'kind': kind,
+              'format': w.q4 ? 'q4' : 'q8',
+              'matrix_rows': w.rows,
+              'matrix_cols': w.cols,
+              'matrices': matrices.length,
+              'round': round + 1,
+              'decode_rows': rows,
+              'q8_workgroup': group,
+              'gpu_ms_per_matrix': ms / matrices.length,
+              'gpu_ms_per_token': ms,
+              'gb_per_s': bytes / (ms / 1000) / 1e9,
+              'dispatches': gemv.$2 / rounds,
+              'differing_outputs': differing,
+            };
+            samples.add(sample);
+            onSample?.call(sample);
+          }
+        }
+      }
+    } finally {
+      restoreDecodeRowsDefault();
+      setQ8Workgroup(128);
+      profiling = false;
+    }
+    return samples;
+  }
+
   /// Isolates representative real weight matrices from model orchestration.
   /// Each sample reuses fixed inputs for [repetitions] products in one
   /// command buffer (one input quantization). This is a cache-reuse probe,
