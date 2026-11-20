@@ -302,8 +302,23 @@ final class MappedFile {
   /// Whether [path] is mapped, for leak checks.
   static bool isMapped(String path) => _mapped.containsKey(path);
 
-  Uint8List bytes(int offset, int count) =>
-      (address + offset).asTypedList(count);
+  /// The most bytes one [bytes] view may hold: 2^30 - 1, the largest
+  /// typed list where pointers are compressed (Flutter on Android and iOS).
+  /// Enforced everywhere, so that a view a phone cannot make fails on a Mac
+  /// too.
+  static const maxView = (1 << 30) - 1;
+
+  Uint8List bytes(int offset, int count) {
+    if (count > maxView) {
+      throw ArgumentError.value(
+        count,
+        'count',
+        'exceeds the $maxView bytes a typed list holds on phones; view '
+            'less of $_path at once',
+      );
+    }
+    return (address + offset).asTypedList(count);
+  }
 }
 
 @Native<

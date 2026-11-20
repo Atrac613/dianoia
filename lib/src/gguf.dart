@@ -22,9 +22,6 @@ import 'quant.dart';
 import 'safetensors.dart';
 import 'text_bundle.dart';
 
-/// The most of a GGUF that [GgufFile.open] views for its header.
-const _maxHeaderView = (1 << 30) - 1;
-
 enum GgufType {
   f32(0, 1, 4),
   f16(1, 1, 2),
@@ -65,11 +62,10 @@ final class GgufFile {
         MappedFile.open(path) ??
         (throw FileSystemException('cannot map', path));
     try {
-      // Only the header is parsed here, so view no more of the file than a
-      // typed list can hold where pointers are compressed (Flutter on
-      // Android): 2^30 - 1 bytes. Qwen3-1.7B's GGUF is 1.8 GB.
+      // Only the header is parsed here, so view no more of the file than
+      // one view may hold (MappedFile.maxView): Qwen3-1.7B's GGUF is 1.8 GB.
       final data = ByteData.sublistView(
-        file.bytes(0, math.min(file.length, _maxHeaderView)),
+        file.bytes(0, math.min(file.length, MappedFile.maxView)),
       );
       var at = 0;
       // Each reader returns the value at the cursor and moves past it.
@@ -325,8 +321,7 @@ List<String> _importLfm3(
   String outDir,
 ) {
   final h = c.hiddenSize, f = c.intermediateSize, hd = c.headDim;
-  if (gguf.metadata['general.architecture'] != 'lfm3' ||
-      gguf.metadata['lfm3.block_count'] != c.numLayers) {
+  if (gguf.metadata['lfm3.block_count'] != c.numLayers) {
     throw StateError('$ggufPath is not this LFM3 model');
   }
 
@@ -453,7 +448,13 @@ List<String> _importQwen3(
       gguf.metadata['qwen3.block_count'] != c.numLayers ||
       gguf.metadata['qwen3.embedding_length'] != h ||
       gguf.metadata['qwen3.attention.head_count'] != c.numHeads ||
-      gguf.metadata['qwen3.attention.head_count_kv'] != c.numKvHeads) {
+      gguf.metadata['qwen3.attention.head_count_kv'] != c.numKvHeads ||
+      gguf.metadata['qwen3.attention.key_length'] != hd ||
+      !_near(gguf.metadata['qwen3.rope.freq_base'], c.fullRope.theta) ||
+      !_near(
+        gguf.metadata['qwen3.attention.layer_norm_rms_epsilon'],
+        c.normEps,
+      )) {
     throw StateError('$ggufPath is not this Qwen3 model');
   }
   if (gguf.tensors.containsKey('output.weight')) {
@@ -484,7 +485,18 @@ List<String> _importQwen3(
         : engine.substring(0, engine.length - '.weight'.length);
     shapes.add((cacheName, 'q8', rows, cols));
     produce[cacheName] = split;
-    imported[qwen] = () => _dequantizeQ8(split());
+    // The embedding is compared on its first rows only, as LFM3's is: the
+    // whole table would take gigabytes as floats.
+    final compared = engine == _embedName
+        ? math.min(rows, _comparedEmbedRows)
+        : rows;
+    imported[qwen] = () => _dequantizeQ8(
+      splitQ8_0(
+        Uint8List.sublistView(gguf.bytes(t), 0, compared * cols ~/ 32 * 34),
+        compared,
+        cols,
+      ),
+    );
   }
 
   for (var i = 0; i < c.numLayers; i++) {
@@ -531,6 +543,14 @@ List<String> _importQwen3(
 }
 
 const _embedName = 'model.embed_tokens.weight';
+
+/// Embedding rows [importGguf] compares, as `_compare` does for LFM3.
+const _comparedEmbedRows = 4096;
+
+/// Whether the GGUF's metadata value [gguf] is the config's [value], up to
+/// the float32 rounding GGUF stores it with.
+bool _near(Object? gguf, double value) =>
+    gguf is num && (gguf - value).abs() <= 1e-6 * value.abs();
 
 Float32List _dequantizeQ8(CachedMatrix m) {
   final out = Float32List(m.rows * m.cols);

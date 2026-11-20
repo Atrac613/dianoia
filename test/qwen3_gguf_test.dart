@@ -1,5 +1,6 @@
 // Importing a Qwen3 Q8_0 GGUF: a tiny synthetic checkpoint written as
 // llama.cpp lays it out, imported without requantizing and run.
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -91,22 +92,45 @@ void main() {
       expect(turn.generatedTokens, greaterThan(0));
     });
 
-    test('rejects a GGUF of another Qwen3', () {
-      final other = '${root.path}/other';
-      Directory(other).createSync();
-      for (final name in ['config.json', 'tokenizer.json']) {
-        File('${root.path}/hf/$name').copySync('$other/$name');
-      }
-      final config = File('$other/config.json');
-      config.writeAsStringSync(
-        config.readAsStringSync().replaceFirst(
-          '"num_hidden_layers":2',
-          '"num_hidden_layers":3',
-        ),
-      );
+    for (final (what, key, value) in [
+      ('layers', 'num_hidden_layers', 3),
+      ('RoPE base', 'rope_theta', 10000),
+      ('norm epsilon', 'rms_norm_eps', 1e-5),
+    ]) {
+      test('rejects a GGUF of a Qwen3 with other $what', () {
+        final other = '${root.path}/other-${what.replaceAll(' ', '-')}';
+        Directory(other).createSync();
+        for (final name in ['config.json', 'tokenizer.json']) {
+          File('${root.path}/hf/$name').copySync('$other/$name');
+        }
+        final config = File('$other/config.json');
+        final json = jsonDecode(config.readAsStringSync()) as Map;
+        expect(json, contains(key));
+        config.writeAsStringSync(jsonEncode({...json, key: value}));
+        expect(
+          () => importGguf('${root.path}/model.gguf', other, '${root.path}/x'),
+          throwsA(isA<StateError>()),
+        );
+      });
+    }
+
+    test('parses the header of a GGUF over 1 GiB', () {
+      // Phones view at most MappedFile.maxView bytes at once; the header
+      // parse must not view the whole file. Sparse, so cheap on disk.
+      final big = '${root.path}/big.gguf';
+      File('${root.path}/model.gguf').copySync(big);
+      File(big).openSync(mode: FileMode.append)
+        ..truncateSync(MappedFile.maxView + 4096)
+        ..closeSync();
+      final gguf = GgufFile.open(big);
+      addTearDown(gguf.close);
+      expect(gguf.metadata['general.architecture'], 'qwen3');
+      expect(gguf.tensors, contains('token_embd.weight'));
+      final mapped = MappedFile.open(big)!;
+      addTearDown(mapped.release);
       expect(
-        () => importGguf('${root.path}/model.gguf', other, '${root.path}/x'),
-        throwsA(isA<StateError>()),
+        () => mapped.bytes(0, MappedFile.maxView + 1),
+        throwsArgumentError,
       );
     });
   }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');

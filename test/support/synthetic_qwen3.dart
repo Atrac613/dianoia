@@ -104,6 +104,9 @@ void writeSyntheticQwen3Gguf(String hfDir, String path) {
       'qwen3.embedding_length': _h,
       'qwen3.attention.head_count': _heads,
       'qwen3.attention.head_count_kv': _kvHeads,
+      'qwen3.attention.key_length': _hd,
+      'qwen3.rope.freq_base': 1000000.0,
+      'qwen3.attention.layer_norm_rms_epsilon': 1e-6,
     }, tensors);
   } finally {
     st.close();
