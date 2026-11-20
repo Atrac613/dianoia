@@ -35,9 +35,10 @@
 ///       2.5 GB instead of 5.4 GB for Q8.
 ///
 ///   dianoia import-gguf --gguf=FILE --model=DIR --out=DIR
-///       Turns Liquid's QAD Q4_0 GGUF of the model in DIR into a bundle
-///       for --weights=q4 (see lib/src/gguf.dart), and prints how far each
-///       imported tensor family is from DIR's weights.
+///       Turns Liquid's QAD Q4_0 GGUF of LFM3 (for --weights=q4) or Qwen's
+///       Q8_0 GGUF of Qwen3 (for --weights=q8) of the model in DIR into a
+///       bundle (see lib/src/gguf.dart), and prints how far each imported
+///       tensor family is from DIR's weights.
 ///
 ///   dianoia import-hf --model=HF_DIR --out=DIR
 ///       Renames a Qwen3 checkpoint's tensors (merging its shards) into
