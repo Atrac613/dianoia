@@ -126,23 +126,29 @@ Qwen3-1.7B Q8 prefills the 539-token prompt in 1.5 s on Metal.
 
 ### On phones
 
-`tool/device_bench/run_ios_qwen3.sh` and `run_android_qwen3.sh` have the
-phone install `ModelSpec.qwen3_0_6bQ8` itself (from Hugging Face) and answer
-a greedy question, a second turn, a tool call and seeded thinking:
+`tool/device_bench/run_ios_qwen3.sh` and `run_android_qwen3.sh` (with
+`SPEC=1.7b` for 1.7B) have the phone install the spec itself from Hugging
+Face, then answer a greedy question, a second turn, a tool call and seeded
+thinking, and check each reply. iPhone 15 Pro Max (A17 Pro) and Pixel 8
+(Tensor G3):
 
-| | iPhone (A17 Pro) | Pixel 8 (Tensor G3) |
-|---|---:|---:|
-| Download, import | 57 s, 3.0 s | 83 s, 3.8 s |
-| Load: GPU, CPU | 0.86 s, 0.31 s | 2.4 s, 0.39 s |
-| Decode, GPU (Metal, Vulkan) | 39-46 tok/s | 12-16 tok/s |
-| Decode, CPU | 34-39 tok/s | 30-32 tok/s |
+| | iPhone 0.6B | Pixel 8 0.6B | iPhone 1.7B | Pixel 8 1.7B |
+|---|---:|---:|---:|---:|
+| Download, import | 57 s, 3.0 s | 83 s, 3.8 s | 128 s, 6.0 s | 16 s import |
+| Load: GPU, CPU | 0.86 s, 0.31 s | 2.4 s, 0.39 s | 0.85 s, 0.20 s | 4.0 s, 1.1 s |
+| Decode, GPU (Metal, Vulkan) | 39-46 tok/s | 12-16 tok/s | 15-18 tok/s | 8-10 tok/s |
+| Decode, CPU | 34-39 tok/s | 30-32 tok/s | 16-19 tok/s | 7-8 tok/s |
+| Footprint, GPU / CPU | 680 / 240 MB | 2.1 GB / 1.0 GB | 0.9 GB / 210 MB | 3.9 / 2.1 GB |
 
-Both phones give the Mac's replies on both backends: Tokyo, then Paris
+Every check passes on both phones and both backends: Tokyo, then Paris
 reusing the first turn's 20 common tokens, and `get_weather(city: Paris)`.
-Thinking reaches 391 on both GPUs; the iPhone's 998 tokens match the Mac's
-token for token, while Vulkan's arithmetic takes the sampler down another
-path (588 tokens). The Pixel 8's Mali GPU decodes Qwen3's 28 attention
-layers at half the CPU's speed, as it did LFM3 at about the CPU's.
+Thinking reaches 391 on both GPUs. The iPhone's runs match the Mac's token
+for token (998 tokens for 0.6B, 1,699 for 1.7B), while Vulkan's arithmetic
+takes the sampler down other paths (588 and 2,732 tokens). The Pixel 8's
+Mali GPU decodes Qwen3-0.6B's 28 attention layers at half the CPU's speed,
+as it did LFM3 at about the CPU's; for 1.7B the two are close. A Pixel 8
+that has been running for a while throttles: a second 1.7B run decoded at
+5 tok/s on Vulkan and loaded in 19 s.
 
 ## Using it
 

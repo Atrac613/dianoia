@@ -1,0 +1,125 @@
+{
+  "started": "2026-11-20T21:10:33.368073",
+  "os": "Version 27.2.1 (Build 24B156)",
+  "build": "b3056ac",
+  "spec": "qwen3-1.7b-q8-90862c4",
+  "install": {
+    "download_s": 128.425,
+    "import_s": 5.9739999999999895,
+    "total_s": 134.399,
+    "bundle_files": {
+      "model.safetensors": 506944,
+      "config.json": 726,
+      "tokenizer.json": 11422654,
+      "LICENSE": 11343,
+      "generation_config.json": 239,
+      "qwen3-q8.cache": 1936556032
+    }
+  },
+  "gpu": {
+    "load_s": 0.854,
+    "greedy": {
+      "content": "The capital of Japan is Tokyo.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 24,
+      "reused_tokens": 0,
+      "generated_tokens": 7,
+      "prefill_s": 2.499752,
+      "decode_tok_per_s": 17.796082319592216,
+      "footprint_mb": 928,
+      "passed": true
+    },
+    "second_turn": {
+      "content": "The capital of France is Paris.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 50,
+      "reused_tokens": 20,
+      "generated_tokens": 7,
+      "prefill_s": 0.351587,
+      "decode_tok_per_s": 18.07501129688206,
+      "footprint_mb": 898,
+      "passed": true
+    },
+    "tool_call": {
+      "content": "",
+      "reasoning_chars": null,
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          }
+        }
+      ],
+      "prompt_tokens": 169,
+      "reused_tokens": 1,
+      "generated_tokens": 19,
+      "prefill_s": 2.006751,
+      "decode_tok_per_s": 17.921146953405017,
+      "footprint_mb": 902,
+      "passed": true
+    },
+    "thinking": {
+      "content": "To find the product of 17 and 23, we can use various methods to ensure accuracy and verify the result.\n\n---\n\n### **Method 1: Distributive Property**\n\nWe can break down 23 into 20 + 3:\n\n$$\n17 \\times 23 = 17 \\times (20 + 3) = (17 \\times 20) + (17 \\times 3)\n$$\n\n- $ 17 \\times 20 = 340 $\n- $ 17 \\times 3 = 51 $\n\nNow add the results:\n\n$$\n340 + 51 = 391\n$$\n\n---\n\n### **Method 2: Standard Multiplication**\n\nWe multiply 17 by 23 step by step:\n\n$$\n\\begin{array}{r}\n   17 \\\\\n\\times 23 \\\\\n\\hline\n   51 \\quad \\text{(17 × 3)} \\\\\n+340 \\quad \\text{(17 × 20, shifted one place)} \\\\\n\\hline\n  391 \\quad \\text{(Sum)}\n\\end{array}\n$$\n\n---\n\n### **Method 3: Alternative Breakdown**\n\nWe can also express 23 as 25 - 2:\n\n$$\n17 \\times 23 = 17 \\times (25 - 2) = (17 \\times 25) - (17 \\times 2)\n$$\n\n- $ 17 \\times 25 = 425 $\n- $ 17 \\times 2 = 34 $\n\nNow subtract:\n\n$$\n425 - 34 = 391\n$$\n\n---\n\n### **Conclusion**\n\nAll methods consistently yield the same result. Therefore, the product of 17 and 23 is:\n\n$$\n\\boxed{391}\n$$",
+      "reasoning_chars": 3584,
+      "tool_calls": [],
+      "prompt_tokens": 18,
+      "reused_tokens": 1,
+      "generated_tokens": 1699,
+      "prefill_s": 0.222173,
+      "decode_tok_per_s": 14.773378375645223,
+      "footprint_mb": 909,
+      "passed": true
+    }
+  },
+  "passed": true,
+  "cpu": {
+    "load_s": 0.202,
+    "greedy": {
+      "content": "The capital of Japan is Tokyo.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 24,
+      "reused_tokens": 0,
+      "generated_tokens": 7,
+      "prefill_s": 1.601253,
+      "decode_tok_per_s": 16.136691609381412,
+      "footprint_mb": 171,
+      "passed": true
+    },
+    "second_turn": {
+      "content": "The capital of France is Paris.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 50,
+      "reused_tokens": 20,
+      "generated_tokens": 7,
+      "prefill_s": 1.0956,
+      "decode_tok_per_s": 17.47592691068054,
+      "footprint_mb": 173,
+      "passed": true
+    },
+    "tool_call": {
+      "content": "",
+      "reasoning_chars": null,
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          }
+        }
+      ],
+      "prompt_tokens": 169,
+      "reused_tokens": 1,
+      "generated_tokens": 19,
+      "prefill_s": 4.971838,
+      "decode_tok_per_s": 18.581380087997506,
+      "footprint_mb": 208,
+      "passed": true
+    }
+  },
+  "finished": true
+}
