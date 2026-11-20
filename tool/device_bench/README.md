@@ -32,7 +32,9 @@ step), int8 and float in turn; `"profile_only": true` stops there, and
 installs Qwen3-0.6B (`SPEC=1.7b` for 1.7B) through ModelStore, downloading
 Qwen's Q8_0 GGUF from Hugging Face and importing it, then answers greedy,
 second-turn, tool-call and seeded thinking prompts on Metal and the CPU.
-The record lands in `results/iphone_qwen3_<spec>.json`.
+The record lands in `results/iphone_qwen3_<spec>.json`;
+`run_android_qwen3.sh` does the same on an adb device, keeping the store in
+the app's internal storage, into `results/android_qwen3_<spec>.json`.
 
 `"mode": "audio_input"` in `Documents/bench_config.json` benchmarks streaming
 ASR with a prepared speech bundle and a mono 16 kHz f32le file in Documents.

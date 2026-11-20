@@ -1,0 +1,117 @@
+{
+  "started": "2026-11-20T20:38:04.794680",
+  "os": "CP3A.261005.005",
+  "build": "a744928",
+  "spec": "qwen3-0.6b-q8-23749fe",
+  "install": {
+    "download_s": 83.054,
+    "import_s": 3.762999999999991,
+    "total_s": 86.817,
+    "bundle_files": {
+      "config.json": 726,
+      "tokenizer.json": 11422654,
+      "generation_config.json": 239,
+      "model.safetensors": 273432,
+      "LICENSE": 11343,
+      "qwen3-q8.cache": 671531008
+    }
+  },
+  "gpu": {
+    "load_s": 2.41,
+    "greedy": {
+      "content": "The capital of Japan is Tokyo.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 24,
+      "reused_tokens": 0,
+      "generated_tokens": 7,
+      "prefill_s": 0.281007,
+      "decode_tok_per_s": 16.199616300516766,
+      "footprint_mb": 2147
+    },
+    "second_turn": {
+      "content": "The capital of France is Paris.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 50,
+      "reused_tokens": 20,
+      "generated_tokens": 7,
+      "prefill_s": 0.186595,
+      "decode_tok_per_s": 15.500751786461644,
+      "footprint_mb": 2147
+    },
+    "tool_call": {
+      "content": "",
+      "reasoning_chars": null,
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          }
+        }
+      ],
+      "prompt_tokens": 169,
+      "reused_tokens": 1,
+      "generated_tokens": 19,
+      "prefill_s": 1.105003,
+      "decode_tok_per_s": 14.410620779205018,
+      "footprint_mb": 2195
+    },
+    "thinking": {
+      "content": "To calculate $17 \\times 23$, we can break the multiplication into smaller, easier parts using the distributive property. Here's the step-by-step process:\n\n1. Recognize that $17 = 10 + 7$ and $23 = 20 + 3$.\n2. Multiply each part by 23:\n   - $10 \\times 23 = 230$\n   - $7 \\times 23 = 161$\n3. Add the results: $230 + 161 = 391$\n\nThus, $17 \\times 23 = \\boxed{391}$.",
+      "reasoning_chars": 1166,
+      "tool_calls": [],
+      "prompt_tokens": 18,
+      "reused_tokens": 1,
+      "generated_tokens": 588,
+      "prefill_s": 0.116527,
+      "decode_tok_per_s": 12.453134492073495,
+      "footprint_mb": 2101
+    }
+  },
+  "cpu": {
+    "load_s": 0.392,
+    "greedy": {
+      "content": "The capital of Japan is Tokyo.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 24,
+      "reused_tokens": 0,
+      "generated_tokens": 7,
+      "prefill_s": 0.314008,
+      "decode_tok_per_s": 31.01283488323668,
+      "footprint_mb": 973
+    },
+    "second_turn": {
+      "content": "The capital of France is Paris.",
+      "reasoning_chars": null,
+      "tool_calls": [],
+      "prompt_tokens": 50,
+      "reused_tokens": 20,
+      "generated_tokens": 7,
+      "prefill_s": 0.351681,
+      "decode_tok_per_s": 31.95529910159959,
+      "footprint_mb": 979
+    },
+    "tool_call": {
+      "content": "",
+      "reasoning_chars": null,
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          }
+        }
+      ],
+      "prompt_tokens": 169,
+      "reused_tokens": 1,
+      "generated_tokens": 19,
+      "prefill_s": 2.18806,
+      "decode_tok_per_s": 29.484334507534022,
+      "footprint_mb": 1014
+    }
+  },
+  "finished": true
+}

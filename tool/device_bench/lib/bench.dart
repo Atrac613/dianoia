@@ -120,7 +120,11 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
     try {
       await qwen3Check(
         config,
-        '$docs/models',
+        // Internal storage on Android, as an app's ModelStore would use:
+        // the external files directory is a slow FUSE mount to map.
+        Platform.isAndroid
+            ? '/data/data/$_androidPackage/files/models'
+            : '$docs/models',
         record,
         log,
         save,
