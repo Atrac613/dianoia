@@ -77,6 +77,11 @@ final class TextModelConfig {
       for (final id in extraEosTokenIds)
         if (!config.eosTokenIds.contains(id)) id,
     ];
+    if (config.eosTokenIds.isEmpty && extra.isEmpty) {
+      throw const FormatException(
+        'config.json: no eos_token_id here or in generation_config.json',
+      );
+    }
     return extra.isEmpty ? config : config._withEos(extra);
   }
 
@@ -167,9 +172,7 @@ final class TextModelConfig {
       slidingRope: ropeFor('sliding_attention'),
       sandwichNorm: field<bool>('use_sandwich_norm'),
       attentionOutputGate: true,
-      eosTokenIds: List.unmodifiable(
-        eos is List ? eos.cast<int>() : [eos as int],
-      ),
+      eosTokenIds: List.unmodifiable(_eosIds(eos)),
     );
   }
 
@@ -229,9 +232,7 @@ final class TextModelConfig {
       slidingRope: rope,
       sandwichNorm: false,
       attentionOutputGate: false,
-      eosTokenIds: List.unmodifiable(
-        eos is List ? eos.cast<int>() : [eos as int],
-      ),
+      eosTokenIds: List.unmodifiable(_eosIds(eos)),
     );
   }
 
@@ -265,3 +266,14 @@ final class TextModelConfig {
   int get numLayers => layerTypes.length;
   int get kvDim => numKvHeads * headDim;
 }
+
+/// config.json's `eos_token_id`, one id or a list. Without one the reply's
+/// end comes from generation_config.json alone, which
+/// [TextModelConfig.load] adds; a config that has neither is rejected
+/// there.
+List<int> _eosIds(Object? eos) => List.unmodifiable(switch (eos) {
+  final List ids => ids.cast<int>(),
+  final int id => [id],
+  null => const <int>[],
+  _ => throw FormatException('config.json: invalid eos_token_id $eos'),
+});

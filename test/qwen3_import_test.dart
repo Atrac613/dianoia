@@ -63,6 +63,21 @@ void main() {
       expect(c.isEos(151644), isFalse);
     });
 
+    test('end tokens may come from generation_config.json alone', () {
+      final json = _qwen3Config()..remove('eos_token_id');
+      expect(
+        () => TextModelConfig.fromJson(json),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        TextModelConfig.fromJson(
+          json,
+          extraEosTokenIds: [151645, 151643],
+        ).eosTokenIds,
+        [151645, 151643],
+      );
+    });
+
     test('rope_theta may sit in rope_parameters', () {
       final json = _qwen3Config()
         ..remove('rope_theta')
