@@ -80,6 +80,17 @@ Future<void> qwen3Check(
   (record['install'] as Map)['bundle_files'] = files;
   save();
 
+  // Room for thinking, which took 1,699 tokens on the Mac for 1.7B.
+  final contextLength = (config['context_length'] as num?)?.toInt() ?? 3072;
+  if (config['gpu_profile'] == true) {
+    record['gpu_profile'] = await qwen3GpuProfile(
+      bundle,
+      log,
+      contextLength: contextLength,
+    );
+    save();
+    return;
+  }
   final backends = (config['backends'] as List? ?? ['gpu', 'cpu']).map(
     (b) => InferenceBackend.values.byName(b as String),
   );
@@ -90,8 +101,7 @@ Future<void> qwen3Check(
     final model = await LocalModel.load(
       bundle,
       backend: backend,
-      // Room for thinking, which took 1,699 tokens on the Mac for 1.7B.
-      contextLength: (config['context_length'] as num?)?.toInt() ?? 3072,
+      contextLength: contextLength,
     );
     result['load_s'] = sw.elapsedMilliseconds / 1000;
     log('${backend.name}: loaded in ${result['load_s']} s');
@@ -182,4 +192,116 @@ Future<void> qwen3Check(
       await model.close();
     }
   }
+}
+
+/// The process's memory by kind, in MB, where Linux reports it
+/// (/proc/self/status). RssAnon is the heap; RssFile holds the mapped
+/// weights, which the OS can drop, but on Android also the GPU driver's
+/// allocations (Mali maps them from a device file), which it cannot.
+/// Empty elsewhere.
+Map<String, int> memoryBreakdown() {
+  if (!Platform.isAndroid && !Platform.isLinux) return const {};
+  final status = File('/proc/self/status').readAsStringSync();
+  return {
+    for (final key in ['VmRSS', 'RssAnon', 'RssFile', 'RssShmem'])
+      if (RegExp('$key:\\s*(\\d+)').firstMatch(status)?[1] case final kb?)
+        key: int.parse(kb) >> 10,
+  };
+}
+
+/// Where a Qwen3 decode step's time and memory go on the GPU, with the
+/// bundle loaded for [contextLength] tokens as [qwen3Check] loads it: 32
+/// greedy steps split into the step and the argmax after it, the GPU's
+/// time and Dart's encoding, then 32 more timed per kernel kind (Vulkan
+/// times every dispatch), and the memory by kind before loading, after it,
+/// while decoding and after closing.
+Future<Map<String, Object?>> qwen3GpuProfile(
+  String bundle,
+  void Function(String) log, {
+  required int contextLength,
+}) async {
+  final record = <String, Object?>{'memory_before': memoryBreakdown()};
+  final cache =
+      '$bundle/${quantizedCacheName(TextModelConfig.load(bundle), WeightFormat.q8)}';
+  final model = await TextModel.load(
+    bundle,
+    maxSeq: contextLength,
+    weights: WeightFormat.q8,
+    q8CachePath: cache,
+    gpu: true,
+  );
+  try {
+    final gpu = model.gpu!;
+    record['memory_loaded'] = memoryBreakdown();
+    record['weight_segments'] = gpu.weightSegments;
+    final prompt = BpeTokenizer.load(bundle).encode(
+      renderQwen3Chat([
+        {'role': 'user', 'content': 'Tell me about the history of Kyoto.'},
+      ], enableThinking: false),
+    );
+
+    /// Feeds the prompt, then [steps] greedy tokens, timing the steps and
+    /// the argmaxes apart.
+    Future<({int stepMicros, int argmaxMicros})> decode(int steps) async {
+      await model.reset();
+      await model.forward(prompt);
+      final step = Stopwatch(), argmax = Stopwatch();
+      for (var i = 0; i < steps; i++) {
+        argmax.start();
+        final next = argmaxToken(model.logits);
+        argmax.stop();
+        step.start();
+        await model.step(next);
+        step.stop();
+      }
+      return (
+        stepMicros: step.elapsedMicroseconds,
+        argmaxMicros: argmax.elapsedMicroseconds,
+      );
+    }
+
+    await decode(8); // warm-up
+    gpu.clearStats();
+    final timed = await decode(32);
+    // The step includes copying the logits out of the GPU's buffer
+    // (GpuForward.logits), so the argmax reads ordinary memory.
+    record['decode'] = {
+      'step_ms': timed.stepMicros / 1000 / 32,
+      'argmax_ms': timed.argmaxMicros / 1000 / 32,
+      // The prompt's chunk is one more GPU call: per call, not per token.
+      'gpu_ms_per_call': gpu.gpuMicros / 1000 / gpu.calls,
+      'encode_ms_per_call': gpu.encodeMicros / 1000 / gpu.calls,
+      'dispatches_per_call': gpu.dispatches / gpu.calls,
+    };
+    log('decode: ${record['decode']}');
+    record['memory_decoding'] = memoryBreakdown();
+
+    GpuForward.profiling = true;
+    try {
+      await model.reset();
+      await model.forward(prompt);
+      GpuForward.takeProfile();
+      for (var i = 0; i < 32; i++) {
+        await model.step(argmaxToken(model.logits));
+      }
+      final kinds = GpuForward.takeProfile().entries.toList()
+        ..sort((a, b) => b.value.$1.compareTo(a.value.$1));
+      record['kernels'] = {
+        for (final MapEntry(key: kind, value: (ms, count)) in kinds)
+          kind: {'ms_per_token': ms / 32, 'dispatches_per_token': count / 32},
+      };
+      log(
+        'kernels: ${kinds.map((e) => '${e.key} ${(e.value.$1 / 32).toStringAsFixed(2)} ms x${e.value.$2 ~/ 32}').join(', ')}',
+      );
+    } finally {
+      // A process-wide switch: left on, every later pass is slower.
+      GpuForward.profiling = false;
+    }
+    log('memory: ${record['memory_loaded']} -> ${record['memory_decoding']}');
+  } finally {
+    await model.close();
+  }
+  record['memory_closed'] = memoryBreakdown();
+  record['cache_mapped_after_close'] = MappedFile.isMapped(cache);
+  return record;
 }

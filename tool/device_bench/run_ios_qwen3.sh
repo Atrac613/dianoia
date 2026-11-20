@@ -28,7 +28,7 @@ xcrun devicectl device install app --device "$DEVICE" "$APP/build/ios/iphoneos/R
 staging="$(mktemp -d)"
 trap 'rm -rf "${staging:?}"' EXIT
 printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "build": "%s"}\n' \
-  "$SPEC" "${REINSTALL:-false}" "$(git -C "$ROOT" rev-parse --short HEAD)" >"$staging/bench_config.json"
+  "$SPEC" "${REINSTALL:-false}" "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
 xcrun devicectl device copy to "${container[@]}" --source "$staging/bench_config.json" \
   --destination Documents/bench_config.json >/dev/null
 

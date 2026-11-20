@@ -1,0 +1,83 @@
+{
+  "started": "2026-11-20T21:42:05.893136",
+  "os": "CP3A.261005.005",
+  "build": "v0.5.0-36-g4317a64",
+  "spec": "qwen3-0.6b-q8-23749fe",
+  "install": {
+    "already_installed": true,
+    "bundle_files": {
+      "config.json": 726,
+      "tokenizer.json": 11422654,
+      "generation_config.json": 239,
+      "model.safetensors": 273432,
+      "LICENSE": 11343,
+      "qwen3-q8.cache": 671531008
+    }
+  },
+  "gpu_profile": {
+    "memory_before": {
+      "VmRSS": 133,
+      "RssAnon": 34,
+      "RssFile": 98,
+      "RssShmem": 1
+    },
+    "memory_loaded": {
+      "VmRSS": 2160,
+      "RssAnon": 58,
+      "RssFile": 2101,
+      "RssShmem": 1
+    },
+    "weight_segments": 1,
+    "decode": {
+      "step_ms": 44.44171875,
+      "argmax_ms": 4.620875,
+      "gpu_ms_per_call": 35.554272727272725,
+      "encode_ms_per_call": 6.322484848484848,
+      "dispatches_per_call": 422.0
+    },
+    "memory_decoding": {
+      "VmRSS": 2335,
+      "RssAnon": 116,
+      "RssFile": 2217,
+      "RssShmem": 1
+    },
+    "kernels": {
+      "gemv_q8_i8": {
+        "ms_per_token": 28.97907093326517,
+        "dispatches_per_token": 197.0
+      },
+      "attention": {
+        "ms_per_token": 1.5754484033180478,
+        "dispatches_per_token": 28.0
+      },
+      "quantize": {
+        "ms_per_token": 1.3262685554432887,
+        "dispatches_per_token": 113.0
+      },
+      "rms_norm": {
+        "ms_per_token": 0.7450358305740385,
+        "dispatches_per_token": 57.0
+      },
+      "head_norm_rope": {
+        "ms_per_token": 0.43034491294372107,
+        "dispatches_per_token": 56.0
+      },
+      "add": {
+        "ms_per_token": 0.18575796072030126,
+        "dispatches_per_token": 56.0
+      },
+      "swiglu": {
+        "ms_per_token": 0.10406240152668947,
+        "dispatches_per_token": 28.0
+      }
+    },
+    "memory_closed": {
+      "VmRSS": 988,
+      "RssAnon": 117,
+      "RssFile": 870,
+      "RssShmem": 1
+    },
+    "cache_mapped_after_close": false
+  },
+  "finished": true
+}

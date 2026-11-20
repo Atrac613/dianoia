@@ -16,7 +16,8 @@
 /// (without a copy on Metal); each matrix is a pair of byte offsets into it. The small
 /// float tensors (norm weights, conv kernels) are packed into one buffer.
 /// Activations, conv histories and the KV caches are shared-storage
-/// buffers, so Dart reads logits and captured hidden states in place.
+/// buffers, so Dart reads captured hidden states in place; the logits it
+/// reads every token are copied out first (see [GpuForward.logits]).
 @DefaultAsset('package:dianoia/kernels')
 library;
 
@@ -770,8 +771,14 @@ final class GpuForward {
   Float32List get residual => _x.view;
 
   /// Logits of the last token of the last [forward] with logits, or of
-  /// [logitsOf].
-  Float32List get logits => _logits.view;
+  /// [logitsOf], copied out of the GPU's buffer into ordinary memory. On a
+  /// phone that buffer is uncached for the CPU: an argmax reading Qwen3's
+  /// 151,936 logits there one by one took 21 ms a token on a Pixel 8,
+  /// against 1 ms for this bulk copy and 0.3 ms for the argmax after it.
+  Float32List get logits => _hostLogits;
+  late final Float32List _hostLogits = Float32List(config.vocabSize);
+
+  void _copyLogits() => _hostLogits.setAll(0, _logits.view);
 
   /// Final-normalized state of the last token computed with logits.
   Float32List get lastHiddenState => _normed.view;
@@ -1213,6 +1220,7 @@ final class GpuForward {
         if (!ok) throw StateError('GPU command buffer failed');
       }
     }
+    if (withLogits) _copyLogits();
     calls++;
     tokens += n;
     dispatches += dispatched;
@@ -1237,6 +1245,7 @@ final class GpuForward {
     );
     _lmHead.encode(_normed.handle, _logits.handle, 0, 1);
     _finish();
+    _copyLogits();
     return logits;
   }
 
