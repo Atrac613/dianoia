@@ -14,6 +14,9 @@
 /// * optionally `tool_cases.json` (example/), for the time to first
 ///   token with a system prompt and a tool catalog (chat_bench.dart).
 ///
+/// `"mode": "qwen3"` installs Qwen3 through ModelStore on the phone and
+/// chats with it instead (qwen3_check.dart, run_ios_qwen3.sh).
+///
 /// `"mode": "control_vector"` in `bench_config.json` runs only the control
 /// vector checks instead (control_vector_check.dart,
 /// run_ios_control_vector.sh).
@@ -36,6 +39,7 @@ import 'audio_input_check.dart';
 import 'control_vector_check.dart';
 import 'gpu_sustained.dart';
 import 'lifecycle_check.dart';
+import 'qwen3_check.dart';
 import 'speech_check.dart';
 
 const _androidPackage = 'com.noguwo.dartllmlab.lfm3_bench';
@@ -100,6 +104,36 @@ Future<Map<String, Object?>> runBench(void Function(String) log) async {
   }
   if (config['mode'] == 'audio_input') {
     return audioInputCheck(config, docs, log);
+  }
+  if (config['mode'] == 'qwen3') {
+    final record = <String, Object?>{
+      'started': DateTime.now().toIso8601String(),
+      'os': Platform.operatingSystemVersion,
+      'build': config['build'],
+    };
+    final output = File('$docs/bench/qwen3-latest.json');
+    output.parent.createSync(recursive: true);
+    void save() => output.writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert(record),
+    );
+    save();
+    try {
+      await qwen3Check(
+        config,
+        '$docs/models',
+        record,
+        log,
+        save,
+        footprint: physFootprint,
+      );
+    } catch (e) {
+      record['error'] = '$e';
+      rethrow;
+    } finally {
+      record['finished'] = true;
+      save();
+    }
+    return record;
   }
   final bundle = config['bundle'] as String? ?? 'LFM3-1.7B-device';
   final weights = WeightFormat.values.byName(

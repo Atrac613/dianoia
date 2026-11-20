@@ -28,6 +28,12 @@ decoder's sampling, one depth pass by stage, the codec and the language
 step), int8 and float in turn; `"profile_only": true` stops there, and
 `"threads"` sets the native threads.
 
+`run_ios_qwen3.sh` runs the `qwen3` mode (lib/qwen3_check.dart): the phone
+installs Qwen3-0.6B (`SPEC=1.7b` for 1.7B) through ModelStore, downloading
+Qwen's Q8_0 GGUF from Hugging Face and importing it, then answers greedy,
+second-turn, tool-call and seeded thinking prompts on Metal and the CPU.
+The record lands in `results/iphone_qwen3_<spec>.json`.
+
 `"mode": "audio_input"` in `Documents/bench_config.json` benchmarks streaming
 ASR with a prepared speech bundle and a mono 16 kHz f32le file in Documents.
 Set `"bundle"`, `"clip"`, and optionally `"language"`, `"backend"`, and
