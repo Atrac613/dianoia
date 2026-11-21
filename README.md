@@ -124,6 +124,11 @@ processing are additional work and are not included.
 | Windows, x86-64 with AVX2 | AVX2, the Windows thread pool | Vulkan 1.2 (Resizable BAR on a discrete GPU) | Radeon RX 6600 XT: ~400-800 tok/s prompt, ~130 tok/s decode |
 | Other targets (lab/CLI) | Dart reference paths | none | Public model loaders require native kernels |
 
+Qwen3-0.6B Q8 decodes at 39-46 tok/s on the iPhone's GPU and 30-33 tok/s on
+the Pixel 8's CPU. On Android the CPU kernels decode Qwen3 faster than
+Vulkan and with less memory, so `InferenceBackend.auto` runs it there; the
+[Qwen3 support](docs/qwen3_support.md) page has both phones' figures.
+
 Apps should check `LocalModel.isSupported` before offering model downloads.
 
 The x86-64 kernels do NEON's float operations in NEON's order, so their
@@ -319,6 +324,11 @@ print(turn.reply.content);
 Tool calls parse into the same `ToolCall`s for both families; Qwen3's JSON
 argument values that are not strings arrive as their JSON text.
 
+On Android, `LocalModel.load` with the default `InferenceBackend.auto`
+runs Qwen3 on the CPU kernels. Pass `backend: InferenceBackend.gpu` to use
+Vulkan anyway: it prefills long prompts about twice as fast but decodes
+more slowly.
+
 `send` throws `ContextLengthExceeded` once the prompt outgrows the model context
 (2048 tokens by default), preserving the conversation. `chat.clear()` starts over.
 The library parses tool calls; the app executes the tools and supplies results.
@@ -438,7 +448,7 @@ state, logit and token to match byte for byte.
 | Symptom | Cause and fix |
 |---|---|
 | `dianoia has no native kernels for ...` | The target is not arm64 macOS, iOS or Android, or x86-64 Windows on a CPU with AVX2, FMA and F16C (Haswell, Zen or later). The quantized weights need the native kernels. |
-| `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; on Windows also no `vulkan-1.dll`, or a discrete GPU without Resizable BAR (the buffers live in the part of its memory the CPU can map). `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. |
+| `LocalModel.backend` is `cpu` | No Metal device, or no Vulkan 1.2 device with buffer device addresses; on Windows also no `vulkan-1.dll`, or a discrete GPU without Resizable BAR (the buffers live in the part of its memory the CPU can map). `InferenceBackend.auto` fell back to the CPU kernels. `InferenceBackend.gpu` throws instead. On Android, `auto` also runs Qwen3 on the CPU, where it decodes faster ([Qwen3 support](docs/qwen3_support.md)). |
 | `--max-seq=N is too long for GPU attention` | GPU attention keeps one score per key in threadgroup memory. Lower `contextLength`. |
 | Edited C or Metal code has no effect | Hook outputs are cached under `.dart_tool/`; delete `.dart_tool/hooks_runner` and run again. |
 | A camera photo takes a long time before the first reply | Encoding grows with the image's tokens, and on the CPU backend it all runs on the CPU. Use `onProgress` and a lower `maxImageTokens` budget (the example uses 256); finer image detail costs more work. |

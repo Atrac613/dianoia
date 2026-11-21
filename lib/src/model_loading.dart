@@ -28,7 +28,8 @@ void ensureNativeKernels(int threads) {
 
 /// Opens the language bundle in [dir], holding [weights] (see
 /// [bundleWeights]), on [backend]. With [InferenceBackend.auto] a GPU that
-/// cannot run the model leaves it on the CPU kernels; [TextModel.gpu] says
+/// cannot run the model, or one slower than the CPU for it
+/// ([autoPrefersCpu]), leaves it on the CPU kernels; [TextModel.gpu] says
 /// which ran.
 Future<TextModel> openLanguageBundle(
   String dir, {
@@ -36,15 +37,19 @@ Future<TextModel> openLanguageBundle(
   required InferenceBackend backend,
   required int contextLength,
 }) async {
+  final config = TextModelConfig.load(dir);
   Future<TextModel> open({required bool gpu}) => TextModel.load(
     dir,
     maxSeq: contextLength,
     weights: weights,
-    q8CachePath:
-        '$dir/${quantizedCacheName(TextModelConfig.load(dir), weights)}',
+    q8CachePath: '$dir/${quantizedCacheName(config, weights)}',
     gpu: gpu,
   );
 
+  if (backend == InferenceBackend.auto &&
+      autoPrefersCpu(config, android: Platform.isAndroid)) {
+    return open(gpu: false);
+  }
   try {
     return await open(gpu: backend != InferenceBackend.cpu);
   } on Error catch (e) {
@@ -57,6 +62,16 @@ Future<TextModel> openLanguageBundle(
     return open(gpu: false);
   }
 }
+
+/// Whether [InferenceBackend.auto] runs a model of [config] on the CPU
+/// kernels even where the GPU could run it. On Android it does for Qwen3:
+/// a Pixel 8's Mali GPU decodes Qwen3 a little slower than its CPU, with
+/// matrix-vector products bound by memory bandwidth whatever their layout,
+/// and needs more memory (docs/qwen3_support.md). It prefills about twice
+/// as fast, so an app with long prompts may still ask for
+/// [InferenceBackend.gpu].
+bool autoPrefersCpu(TextModelConfig config, {required bool android}) =>
+    android && config.architecture == ModelArchitecture.qwen3;
 
 /// The weights the bundle in [dir] holds: Q4 if it has a Q4 cache, Q8 if
 /// it has a Q8 one (`lfm3-q4.cache`, `qwen3-q8.cache` and so on).

@@ -155,6 +155,12 @@ them in the Q8 matrix-vector products, which read the weights at about
 copy. A Pixel 8 that has been running for a while throttles: a second 1.7B
 run decoded at 5 tok/s on Vulkan and loaded in 19 s.
 
+So `InferenceBackend.auto` runs Qwen3 on the CPU kernels on Android, where
+they decode faster and need less memory. The GPU still prefills about
+twice as fast (169 tokens in 1.1 s against 2.2 s on 0.6B), so an app whose
+prompts are long can ask for `InferenceBackend.gpu`. LFM3 and other
+platforms keep the GPU.
+
 ## Using it
 
 ```dart
@@ -180,10 +186,10 @@ since `ToolCall.arguments` holds strings for both families.
 ## Known gaps
 
 - NFC normalization of input text (above).
-- Vulkan on Windows is unchecked. On a Pixel 8 it is right but not faster
-  than the CPU for Qwen3 (above): its Q8 matrix-vector products reach half
-  the GPU's bandwidth, and it holds the weights twice (the mapped cache and
-  the GPU's copy of it), so an Android app may prefer `InferenceBackend.cpu`.
+- Vulkan on Windows is unchecked. On a Pixel 8 it is right but decodes
+  Qwen3 no faster than the CPU (above): its Q8 matrix-vector products are
+  bound by memory bandwidth in every layout, so `auto` uses the CPU there.
+  Decoding faster on that GPU needs fewer bytes per weight.
 - KV cache in float32: every Qwen3 layer is attention, so a token costs
   about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
   against about 45 KB for LFM3-1.7B. The default 2048-token context needs

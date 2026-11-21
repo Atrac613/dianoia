@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
+import 'package:dianoia/src/model_loading.dart' show autoPrefersCpu;
 import 'package:test/test.dart';
 
 /// Qwen3-0.6B's config.json, shortened to two layers.
@@ -29,6 +30,19 @@ Map<String, Object?> _qwen3Config() => {
 };
 
 void main() {
+  test('auto runs Qwen3 on the CPU on Android only', () {
+    final qwen3 = TextModelConfig.fromJson(_qwen3Config());
+    final vision =
+        jsonDecode(File('test/fixtures/vision/config.json').readAsStringSync())
+            as Map<String, Object?>;
+    final lfm3 = TextModelConfig.fromJson(
+      vision['text_config'] as Map<String, Object?>,
+    );
+    expect(autoPrefersCpu(qwen3, android: true), isTrue);
+    expect(autoPrefersCpu(qwen3, android: false), isFalse);
+    expect(autoPrefersCpu(lfm3, android: true), isFalse);
+  });
+
   group('Qwen3 config', () {
     test('every layer is ungated full attention without sandwich norms', () {
       final c = TextModelConfig.fromJson(_qwen3Config());
