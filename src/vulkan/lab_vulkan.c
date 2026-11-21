@@ -601,6 +601,9 @@ LAB_EXPORT int64_t lab_gpu_wrap(void* address, int64_t bytes) {
   return handle;
 }
 
+// Whether lab_gpu_wrap copies: here it does, so the wrapped memory may go.
+LAB_EXPORT int64_t lab_gpu_wrap_copies(void) { return 1; }
+
 LAB_EXPORT void* lab_gpu_contents(int64_t handle) { return gBuffers[handle].contents; }
 
 // GPU execution time of the last waited command buffer, in milliseconds.

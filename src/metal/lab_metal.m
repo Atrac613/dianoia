@@ -744,6 +744,10 @@ int64_t lab_gpu_wrap(void* address, int64_t bytes) {
   }
 }
 
+// Whether lab_gpu_wrap copies: here it does not, so the GPU reads the
+// wrapped memory itself and it must stay.
+int64_t lab_gpu_wrap_copies(void) { return 0; }
+
 // The CPU address of a buffer's memory.
 void* lab_gpu_contents(int64_t handle) { return gTable[handle].contents; }
 

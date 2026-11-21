@@ -227,6 +227,12 @@ external Pointer<Void> _mapFile(Pointer<Uint8> path, Pointer<Int64> size);
 )
 external void _unmapFile(Pointer<Void> address, int size);
 
+@Native<Void Function(Pointer<Void>, Int64)>(
+  symbol: 'lab_evict_file',
+  isLeaf: true,
+)
+external void _evictFile(Pointer<Void> address, int size);
+
 @Native<Void Function(Pointer<Void>)>(symbol: 'lab_free', isLeaf: true)
 external void _free(Pointer<Void> p);
 
@@ -297,6 +303,14 @@ final class MappedFile {
     if (--_opens > 0) return;
     _mapped.remove(_path);
     _unmapFile(address.cast(), length);
+  }
+
+  /// Gives the resident pages back to the OS, for when a copy of the file
+  /// lives elsewhere, such as in GPU memory. The mapping stays valid: a
+  /// later read faults its page back in from the file.
+  void evict() {
+    if (_opens == 0) throw StateError('$_path is not mapped');
+    _evictFile(address.cast(), length);
   }
 
   /// Whether [path] is mapped, for leak checks.
