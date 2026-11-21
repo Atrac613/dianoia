@@ -99,6 +99,31 @@ it rewords the answer from the first token and starts repeating a note, so
 the specs offer Q8 only. LFM3's Q4 is quantization-aware trained; Qwen3 has
 no such build.
 
+Better rounding does not rescue Q4_0 for these sizes.
+`tool/qwen3_q4_study.py` fake-quantizes the layer matrices in transformers
+(the embedding stays Q8, as in dianoia). It measures KL divergence against
+float32 over every position of the oracle's long chat, teacher-forced. Its
+Q8 row reproduces the engine's Q8 greedy agreement above.
+
+| Scheme (bits a weight) | 0.6B KL | 1.7B KL |
+|---|---:|---:|
+| Q8 (9) | 0.0011 | 0.0016 |
+| 6-bit, per 32 (6.5) | 0.014 | 0.012 |
+| Q5_0 (5.5) | 0.057 | 0.047 |
+| Q4_0, round-to-nearest (4.5) | 0.20 | 0.24 |
+| Q4_0, least-error scale | 0.18 | 0.22 |
+| Q4_0, activation-weighted error (imatrix) | 0.18 | 0.20 |
+| Q4_0, GPTQ | 0.19 | 0.15 |
+| Q4_0 imatrix, feed-forward kept Q8 | 0.085 | 0.066 |
+| Q4_1, round-to-nearest (5) | 0.20 | |
+
+Every Q4_0 variant stays about 100 times further from float32 than Q8.
+Quantizing one layer, or one kind of matrix, at a time shows no culprit to
+keep at Q8: every layer adds 0.004 to 0.02 and every kind 0.014 to 0.054
+(0.6B). Fewer bytes per token for 0.6B and 1.7B would take a 6-bit format,
+with about 0.78 times Q8's bytes (the LM head kept Q8) and new kernels on
+each backend.
+
 Qwen's Q8_0 GGUF is not dianoia's Q8 of the published BF16 weights. The
 embedding matches it value for value, but a third of the layer matrices'
 values are one step off and block scales differ by up to 10% in both
@@ -201,5 +226,6 @@ since `ToolCall.arguments` holds strings for both families.
   about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
   against about 45 KB for LFM3-1.7B. The default 2048-token context needs
   about 470 MB; a 16-bit cache would halve it.
-- Q4: a quality-preserving 4-bit format (or per-channel scales) would make
-  Q4 worth offering for Qwen3.
+- Q4: no Q4_0 rounding keeps Qwen3-0.6B or 1.7B close to float32
+  (Validation). Qwen ships Q4_K_M only from Qwen3-4B up, which would need
+  K-quant kernels.
