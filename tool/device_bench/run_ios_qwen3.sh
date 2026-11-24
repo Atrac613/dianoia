@@ -8,6 +8,8 @@
 #   tool/device_bench/run_ios_qwen3.sh [DEVICE_ID]
 #   SPEC=1.7b tool/device_bench/run_ios_qwen3.sh
 #   REINSTALL=1 tool/device_bench/run_ios_qwen3.sh   # download again
+#   VERIFY_COST=1 tool/device_bench/run_ios_qwen3.sh # n-token pass times
+#     of 0.6B and 1.7B, for speculative decoding (qwen3VerifyCost)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP="$ROOT/tool/device_bench"
@@ -27,8 +29,8 @@ xcrun devicectl device install app --device "$DEVICE" "$APP/build/ios/iphoneos/R
 
 staging="$(mktemp -d)"
 trap 'rm -rf "${staging:?}"' EXIT
-printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "build": "%s"}\n' \
-  "$SPEC" "${REINSTALL:-false}" "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
+printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "verify_cost": %s, "build": "%s"}\n' \
+  "$SPEC" "${REINSTALL:-false}" "$([[ -n "${VERIFY_COST:-}" ]] && echo true || echo false)" "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
 xcrun devicectl device copy to "${container[@]}" --source "$staging/bench_config.json" \
   --destination Documents/bench_config.json >/dev/null
 
@@ -52,7 +54,7 @@ done
 [[ -n "$launched" ]] || { echo "the phone stayed locked" >&2; exit 1; }
 
 mkdir -p "$APP/results"
-out="$APP/results/iphone_qwen3_$SPEC.json"
+out="$APP/results/iphone_qwen3_$SPEC${VERIFY_COST:+_verify_cost}.json"
 for _ in $(seq 1 160); do
   sleep 15
   pull "$staging/latest.json" || continue

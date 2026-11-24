@@ -13,6 +13,8 @@
 #     by kernel and kind instead of the checks (qwen3GpuProfile)
 #   GPU_SHAPES=1 tool/device_bench/run_android_qwen3.sh  # the profile, then every
 #     decode matrix kind timed in each layout (benchmarkDecodeShapes)
+#   VERIFY_COST=1 tool/device_bench/run_android_qwen3.sh # n-token pass times
+#     of 0.6B and 1.7B, for speculative decoding (qwen3VerifyCost)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP="$ROOT/tool/device_bench"
@@ -44,8 +46,8 @@ fi
 staging="$(mktemp -d)"
 trap 'rm -rf "${staging:?}"' EXIT
 flag() { [[ -n "${1:-}" ]] && echo true || echo false; }
-printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "gpu_profile": %s, "gpu_shapes": %s, "build": "%s"}\n' \
-  "$SPEC" "${REINSTALL:-false}" "$(flag "${GPU_PROFILE:-}${GPU_SHAPES:-}")" "$(flag "${GPU_SHAPES:-}")" \
+printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "gpu_profile": %s, "gpu_shapes": %s, "verify_cost": %s, "build": "%s"}\n' \
+  "$SPEC" "${REINSTALL:-false}" "$(flag "${GPU_PROFILE:-}${GPU_SHAPES:-}")" "$(flag "${GPU_SHAPES:-}")" "$(flag "${VERIFY_COST:-}")" \
   "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
 adb push "$staging/bench_config.json" "$REMOTE/" >/dev/null
 
@@ -59,7 +61,7 @@ adb shell input keyevent KEYCODE_WAKEUP >/dev/null
 adb shell am start -S -n "$PACKAGE/.MainActivity" >/dev/null
 
 mkdir -p "$APP/results"
-out="$APP/results/android_qwen3_$SPEC${GPU_PROFILE:+_profile}${GPU_SHAPES:+_shapes}.json"
+out="$APP/results/android_qwen3_$SPEC${GPU_PROFILE:+_profile}${GPU_SHAPES:+_shapes}${VERIFY_COST:+_verify_cost}.json"
 for _ in $(seq 1 160); do
   sleep 15
   pull "$staging/latest.json" || continue
