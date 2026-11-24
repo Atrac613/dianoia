@@ -278,6 +278,39 @@ external void _attention(
   int window,
 );
 
+@Native<
+  Void Function(
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_gpu_enc_attention_split', isLeaf: true)
+external void _attentionSplit(
+  int q,
+  int keys,
+  int values,
+  int gate,
+  int out,
+  int partials,
+  int position,
+  int n,
+  int heads,
+  int kvHeads,
+  int hd,
+  int window,
+  int block,
+);
+
 @Native<Void Function(Int64, Int64, Int64)>(
   symbol: 'lab_gpu_enc_swiglu',
   isLeaf: true,
@@ -405,7 +438,13 @@ final class _Buffer {
 }
 
 final class GpuForward {
-  GpuForward._(this.config, this.maxSeq, this.maxChunk, this.steers);
+  GpuForward._(
+    this.config,
+    this.maxSeq,
+    this.maxChunk,
+    this.steers,
+    this._splits,
+  );
 
   /// Starts the GPU of the kernels asset, or with [libPath] of the library
   /// there, and prepares [cache]'s weights for it. The native CPU kernels
@@ -433,7 +472,13 @@ final class GpuForward {
     final steers =
         libPath == null ||
         DynamicLibrary.open(libPath).providesSymbol('lab_gpu_enc_steer');
-    final gpu = GpuForward._(config, maxSeq, maxChunk, steers);
+    // ...or split attention (attentionSplitFrom).
+    final splits =
+        libPath == null ||
+        DynamicLibrary.open(
+          libPath,
+        ).providesSymbol('lab_gpu_enc_attention_split');
+    final gpu = GpuForward._(config, maxSeq, maxChunk, steers, splits);
     try {
       gpu._load(modelDir, cache);
     } catch (_) {
@@ -456,6 +501,30 @@ final class GpuForward {
 
   /// Whether the GPU library applies control vectors ([setControlVector]).
   final bool steers;
+
+  /// Whether the GPU library splits attention by blocks of keys.
+  final bool _splits;
+
+  /// Passes of at most this many tokens attend by blocks of keys
+  /// ([attentionBlock] each, every block a GPU workgroup) once the last
+  /// token sees [attentionSplitFrom] keys or more; others give each
+  /// (query head, token) one workgroup that walks every key. The split sums
+  /// in another order, so it starts beyond the lab's reference prompts:
+  /// shorter passes stay bit-identical to the lab.
+  static const attentionSplitTokens = 8;
+
+  /// See [attentionSplitTokens]. 0 turns the split off.
+  static int attentionSplitFrom = 512;
+
+  /// Keys per block of the split, [minAttentionBlock] to
+  /// [maxAttentionBlock].
+  static int attentionBlock = 128;
+
+  /// The smallest [attentionBlock], which sizes the partials buffer.
+  static const minAttentionBlock = 64;
+
+  /// The largest [attentionBlock], the Vulkan shader's scores array.
+  static const maxAttentionBlock = 256;
 
   _Steering? _steering;
 
@@ -902,6 +971,7 @@ final class GpuForward {
 
   late final _Buffer _x, _a, _m, _bcx, _y, _q, _gate, _attnOut, _g, _u;
   late final _Buffer _normed, _logits, _rope, _residualIn, _capture;
+  _Buffer? _partials;
   late final Rope _fullRope = Rope(config.fullRope, config.headDim);
   late final Rope _slidingRope = Rope(config.slidingRope, config.headDim);
 
@@ -1052,6 +1122,12 @@ final class GpuForward {
     _q = _newBuffer(rows * heads);
     _gate = _newBuffer(rows * c.numHeads);
     _attnOut = _newBuffer(rows * heads);
+    if (_splits && c.numHeads ~/ c.numKvHeads <= 8) {
+      final blocks = (maxSeq + minAttentionBlock - 1) ~/ minAttentionBlock;
+      _partials = _newBuffer(
+        math.min(rows, attentionSplitTokens) * c.numHeads * blocks * (hd + 2),
+      );
+    }
     _g = _newBuffer(rows * c.intermediateSize);
     _u = _newBuffer(rows * c.intermediateSize);
     _normed = _newBuffer(h);
@@ -1288,19 +1364,47 @@ final class GpuForward {
           ropeOffset,
         );
         headNormRope(l.keys, rows, c.kvDim, l.kNorm, c.numKvHeads, ropeOffset);
-        _attention(
-          _q.handle,
-          l.keys,
-          l.values,
-          l.gate == null ? -1 : _gate.handle,
-          _attnOut.handle,
-          position,
-          n,
-          c.numHeads,
-          c.numKvHeads,
-          hd,
-          l.sliding ? c.slidingWindow : 0,
-        );
+        final window = l.sliding ? c.slidingWindow : 0;
+        final last = position + n - 1;
+        final seen = window > 0 && last >= window ? window : last + 1;
+        final block = attentionBlock;
+        if (_partials != null &&
+            n <= attentionSplitTokens &&
+            attentionSplitFrom > 0 &&
+            seen >= attentionSplitFrom) {
+          if (block < minAttentionBlock || block > maxAttentionBlock) {
+            throw ArgumentError('attention block of $block keys');
+          }
+          _attentionSplit(
+            _q.handle,
+            l.keys,
+            l.values,
+            l.gate == null ? -1 : _gate.handle,
+            _attnOut.handle,
+            _partials!.handle,
+            position,
+            n,
+            c.numHeads,
+            c.numKvHeads,
+            hd,
+            window,
+            block,
+          );
+        } else {
+          _attention(
+            _q.handle,
+            l.keys,
+            l.values,
+            l.gate == null ? -1 : _gate.handle,
+            _attnOut.handle,
+            position,
+            n,
+            c.numHeads,
+            c.numKvHeads,
+            hd,
+            window,
+          );
+        }
         dispatched++;
         matmul(l.o!, _attnOut, _m.handle);
       }

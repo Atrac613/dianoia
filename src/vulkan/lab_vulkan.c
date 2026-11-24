@@ -128,6 +128,12 @@ static const uint32_t kConv[] =
 static const uint32_t kAttention[] =
 #include "attention.inc"
     ;
+static const uint32_t kAttentionSplit[] =
+#include "attention_split.inc"
+    ;
+static const uint32_t kAttentionMerge[] =
+#include "attention_merge.inc"
+    ;
 static const uint32_t kSwiglu[] =
 #include "swiglu.inc"
     ;
@@ -196,7 +202,8 @@ static VkPhysicalDeviceProperties gProperties;
 static VkDeviceSize gMaxBuffer, gHeapSize;
 static VkPipelineLayout gLayout;
 static VkPipeline gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gRmsNorm, gHeadNormRope, gConv,
-    gAttention, gSwiglu, gCopy, gAdd, gSteer, gQuantize, gGemmQ8I8, gGemmQ4I8;
+    gAttention, gAttentionSplit, gAttentionMerge, gSwiglu, gCopy, gAdd, gSteer, gQuantize,
+    gGemmQ8I8, gGemmQ4I8;
 static const uint32_t kDecodeRows[] = {1, 2, 4};
 static VkPipeline gGemvQ4I8[3], gGemvQ8I8[3][3];
 static VkPipeline gGemvQ8I8Vec[3][3];
@@ -457,6 +464,8 @@ LAB_EXPORT int64_t lab_gpu_init(void) {
   PIPELINE(gHeadNormRope, kHeadNormRope);
   PIPELINE(gConv, kConv);
   PIPELINE(gAttention, kAttention);
+  PIPELINE(gAttentionSplit, kAttentionSplit);
+  PIPELINE(gAttentionMerge, kAttentionMerge);
   PIPELINE(gSwiglu, kSwiglu);
   PIPELINE(gCopy, kCopy);
   PIPELINE(gAdd, kAdd);
@@ -963,6 +972,59 @@ LAB_EXPORT void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, i
                              (float)(1.0 / sqrt((double)hd)),
                              gate >= 0 ? 1u : 0u};
   dispatch(kKindAttention, gAttention, &p, sizeof p, (uint32_t)heads, (uint32_t)n);
+  wrote(out);
+}
+
+typedef struct {
+  uint64_t q, keys, values, partials;
+  uint32_t position, window, heads, hd, kvDim, group;
+  float scale;
+  uint32_t block, blocks;
+} AttentionSplitParams;
+
+typedef struct {
+  uint64_t partials, gate, out;
+  uint32_t position, window, heads, hd, block, blocks, gated;
+} AttentionMergeParams;
+
+// Attention of n tokens by blocks of `block` keys (attention_split.comp,
+// then attention_merge.comp), for few tokens deep into the cache. partials
+// holds n * heads * blocks * (hd + 2) floats, where blocks covers the last
+// token's keys. At most 8 query heads per KV head and 256 keys per block.
+LAB_EXPORT void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t values, int64_t gate,
+                                            int64_t out, int64_t partials, int64_t position,
+                                            int64_t n, int64_t heads, int64_t kvHeads, int64_t hd,
+                                            int64_t window, int64_t block) {
+  const int64_t last = position + n - 1;
+  const int64_t keysOfLast = window > 0 && last >= window ? window : last + 1;
+  const int64_t blocks = (keysOfLast + block - 1) / block;
+  const AttentionSplitParams s = {at(q, 0),
+                                  at(keys, 0),
+                                  at(values, 0),
+                                  at(partials, 0),
+                                  (uint32_t)position,
+                                  (uint32_t)window,
+                                  (uint32_t)heads,
+                                  (uint32_t)hd,
+                                  (uint32_t)(kvHeads * hd),
+                                  (uint32_t)(heads / kvHeads),
+                                  (float)(1.0 / sqrt((double)hd)),
+                                  (uint32_t)block,
+                                  (uint32_t)blocks};
+  dispatch(kKindAttention, gAttentionSplit, &s, sizeof s, (uint32_t)(kvHeads * blocks),
+           (uint32_t)n);
+  wrote(partials);
+  const AttentionMergeParams m = {at(partials, 0),
+                                  gate >= 0 ? at(gate, 0) : 0,
+                                  at(out, 0),
+                                  (uint32_t)position,
+                                  (uint32_t)window,
+                                  (uint32_t)heads,
+                                  (uint32_t)hd,
+                                  (uint32_t)block,
+                                  (uint32_t)blocks,
+                                  gate >= 0 ? 1u : 0u};
+  dispatch(kKindAttention, gAttentionMerge, &m, sizeof m, (uint32_t)heads, (uint32_t)n);
   wrote(out);
 }
 

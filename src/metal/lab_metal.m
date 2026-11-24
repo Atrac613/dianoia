@@ -520,6 +520,177 @@ kernel void attention(device const float* q [[buffer(0)]],
   }
 }
 
+struct AttentionSplitParams {
+  uint position;  // of token 0
+  uint window;    // 0: every earlier key; else the last `window` keys
+  uint heads;
+  uint hd;
+  uint kv_dim;
+  uint group;     // query heads per KV head, at most SPLIT_GROUP
+  float scale;
+  uint gated;     // 0: no output gate (the gate buffer is not read)
+  uint block;     // keys per block
+  uint blocks;    // blocks per (token, head) in the partials buffer
+};
+
+// The attention above gives a token one threadgroup per query head, and its
+// threads walk every key in turn: a decoded token far into a conversation
+// keeps a handful of threadgroups busy for a long time while the rest of
+// the GPU idles, and the two query heads of a KV head each read it.
+// attention_split instead gives each (KV head, block of keys, token) a
+// threadgroup that scores the block against every query head of the group,
+// reading each key and value once, and leaves per block and query head the
+// unnormalized weighted sum of values, the block's largest score and the
+// sum of its exponentials:
+//   partials[((t * heads + h) * blocks + b) * (hd + 2) + ...]
+//     [0, hd): sum of exp(score - max) * value; hd: max; hd + 1: sum
+// attention_merge then rescales the blocks to the largest score over all
+// of them (the usual flash-decoding merge) and applies the gate.
+constant uint SPLIT_GROUP = 8;
+constant uint SPLIT_KEYS = 4;
+kernel void attention_split(device const float* q [[buffer(0)]],
+                            device const float* keys [[buffer(1)]],
+                            device const float* values [[buffer(2)]],
+                            device float* partials [[buffer(3)]],
+                            constant AttentionSplitParams& p [[buffer(4)]],
+                            threadgroup float* scores [[threadgroup(0)]],
+                            uint3 tg [[threadgroup_position_in_grid]],
+                            uint tid [[thread_index_in_threadgroup]],
+                            uint3 size [[threads_per_threadgroup]],
+                            uint simd [[simdgroup_index_in_threadgroup]],
+                            uint lane [[thread_index_in_simdgroup]]) {
+  threadgroup float stats[2 * SPLIT_GROUP];
+  const uint threads = size.x;
+  const uint simds = threads / 32;
+  const uint kvh = tg.x, b = tg.y, t = tg.z;
+  const uint g = p.group;
+  const uint pos = p.position + t;
+  const uint start = p.window > 0 && pos >= p.window ? pos - p.window + 1 : 0;
+  const uint count = pos - start + 1;
+  const uint lo = b * p.block;
+  const ulong stride = (ulong)p.blocks * (p.hd + 2);  // between query heads
+  device float* part = partials + ((ulong)t * p.heads + kvh * g) * stride + (ulong)b * (p.hd + 2);
+  // A block past this token's keys (an earlier token of the pass), which
+  // attention_merge does not read.
+  if (lo >= count) return;
+  const uint here = min(p.block, count - lo);
+  const uint hd4 = p.hd / 4, kv4 = p.kv_dim / 4;
+  device const float4* q4 = (device const float4*)(q + ((ulong)t * p.heads + kvh * g) * p.hd);
+  device const float4* k4 =
+      (device const float4*)(keys + (ulong)(start + lo) * p.kv_dim + kvh * p.hd);
+
+  // Scores: one SIMD group per key, lanes across head_dim, SPLIT_KEYS keys
+  // per step so that their loads go out together.
+  uint i = simd;
+  for (; i + (SPLIT_KEYS - 1) * simds < here; i += SPLIT_KEYS * simds) {
+    float d[SPLIT_KEYS][SPLIT_GROUP];
+    for (uint k = 0; k < SPLIT_KEYS; k++) {
+      for (uint j = 0; j < SPLIT_GROUP; j++) d[k][j] = 0.0f;
+    }
+    for (uint c = lane; c < hd4; c += 32) {
+      float4 kc[SPLIT_KEYS];
+      for (uint k = 0; k < SPLIT_KEYS; k++) kc[k] = k4[(ulong)(i + k * simds) * kv4 + c];
+      for (uint j = 0; j < g; j++) {
+        const float4 qc = q4[j * hd4 + c];
+        for (uint k = 0; k < SPLIT_KEYS; k++) d[k][j] += dot(qc, kc[k]);
+      }
+    }
+    for (uint k = 0; k < SPLIT_KEYS; k++) {
+      for (uint j = 0; j < g; j++) {
+        const float s = simd_sum(d[k][j]);
+        if (lane == 0) scores[j * p.block + i + k * simds] = s * p.scale;
+      }
+    }
+  }
+  for (; i < here; i += simds) {
+    float d[SPLIT_GROUP];
+    for (uint j = 0; j < SPLIT_GROUP; j++) d[j] = 0.0f;
+    for (uint c = lane; c < hd4; c += 32) {
+      const float4 kc = k4[(ulong)i * kv4 + c];
+      for (uint j = 0; j < g; j++) d[j] += dot(q4[j * hd4 + c], kc);
+    }
+    for (uint j = 0; j < g; j++) {
+      const float s = simd_sum(d[j]);
+      if (lane == 0) scores[j * p.block + i] = s * p.scale;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+
+  // Each SIMD group takes whole query heads: max, exponentials, their sum.
+  for (uint j = simd; j < g; j += simds) {
+    threadgroup float* row = scores + j * p.block;
+    float m = -INFINITY;
+    for (uint k = lane; k < here; k += 32) m = max(m, row[k]);
+    m = simd_max(m);
+    float sum = 0.0f;
+    for (uint k = lane; k < here; k += 32) {
+      const float e = exp(row[k] - m);
+      row[k] = e;
+      sum += e;
+    }
+    sum = simd_sum(sum);
+    if (lane == 0) {
+      stats[j] = m;
+      stats[SPLIT_GROUP + j] = sum;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+
+  // Values: one thread per dimension, every query head of the group at once.
+  device const float* v = values + (ulong)(start + lo) * p.kv_dim + kvh * p.hd;
+  for (uint d = tid; d < p.hd; d += threads) {
+    float acc[SPLIT_GROUP];
+    for (uint j = 0; j < SPLIT_GROUP; j++) acc[j] = 0.0f;
+    uint k = 0;
+    for (; k + SPLIT_KEYS <= here; k += SPLIT_KEYS) {
+      float value[SPLIT_KEYS];
+      for (uint u = 0; u < SPLIT_KEYS; u++) value[u] = v[(ulong)(k + u) * p.kv_dim + d];
+      for (uint j = 0; j < g; j++) {
+        for (uint u = 0; u < SPLIT_KEYS; u++) acc[j] += scores[j * p.block + k + u] * value[u];
+      }
+    }
+    for (; k < here; k++) {
+      const float value = v[(ulong)k * p.kv_dim + d];
+      for (uint j = 0; j < g; j++) acc[j] += scores[j * p.block + k] * value;
+    }
+    for (uint j = 0; j < g; j++) part[j * stride + d] = acc[j];
+  }
+  if (tid < g) {
+    part[tid * stride + p.hd] = stats[tid];
+    part[tid * stride + p.hd + 1] = stats[SPLIT_GROUP + tid];
+  }
+}
+
+// One threadgroup per (query head, token): the blocks of attention_split
+// rescaled to their common largest score and summed.
+kernel void attention_merge(device const float* partials [[buffer(0)]],
+                            device const float* gate [[buffer(1)]],
+                            device float* out [[buffer(2)]],
+                            constant AttentionSplitParams& p [[buffer(3)]],
+                            uint2 tg [[threadgroup_position_in_grid]],
+                            uint tid [[thread_index_in_threadgroup]],
+                            uint2 size [[threads_per_threadgroup]]) {
+  const uint h = tg.x, t = tg.y;
+  const uint pos = p.position + t;
+  const uint start = p.window > 0 && pos >= p.window ? pos - p.window + 1 : 0;
+  const uint used = (pos - start + p.block) / p.block;  // blocks with keys
+  device const float* part = partials + ((ulong)t * p.heads + h) * p.blocks * (p.hd + 2);
+  float m = -INFINITY;
+  for (uint b = 0; b < used; b++) m = max(m, part[b * (p.hd + 2) + p.hd]);
+  float sum = 0.0f;
+  for (uint b = 0; b < used; b++) {
+    sum += part[b * (p.hd + 2) + p.hd + 1] * exp(part[b * (p.hd + 2) + p.hd] - m);
+  }
+  const float g = p.gated ? 1.0f / (1.0f + exp(-gate[t * p.heads + h])) : 1.0f;
+  for (uint d = tid; d < p.hd; d += size.x) {
+    float acc = 0.0f;
+    for (uint b = 0; b < used; b++) {
+      acc += part[b * (p.hd + 2) + d] * exp(part[b * (p.hd + 2) + p.hd] - m);
+    }
+    out[((ulong)t * p.heads + h) * p.hd + d] = p.gated ? (acc / sum) * g : acc / sum;
+  }
+}
+
 // g = silu(g) * u.
 kernel void swiglu(device float* g [[buffer(0)]],
                    device const float* u [[buffer(1)]],
@@ -585,7 +756,7 @@ static id<MTLCommandQueue> gQueue;
 static __unsafe_unretained id<MTLComputePipelineState> gGemvQ8Rows[2], gGemvQ4Rows[2];
 static id<MTLComputePipelineState> gDecodePipelines[4];  // keeps them alive
 static id<MTLComputePipelineState> gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gTouch, gRmsNorm, gHeadNormRope, gConv,
-    gAttention, gSwiglu, gCopy, gSteer, gAdd;
+    gAttention, gAttentionSplit, gAttentionMerge, gSwiglu, gCopy, gSteer, gAdd;
 static double gLastGpuMs;
 static const NSUInteger kRowsPerGroup = 8;
 static const NSUInteger kGemmTokens = 8, kGemmRows = 4;
@@ -649,13 +820,16 @@ int64_t lab_gpu_init(void) {
     gHeadNormRope = pipeline(library, @"head_norm_rope");
     gConv = pipeline(library, @"conv");
     gAttention = pipeline(library, @"attention");
+    gAttentionSplit = pipeline(library, @"attention_split");
+    gAttentionMerge = pipeline(library, @"attention_merge");
     gSwiglu = pipeline(library, @"swiglu");
     gCopy = pipeline(library, @"copy_f32");
     gSteer = pipeline(library, @"steer");
     gAdd = pipeline(library, @"add_f32");
     gReady = gGemvQ8Rows[0] && gGemvQ8Rows[1] && gGemvQ4Rows[0] && gGemvQ4Rows[1] && gGemvQ8 &&
              gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv &&
-             gAttention && gSwiglu && gCopy && gSteer && gAdd;
+             gAttention && gAttentionSplit && gAttentionMerge && gSwiglu && gCopy && gSteer &&
+             gAdd;
     return gReady;
   }
 }
@@ -1104,6 +1278,12 @@ typedef struct {
   uint32_t gated;
 } AttentionParams;
 
+typedef struct {
+  uint32_t position, window, heads, hd, kvDim, group;
+  float scale;
+  uint32_t gated, block, blocks;
+} AttentionSplitParams;
+
 // Attention of n tokens at positions position, ... over their KV cache;
 // `window` 0 reads every earlier position, otherwise the last `window`
 // including the token's own. A negative `gate` leaves heads ungated.
@@ -1129,6 +1309,49 @@ void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate
   [gEnc setBuffer:gTable[out] offset:0 atIndex:4];
   [gEnc setBytes:&p length:sizeof p atIndex:5];
   [gEnc setThreadgroupMemoryLength:((NSUInteger)keysOfLast * 4 + 15) / 16 * 16 atIndex:0];
+  [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)heads, (NSUInteger)n, 1)
+       threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
+  profiled(kKindAttention);
+}
+
+// Attention of n tokens by blocks of `block` keys (attention_split, then
+// attention_merge), for few tokens deep into the cache. partials holds
+// n * heads * blocks * (hd + 2) floats, where blocks covers the last token's
+// keys. Query heads per KV head may be at most 8.
+void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t values, int64_t gate,
+                                 int64_t out, int64_t partials, int64_t position, int64_t n,
+                                 int64_t heads, int64_t kvHeads, int64_t hd, int64_t window,
+                                 int64_t block) {
+  const int64_t last = position + n - 1;
+  const int64_t keysOfLast = window > 0 && last >= window ? window : last + 1;
+  const int64_t blocks = (keysOfLast + block - 1) / block;
+  const int64_t group = heads / kvHeads;
+  const AttentionSplitParams p = {(uint32_t)position,
+                                  (uint32_t)window,
+                                  (uint32_t)heads,
+                                  (uint32_t)hd,
+                                  (uint32_t)(kvHeads * hd),
+                                  (uint32_t)group,
+                                  (float)(1.0 / sqrt((double)hd)),
+                                  gate >= 0 ? 1u : 0u,
+                                  (uint32_t)block,
+                                  (uint32_t)blocks};
+  [gEnc setComputePipelineState:gAttentionSplit];
+  [gEnc setBuffer:gTable[q] offset:0 atIndex:0];
+  [gEnc setBuffer:gTable[keys] offset:0 atIndex:1];
+  [gEnc setBuffer:gTable[values] offset:0 atIndex:2];
+  [gEnc setBuffer:gTable[partials] offset:0 atIndex:3];
+  [gEnc setBytes:&p length:sizeof p atIndex:4];
+  [gEnc setThreadgroupMemoryLength:((NSUInteger)(group * block) * 4 + 15) / 16 * 16 atIndex:0];
+  [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)kvHeads, (NSUInteger)blocks, (NSUInteger)n)
+       threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
+  profiled(kKindAttention);
+  [gEnc setComputePipelineState:gAttentionMerge];
+  [gEnc setBuffer:gTable[partials] offset:0 atIndex:0];
+  // Ungated, the kernel never reads index 1; any buffer fills the slot.
+  [gEnc setBuffer:gTable[gate >= 0 ? gate : q] offset:0 atIndex:1];
+  [gEnc setBuffer:gTable[out] offset:0 atIndex:2];
+  [gEnc setBytes:&p length:sizeof p atIndex:3];
   [gEnc dispatchThreadgroups:MTLSizeMake((NSUInteger)heads, (NSUInteger)n, 1)
        threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
   profiled(kKindAttention);
