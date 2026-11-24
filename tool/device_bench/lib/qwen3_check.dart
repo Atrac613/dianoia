@@ -7,6 +7,7 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
 
@@ -44,34 +45,7 @@ Future<void> qwen3Check(
   record['spec'] = spec.id;
   final store = ModelStore(storeDir);
   if (config['reinstall'] == true) await store.remove(spec);
-
-  if (store.isInstalled(spec)) {
-    record['install'] = <String, Object?>{'already_installed': true};
-    log('${spec.name} already installed');
-  } else {
-    log('installing ${spec.name} (${spec.downloadBytes ~/ 1000000} MB)');
-    final sw = Stopwatch()..start();
-    double? downloaded;
-    var lastLog = 0;
-    await for (final p in store.install(spec)) {
-      if (p.stage == InstallStage.downloading &&
-          p.bytes - lastLog >= 100000000) {
-        lastLog = p.bytes;
-        log('  ${p.bytes ~/ 1000000} / ${p.totalBytes ~/ 1000000} MB');
-      }
-      if (p.stage != InstallStage.downloading && downloaded == null) {
-        downloaded = sw.elapsedMilliseconds / 1000;
-        log('  downloaded in ${downloaded.toStringAsFixed(1)} s, importing');
-      }
-    }
-    final total = sw.elapsedMilliseconds / 1000;
-    record['install'] = <String, Object?>{
-      'download_s': downloaded,
-      'import_s': total - (downloaded ?? total),
-      'total_s': total,
-    };
-    log('  installed in ${total.toStringAsFixed(1)} s');
-  }
+  record['install'] = await _install(store, spec, log);
   final bundle = store.bundlePath(spec);
   final files = {
     for (final f in Directory(bundle).listSync().whereType<File>())
@@ -82,11 +56,28 @@ Future<void> qwen3Check(
 
   // Room for thinking, which took 1,699 tokens on the Mac for 1.7B.
   final contextLength = (config['context_length'] as num?)?.toInt() ?? 3072;
+  if (config['verify_cost'] == true) {
+    if (config['gpu_profile'] == true) {
+      throw ArgumentError('verify_cost and gpu_profile are separate runs');
+    }
+    // Speculative decoding: 0.6B drafts, 1.7B verifies. Both are needed.
+    final costs = <String, Object?>{};
+    record['verify_cost'] = costs;
+    for (final s in [ModelSpec.qwen3_0_6bQ8, ModelSpec.qwen3_1_7bQ8]) {
+      if (s != spec) {
+        record['install_${s.name}'] = await _install(store, s, log);
+      }
+      costs[s.id] = await qwen3VerifyCost(store.bundlePath(s), log);
+      save();
+    }
+    return;
+  }
   if (config['gpu_profile'] == true) {
     record['gpu_profile'] = await qwen3GpuProfile(
       bundle,
       log,
       contextLength: contextLength,
+      shapes: config['gpu_shapes'] == true,
     );
     save();
     return;
@@ -194,6 +185,104 @@ Future<void> qwen3Check(
   }
 }
 
+/// Installs [spec] unless installed, logging progress; the record of it.
+Future<Map<String, Object?>> _install(
+  ModelStore store,
+  ModelSpec spec,
+  void Function(String) log,
+) async {
+  if (store.isInstalled(spec)) {
+    log('${spec.name} already installed');
+    return {'already_installed': true};
+  }
+  log('installing ${spec.name} (${spec.downloadBytes ~/ 1000000} MB)');
+  final sw = Stopwatch()..start();
+  double? downloaded;
+  var lastLog = 0;
+  await for (final p in store.install(spec)) {
+    if (p.stage == InstallStage.downloading && p.bytes - lastLog >= 100000000) {
+      lastLog = p.bytes;
+      log('  ${p.bytes ~/ 1000000} / ${p.totalBytes ~/ 1000000} MB');
+    }
+    if (p.stage != InstallStage.downloading && downloaded == null) {
+      downloaded = sw.elapsedMilliseconds / 1000;
+      log('  downloaded in ${downloaded.toStringAsFixed(1)} s, importing');
+    }
+  }
+  final total = sw.elapsedMilliseconds / 1000;
+  log('  installed in ${total.toStringAsFixed(1)} s');
+  return {
+    'download_s': downloaded,
+    'import_s': total - (downloaded ?? total),
+    'total_s': total,
+  };
+}
+
+/// What verifying drafted tokens would cost, on the GPU and the CPU: the
+/// time of one pass over n tokens (n = 1 to 8) after a 200-token prompt,
+/// rewound after each pass, and of one more LM head (a pass leaves the
+/// last token's logits; verifying needs every token's). n = 1 is timed
+/// again at the end, to show throttling.
+Future<Map<String, Object?>> qwen3VerifyCost(
+  String bundle,
+  void Function(String) log, {
+  int reps = 10,
+}) async {
+  final result = <String, Object?>{};
+  // LocalModel.load's default; TextModel.load does not load the kernels.
+  if (!NativeKernels.isLoaded) NativeKernels.load(null, threads: 4);
+  final config = TextModelConfig.load(bundle);
+  final cache = '$bundle/${quantizedCacheName(config, WeightFormat.q8)}';
+  for (final gpu in [true, false]) {
+    final model = await TextModel.load(
+      bundle,
+      maxSeq: 1024,
+      weights: WeightFormat.q8,
+      q8CachePath: cache,
+      gpu: gpu,
+    );
+    try {
+      final prompt = [for (var i = 0; i < 200; i++) 1000 + 7 * i];
+      await model.forward(prompt);
+      Future<double> time(int n) async {
+        final tokens = [for (var i = 0; i < n; i++) 5000 + i];
+        final sw = Stopwatch();
+        for (var r = -2; r < reps; r++) {
+          if (r == 0) sw.reset();
+          sw.start();
+          await model.forward(tokens);
+          sw.stop();
+          await model.restorePromptPrefix([...prompt, 0]);
+        }
+        return sw.elapsedMicroseconds / 1000 / reps;
+      }
+
+      final ms = <String, double>{};
+      for (final n in [1, 2, 3, 4, 5, 6, 8]) {
+        ms['$n'] = await time(n);
+      }
+      ms['1_again'] = await time(1);
+      final residual = Float32List(config.hiddenSize)
+        ..fillRange(0, config.hiddenSize, 0.01);
+      final sw = Stopwatch()..start();
+      for (var r = 0; r < reps; r++) {
+        await model.logitsOf(residual);
+      }
+      final backend = gpu ? 'gpu' : 'cpu';
+      result[backend] = {
+        'pass_ms_by_tokens': ms,
+        'lm_head_ms': sw.elapsedMicroseconds / 1000 / reps,
+      };
+      log(
+        '$backend ${config.numLayers} layers: $ms, lm head ${result[backend]}',
+      );
+    } finally {
+      await model.close();
+    }
+  }
+  return result;
+}
+
 /// The process's memory by kind, in MB, where Linux reports it
 /// (/proc/self/status). RssAnon is the heap; RssFile holds the mapped
 /// weights, which the OS can drop, but on Android also the GPU driver's
@@ -215,10 +304,14 @@ Map<String, int> memoryBreakdown() {
 /// time and Dart's encoding, then 32 more timed per kernel kind (Vulkan
 /// times every dispatch), and the memory by kind before loading, after it,
 /// while decoding and after closing.
+///
+/// With [shapes], it then times every kind of decode matrix across its
+/// layers in each layout (GpuForward.benchmarkDecodeShapes).
 Future<Map<String, Object?>> qwen3GpuProfile(
   String bundle,
   void Function(String) log, {
   required int contextLength,
+  bool shapes = false,
 }) async {
   final record = <String, Object?>{'memory_before': memoryBreakdown()};
   final cache =
@@ -298,6 +391,17 @@ Future<Map<String, Object?>> qwen3GpuProfile(
       GpuForward.profiling = false;
     }
     log('memory: ${record['memory_loaded']} -> ${record['memory_decoding']}');
+    if (shapes) {
+      record['shapes'] = gpu.benchmarkDecodeShapes(
+        onSample: (s) => log(
+          '${s['kind']} [${s['matrix_rows']}, ${s['matrix_cols']}] x${s['matrices']}, '
+          'rows ${s['decode_rows']}, group ${s['q8_workgroup']}: '
+          '${(s['gpu_ms_per_matrix'] as double).toStringAsFixed(3)} ms, '
+          '${(s['gb_per_s'] as double).toStringAsFixed(1)} GB/s, '
+          '${s['differing_outputs']} differing',
+        ),
+      );
+    }
   } finally {
     await model.close();
   }

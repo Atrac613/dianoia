@@ -99,6 +99,31 @@ it rewords the answer from the first token and starts repeating a note, so
 the specs offer Q8 only. LFM3's Q4 is quantization-aware trained; Qwen3 has
 no such build.
 
+Better rounding does not rescue Q4_0 for these sizes.
+`tool/qwen3_q4_study.py` fake-quantizes the layer matrices in transformers
+(the embedding stays Q8, as in dianoia). It measures KL divergence against
+float32 over every position of the oracle's long chat, teacher-forced. Its
+Q8 row reproduces the engine's Q8 greedy agreement above.
+
+| Scheme (bits a weight) | 0.6B KL | 1.7B KL |
+|---|---:|---:|
+| Q8 (9) | 0.0011 | 0.0016 |
+| 6-bit, per 32 (6.5) | 0.014 | 0.012 |
+| Q5_0 (5.5) | 0.057 | 0.047 |
+| Q4_0, round-to-nearest (4.5) | 0.20 | 0.24 |
+| Q4_0, least-error scale | 0.18 | 0.22 |
+| Q4_0, activation-weighted error (imatrix) | 0.17 | 0.21 |
+| Q4_0, GPTQ | 0.15 | 0.15 |
+| Q4_0 imatrix, feed-forward kept Q8 | 0.081 | 0.065 |
+| Q4_1, round-to-nearest (5) | 0.20 | |
+
+Every Q4_0 variant stays about 100 times further from float32 than Q8.
+Quantizing one layer, or one kind of matrix, at a time shows no culprit to
+keep at Q8: every layer adds 0.004 to 0.02 and every kind 0.014 to 0.054
+(0.6B). Fewer bytes per token for 0.6B and 1.7B would take a 6-bit format,
+with about 0.78 times Q8's bytes (the LM head kept Q8) and new kernels on
+each backend.
+
 Qwen's Q8_0 GGUF is not dianoia's Q8 of the published BF16 weights. The
 embedding matches it value for value, but a third of the layer matrices'
 values are one step off and block scales differ by up to 10% in both
@@ -151,15 +176,46 @@ buffer, which is uncached for the CPU on a phone: an argmax over Qwen3's
 151,936 logits took 21 ms a token there. The logits are now copied out in
 one 1 ms copy first. Of the 47 ms a token left, the GPU spends 39 ms, 36 of
 them in the Q8 matrix-vector products, which read the weights at about
-19 GB/s against the 41 GB/s the GPU copies at. The 1.7B row predates the
-copy. A Pixel 8 that has been running for a while throttles: a second 1.7B
-run decoded at 5 tok/s on Vulkan and loaded in 19 s.
+19 GB/s. That is close to what this GPU reads at all: its copy kernel moves
+41 GB/s counting reads and writes, about 20 GB/s each way. Timing every
+matrix kind across its 28 layers (`GPU_SHAPES=1
+tool/device_bench/run_android_qwen3.sh`) shows the same 16-20 GB/s for
+small matrices (1,024 rows) and large ones, and 22-29 GB/s for the LM head.
+The best rows per subgroup and workgroup size for each kind would save
+about 6 of the 37 ms (17%), and no layout beats the CPU, which reads at a
+similar rate. Decoding Qwen3 faster on this phone means reading fewer bytes
+a token. The 1.7B row predates the copy. A Pixel 8 that has been running
+for a while throttles: a second 1.7B run decoded at 5 tok/s on Vulkan and
+loaded in 19 s.
 
 So `InferenceBackend.auto` runs Qwen3 on the CPU kernels on Android, where
 they decode faster and need less memory. The GPU still prefills about
 twice as fast (169 tokens in 1.1 s against 2.2 s on 0.6B), so an app whose
 prompts are long can ask for `InferenceBackend.gpu`. LFM3 and other
 platforms keep the GPU.
+
+### Speculative decoding
+
+Speculative decoding, with 0.6B drafting tokens for 1.7B to verify in one
+pass, was measured and not built. In float32 the draft's next token is the
+target's 65 to 87% of the time (76% over six prompts, highest on code and
+thinking), sampled with the thinking preset or greedy alike. A pass over
+several tokens on the iPhone (`VERIFY_COST=1
+tool/device_bench/run_ios_qwen3.sh`), in ms:
+
+| Tokens in the pass | 1 | 2 | 3 | 4 | 8 |
+|---|---:|---:|---:|---:|---:|
+| 1.7B, Metal | 58 | 72 | 73 | 76 | 121 |
+| 1.7B, CPU | 61 | 85 | 111 | 137 | 245 |
+| 0.6B, Metal | 22 | 29 | 31 | 32 | 46 |
+
+Metal verifies four tokens for 1.3 times one, but each drafted token costs
+22 ms, more than a third of the target's step. At 76% the best draft length
+(two) decodes 1.13 times as fast on Metal (1.29 at 86%) and no faster on
+the CPU, whose cost grows with the tokens. That is not worth a second
+model's 0.7 GB. A draft that costs nearly nothing, such as copying a
+continuation found earlier in the context, would only need 1.35 tokens
+accepted per pass on Metal.
 
 ## Using it
 
@@ -194,5 +250,6 @@ since `ToolCall.arguments` holds strings for both families.
   about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
   against about 45 KB for LFM3-1.7B. The default 2048-token context needs
   about 470 MB; a 16-bit cache would halve it.
-- Q4: a quality-preserving 4-bit format (or per-channel scales) would make
-  Q4 worth offering for Qwen3.
+- Q4: no Q4_0 rounding keeps Qwen3-0.6B or 1.7B close to float32
+  (Validation). Qwen ships Q4_K_M only from Qwen3-4B up, which would need
+  K-quant kernels.
