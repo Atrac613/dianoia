@@ -112,9 +112,9 @@ Q8 row reproduces the engine's Q8 greedy agreement above.
 | Q5_0 (5.5) | 0.057 | 0.047 |
 | Q4_0, round-to-nearest (4.5) | 0.20 | 0.24 |
 | Q4_0, least-error scale | 0.18 | 0.22 |
-| Q4_0, activation-weighted error (imatrix) | 0.18 | 0.20 |
-| Q4_0, GPTQ | 0.19 | 0.15 |
-| Q4_0 imatrix, feed-forward kept Q8 | 0.085 | 0.066 |
+| Q4_0, activation-weighted error (imatrix) | 0.17 | 0.21 |
+| Q4_0, GPTQ | 0.15 | 0.15 |
+| Q4_0 imatrix, feed-forward kept Q8 | 0.081 | 0.065 |
 | Q4_1, round-to-nearest (5) | 0.20 | |
 
 Every Q4_0 variant stays about 100 times further from float32 than Q8.

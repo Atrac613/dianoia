@@ -46,6 +46,10 @@ fi
 staging="$(mktemp -d)"
 trap 'rm -rf "${staging:?}"' EXIT
 flag() { [[ -n "${1:-}" ]] && echo true || echo false; }
+if [[ -n "${VERIFY_COST:-}" && -n "${GPU_PROFILE:-}${GPU_SHAPES:-}" ]]; then
+  echo "VERIFY_COST is a run of its own: unset GPU_PROFILE and GPU_SHAPES" >&2
+  exit 1
+fi
 printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "gpu_profile": %s, "gpu_shapes": %s, "verify_cost": %s, "build": "%s"}\n' \
   "$SPEC" "${REINSTALL:-false}" "$(flag "${GPU_PROFILE:-}${GPU_SHAPES:-}")" "$(flag "${GPU_SHAPES:-}")" "$(flag "${VERIFY_COST:-}")" \
   "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
@@ -61,7 +65,12 @@ adb shell input keyevent KEYCODE_WAKEUP >/dev/null
 adb shell am start -S -n "$PACKAGE/.MainActivity" >/dev/null
 
 mkdir -p "$APP/results"
-out="$APP/results/android_qwen3_$SPEC${GPU_PROFILE:+_profile}${GPU_SHAPES:+_shapes}${VERIFY_COST:+_verify_cost}.json"
+# VERIFY_COST times both sizes, whatever SPEC installs first.
+if [[ -n "${VERIFY_COST:-}" ]]; then
+  out="$APP/results/android_qwen3_verify_cost.json"
+else
+  out="$APP/results/android_qwen3_$SPEC${GPU_PROFILE:+_profile}${GPU_SHAPES:+_shapes}.json"
+fi
 for _ in $(seq 1 160); do
   sleep 15
   pull "$staging/latest.json" || continue

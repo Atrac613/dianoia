@@ -54,7 +54,12 @@ done
 [[ -n "$launched" ]] || { echo "the phone stayed locked" >&2; exit 1; }
 
 mkdir -p "$APP/results"
-out="$APP/results/iphone_qwen3_$SPEC${VERIFY_COST:+_verify_cost}.json"
+# VERIFY_COST times both sizes, whatever SPEC installs first.
+if [[ -n "${VERIFY_COST:-}" ]]; then
+  out="$APP/results/iphone_qwen3_verify_cost.json"
+else
+  out="$APP/results/iphone_qwen3_$SPEC.json"
+fi
 for _ in $(seq 1 160); do
   sleep 15
   pull "$staging/latest.json" || continue

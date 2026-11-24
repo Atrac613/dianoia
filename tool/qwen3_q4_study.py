@@ -43,20 +43,33 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 
 BLOCK = 32
 
+# Quantize-dequantize of one [rows, cols] matrix, given its per-column
+# importance where a scheme uses one.
+Quantizer = Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]
+
 # Scale candidates for mse and imatrix: the block's signed extreme divided
 # by these. Q4_0's rule is -8; smaller magnitudes clip the extreme.
-_DIVISORS = torch.tensor([-8.0 + 0.25 * i for i in range(13)] + [7.0 - 0.25 * i for i in range(9)])
+_DIVISORS = torch.tensor(
+    [-8.0 + 0.25 * i for i in range(13)] + [7.0 - 0.25 * i for i in range(9)]
+)
 
 
 def _blocks(w: torch.Tensor) -> torch.Tensor:
+    """Views [rows, cols] as [rows, cols / 32, 32]."""
     rows, cols = w.shape
     assert cols % BLOCK == 0, cols
     return w.reshape(rows, cols // BLOCK, BLOCK)
@@ -71,11 +84,13 @@ def q8(w: torch.Tensor, _: torch.Tensor | None) -> torch.Tensor:
 
 
 def _signed_max(x: torch.Tensor) -> torch.Tensor:
+    """Per block, the value of largest magnitude, with its sign."""
     idx = x.abs().argmax(-1, keepdim=True)
     return torch.gather(x, -1, idx)
 
 
 def _q4(x: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """Q4_0 values -8..7 at scale [d], dequantized."""
     d16 = d.half().float()  # Q4_0 stores the scale as a half
     inv = torch.where(d16 == 0, torch.zeros_like(d16), 1 / d16)
     return torch.round(x * inv).clamp(-8, 7) * d16
@@ -88,7 +103,7 @@ def rtn(w: torch.Tensor, _: torch.Tensor | None) -> torch.Tensor:
     return _q4(x, d).reshape(w.shape)
 
 
-def _sym(bits: int):
+def _sym(bits: int) -> Quantizer:
     """llama.cpp's Q5_0-style rule for [bits]: values -2^(b-1)..2^(b-1)-1,
     d = signed extreme / -2^(b-1), a half scale per 32: bits + 0.5 bits."""
     lo = -(1 << (bits - 1))
@@ -136,10 +151,12 @@ def _search(w: torch.Tensor, importance: torch.Tensor | None) -> torch.Tensor:
 
 
 def mse(w: torch.Tensor, _: torch.Tensor | None) -> torch.Tensor:
+    """Q4_0 with each block's least-squared-error scale."""
     return _search(w, None)
 
 
 def imatrix(w: torch.Tensor, importance: torch.Tensor | None) -> torch.Tensor:
+    """As [mse], the error weighted by each column's importance."""
     return _search(w, importance)
 
 
@@ -152,7 +169,9 @@ def gptq(w: torch.Tensor, hessian: torch.Tensor, damp: float = 0.01) -> torch.Te
     h[dead, dead] = 1
     w[:, dead] = 0
     h += damp * torch.mean(torch.diag(h)) * torch.eye(cols, dtype=h.dtype)
-    hinv = torch.linalg.cholesky(torch.cholesky_inverse(torch.linalg.cholesky(h)), upper=True)
+    hinv = torch.linalg.cholesky(
+        torch.cholesky_inverse(torch.linalg.cholesky(h)), upper=True
+    )
     q = torch.zeros_like(w)
     step = 128
     for i1 in range(0, cols, step):
@@ -191,15 +210,17 @@ def _best_scale(block: torch.Tensor) -> torch.Tensor:
     return best
 
 
-def _keep_q8(kinds: tuple[str, ...]):
-    def scheme(name: str):
+def _keep_q8(kinds: tuple[str, ...]) -> Callable[[str], Quantizer]:
+    """Q8 for matrices whose names contain one of [kinds], imatrix else."""
+
+    def scheme(name: str) -> Quantizer:
         return q8 if any(k in name for k in kinds) else imatrix
 
     return scheme
 
 
-# name: (quantizer per matrix name, needs the importance matrix)
-SCHEMES = {
+# name: (quantizer per matrix name, or "gptq"; needs calibration)
+SCHEMES: dict[str, tuple[Callable[[str], Quantizer | str], bool]] = {
     "q8": (lambda _: q8, False),
     "rtn": (lambda _: rtn, False),
     "mse": (lambda _: mse, False),
@@ -238,38 +259,84 @@ _CALIBRATION = [
 ]
 
 
-def calibration_sequences(model, tokenizer, samples: int) -> list[torch.Tensor]:
-    """The fixed texts as chats, then [samples] replies the model samples
-    itself (seeded) to each text's first line: text in the model's own
-    distribution, none of it from the oracle's prompts."""
+def calibration_sequences(
+    model: PreTrainedModel, tokenizer: PreTrainedTokenizerBase, samples: int
+) -> list[torch.Tensor]:
+    """Token sequences to calibrate on.
+
+    Each fixed text as a chat, then [samples] replies the model samples
+    itself (seeded) to the text's first line: text in the model's own
+    distribution, none of it from the oracle's prompts.
+
+    Args:
+        model: The unquantized model, which writes the replies.
+        tokenizer: Its tokenizer, with the chat template.
+        samples: Replies generated per text.
+
+    Returns:
+        One [1, n] tensor of token ids per sequence.
+    """
     seqs = []
     torch.manual_seed(0)
     for text in _CALIBRATION:
-        for prompt in [text] + [text.split("\n")[0][:80]] * samples:
+        first_line = text.split("\n")[0][:80]
+        for generate, prompt in [(False, text)] + [(True, first_line)] * samples:
             chat = tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt}], tokenize=False,
-                add_generation_prompt=prompt is not text, enable_thinking=False,
+                [{"role": "user", "content": prompt}],
+                tokenize=False,
+                add_generation_prompt=generate,
+                enable_thinking=False,
             )
             ids = tokenizer(chat, return_tensors="pt").input_ids
-            if prompt is not text:
+            if generate:
                 ids = model.generate(
-                    ids, max_new_tokens=192, do_sample=True, temperature=0.8,
-                    top_p=0.95, pad_token_id=0,
+                    ids,
+                    max_new_tokens=192,
+                    do_sample=True,
+                    temperature=0.8,
+                    top_p=0.95,
+                    pad_token_id=0,
                 )
             seqs.append(ids)
     return seqs
 
 
-def collect_statistics(model, linears, seqs, hessians: bool):
-    """Per layer matrix: the mean squared input per column and, with
-    [hessians], the inputs' second moment X^T X / n."""
-    sums = {n: torch.zeros(m.in_features, dtype=torch.float64) for n, m in linears.items()}
-    grams = {n: torch.zeros(m.in_features, m.in_features) for n, m in linears.items()} if hessians else {}
+def collect_statistics(
+    model: PreTrainedModel,
+    linears: dict[str, torch.nn.Linear],
+    seqs: list[torch.Tensor],
+    hessians: bool,
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+    """Input statistics of every layer matrix over [seqs].
+
+    Args:
+        model: The unquantized model.
+        linears: The layer matrices by module name.
+        seqs: Calibration token ids.
+        hessians: Whether to collect each matrix's input second moment too.
+
+    Returns:
+        The mean squared input per column of each matrix and, with
+        [hessians], X^T X / n of its inputs (otherwise empty).
+    """
+    sums = {
+        n: torch.zeros(m.in_features, dtype=torch.float64) for n, m in linears.items()
+    }
+    grams = (
+        {n: torch.zeros(m.in_features, m.in_features) for n, m in linears.items()}
+        if hessians
+        else {}
+    )
     counts = dict.fromkeys(linears, 0)
     hooks = []
     for n, m in linears.items():
 
-        def hook(_, inputs, __, n=n):
+        def hook(
+            _: torch.nn.Module,
+            inputs: tuple[torch.Tensor, ...],
+            __: torch.Tensor,
+            n: str = n,
+        ) -> None:
             x = inputs[0].reshape(-1, inputs[0].shape[-1])
             sums[n] += (x.double() ** 2).sum(0)
             if hessians:
@@ -294,12 +361,16 @@ def kl_top1(ref: torch.Tensor, got: torch.Tensor) -> tuple[float, float, float]:
     return kl.mean().item(), torch.quantile(kl, 0.99).item(), top1.item()
 
 
-def greedy_agreement(model, ids: torch.Tensor, ref: np.ndarray) -> int:
+def greedy_agreement(model: PreTrainedModel, ids: torch.Tensor, ref: np.ndarray) -> int:
     """Generated tokens equal to [ref] before the first difference."""
     out = model.generate(
-        ids, max_new_tokens=len(ref), min_new_tokens=len(ref), do_sample=False,
-        eos_token_id=None, pad_token_id=0,
-    )[0, ids.shape[1]:].numpy()
+        ids,
+        max_new_tokens=len(ref),
+        min_new_tokens=len(ref),
+        do_sample=False,
+        eos_token_id=None,
+        pad_token_id=0,
+    )[0, ids.shape[1] :].numpy()
     for i, (a, b) in enumerate(zip(out, ref)):
         if a != b:
             return i
@@ -313,8 +384,12 @@ def main() -> int:
     parser.add_argument("--runs", type=Path, required=True)
     parser.add_argument("--cases", nargs="+", default=["short_chat", "long_chat"])
     parser.add_argument("--schemes", nargs="+", default=list(SCHEMES))
-    parser.add_argument("--samples", type=int, default=4,
-                        help="self-generated calibration replies per text")
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=4,
+        help="self-generated calibration replies per text",
+    )
     args = parser.parse_args()
 
     torch.set_grad_enabled(False)
@@ -348,8 +423,12 @@ def main() -> int:
             model, linears, seqs, hessians="gptq" in args.schemes
         )
 
-    print(f"{'scheme':18s}  " + "  ".join(
-        f"{c + ' KL':>15s} {'p99':>6s} {'top1':>5s} {'greedy':>6s}" for c in cases))
+    print(
+        f"{'scheme':18s}  "
+        + "  ".join(
+            f"{c + ' KL':>15s} {'p99':>6s} {'top1':>5s} {'greedy':>6s}" for c in cases
+        )
+    )
     for name in args.schemes:
         pick, _ = SCHEMES[name]
         # The tied embedding: Q8 in every scheme, as in dianoia's caches.
@@ -365,7 +444,9 @@ def main() -> int:
         for case, (ids, gen, seq) in cases.items():
             kl, p99, top1 = kl_top1(reference[case], model(seq).logits[0])
             agree = greedy_agreement(model, ids, gen)
-            cells.append(f"{kl:15.4f} {p99:6.3f} {top1 * 100:5.1f} {agree:3d}/{len(gen)}")
+            cells.append(
+                f"{kl:15.4f} {p99:6.3f} {top1 * 100:5.1f} {agree:3d}/{len(gen)}"
+            )
         print(f"{name:18s}  " + "  ".join(cells), flush=True)
     return 0
 

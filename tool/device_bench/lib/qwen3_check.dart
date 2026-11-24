@@ -57,6 +57,9 @@ Future<void> qwen3Check(
   // Room for thinking, which took 1,699 tokens on the Mac for 1.7B.
   final contextLength = (config['context_length'] as num?)?.toInt() ?? 3072;
   if (config['verify_cost'] == true) {
+    if (config['gpu_profile'] == true) {
+      throw ArgumentError('verify_cost and gpu_profile are separate runs');
+    }
     // Speculative decoding: 0.6B drafts, 1.7B verifies. Both are needed.
     final costs = <String, Object?>{};
     record['verify_cost'] = costs;
