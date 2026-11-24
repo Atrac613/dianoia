@@ -184,14 +184,38 @@ small matrices (1,024 rows) and large ones, and 22-29 GB/s for the LM head.
 The best rows per subgroup and workgroup size for each kind would save
 about 6 of the 37 ms (17%), and no layout beats the CPU, which reads at a
 similar rate. Decoding Qwen3 faster on this phone means reading fewer bytes
-a token. The 1.7B row predates the copy. A Pixel 8 that has been running for a while throttles: a second 1.7B
-run decoded at 5 tok/s on Vulkan and loaded in 19 s.
+a token. The 1.7B row predates the copy. A Pixel 8 that has been running
+for a while throttles: a second 1.7B run decoded at 5 tok/s on Vulkan and
+loaded in 19 s.
 
 So `InferenceBackend.auto` runs Qwen3 on the CPU kernels on Android, where
 they decode faster and need less memory. The GPU still prefills about
 twice as fast (169 tokens in 1.1 s against 2.2 s on 0.6B), so an app whose
 prompts are long can ask for `InferenceBackend.gpu`. LFM3 and other
 platforms keep the GPU.
+
+### Speculative decoding
+
+Speculative decoding, with 0.6B drafting tokens for 1.7B to verify in one
+pass, was measured and not built. In float32 the draft's next token is the
+target's 65 to 87% of the time (76% over six prompts, highest on code and
+thinking), sampled with the thinking preset or greedy alike. A pass over
+several tokens on the iPhone (`VERIFY_COST=1
+tool/device_bench/run_ios_qwen3.sh`), in ms:
+
+| Tokens in the pass | 1 | 2 | 3 | 4 | 8 |
+|---|---:|---:|---:|---:|---:|
+| 1.7B, Metal | 58 | 72 | 73 | 76 | 121 |
+| 1.7B, CPU | 61 | 85 | 111 | 137 | 245 |
+| 0.6B, Metal | 22 | 29 | 31 | 32 | 46 |
+
+Metal verifies four tokens for 1.3 times one, but each drafted token costs
+22 ms, more than a third of the target's step. At 76% the best draft length
+(two) decodes 1.13 times as fast on Metal (1.29 at 86%) and no faster on
+the CPU, whose cost grows with the tokens. That is not worth a second
+model's 0.7 GB. A draft that costs nearly nothing, such as copying a
+continuation found earlier in the context, would only need 1.35 tokens
+accepted per pass on Metal.
 
 ## Using it
 
