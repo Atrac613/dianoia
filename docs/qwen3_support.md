@@ -220,8 +220,14 @@ accepted per pass on Metal.
 ### Long conversations
 
 Every Qwen3 layer is attention, so each token decoded reads the whole KV
-cache: about 230 KB per earlier token, 470 MB at 2,048 tokens, which
-outweighs 0.6B's 0.65 GB of weights before long. The attention kernels
+cache: in float32 about 230 KB per earlier token (28 layers × 2 × 1,024
+floats × 4 bytes), 470 MB at 2,048 tokens, which outweighs 0.6B's 0.65 GB
+of weights before long. Two changes cut that cost: attention split by
+blocks of keys, then a half-precision cache.
+
+#### Split attention
+
+The attention kernels
 gave each query head of a token one workgroup (one task on the CPU) that
 walked every key, and each of the two query heads per KV head read it.
 Past 512 keys, passes of up to 8 tokens now attend by blocks of keys: one
@@ -242,8 +248,9 @@ One token deep into the cache, Q8, in ms, whole and split. An M2 Max
 | 1.7B, Metal | 9.1 | 14.4 → 10.2 | 19.5 → 12.2 |
 | 0.6B, CPU | 15.6 | 40.6 → 33.5 | 77.5 → 57.3 |
 
-An iPhone 15 Pro Max (`CONTEXT_COST=1 tool/device_bench/run_ios_qwen3.sh`,
-whole and split passes alternating, on a phone already warm):
+An iPhone 15 Pro Max (`CONTEXT_COST=1 CONTEXT_COMPARE=split
+tool/device_bench/run_ios_qwen3.sh`, whole and split passes alternating,
+on a phone already warm, both with a float32 cache):
 
 | | 1,024 | 2,048 | 3,000 |
 |---|---:|---:|---:|
@@ -258,6 +265,41 @@ already read the cache near its memory bandwidth, so the GPU splits by
 default on macOS only (`GpuForward.attentionSplitFrom`). The Vulkan
 kernels have not run on a device yet and stay off. What is left on the
 phone's GPU is the cache's bytes.
+
+#### Half-precision cache
+
+`KvCacheFormat.f16` stores keys and values as IEEE halves, rounded to
+nearest even as rows are written and widened to float32 as attention reads
+them, so a token costs about 115 KB: 235 MB at 2,048 tokens. Qwen3 uses it
+by default on the CPU and on Metal (`TextModel.load(kvCache:)` chooses);
+LFM3, whose cache is a fifth of Qwen3's, keeps float32 and with it the
+lab's arithmetic, and Vulkan keeps float32 until its half kernels have run
+on a device. Over 3,500 tokens of real text (this repository's README and
+this page), the next-token distribution moves from the float32 cache's by
+a mean KL of about 1e-6 at 70 positions (Q8 weights: 1e-3), on Metal and on
+the CPU with float inputs, for 0.6B and 1.7B, and every argmax agrees.
+
+One token deep into the cache, float32 → half, in ms. The M2 Max, 0.6B:
+
+| | 1,024 | 2,048 | 4,000 |
+|---|---:|---:|---:|
+| CPU | 24.9 → 16.9 | 37.1 → 28.1 | 55.3 → 31.0 |
+| Metal | 5.3 → 5.3 | 5.7 → 6.1 | 8.0 → 7.7 |
+
+The iPhone (`CONTEXT_COST=1 tool/device_bench/run_ios_qwen3.sh`, the two
+caches alternating, attention split as by default):
+
+| | 64 | 1,024 | 2,048 | 3,000 |
+|---|---:|---:|---:|---:|
+| 0.6B, Metal | 23.6 → 24.0 | 30.4 → 26.9 | 35.0 → 29.1 | 41.4 → 32.5 |
+| 1.7B, Metal | 60.3 → 59.9 | 64.3 → 62.3 | 68.3 → 64.2 | 75.7 → 69.2 |
+| 0.6B, CPU | 27.8 → 26.7 | 48.2 → 42.0 | 66.7 → 51.0 | 93.6 → 70.5 |
+| 1.7B, CPU | 68.7 → 69.7 | 129.2 → 120.6 | 209.2 → 161.9 | 213.1 → 169.9 |
+
+On the phone's GPU, which split attention left as it was, the half cache
+halves what 3,000 tokens of context add to a 0.6B token (17.8 ms to 8.5)
+and makes 1.7B 9% faster there; the CPU gains another 1.2 to 1.3 times.
+The Mac's Metal has bandwidth to spare and does not change.
 
 ## Using it
 
@@ -288,12 +330,9 @@ since `ToolCall.arguments` holds strings for both families.
   Qwen3 no faster than the CPU (above): its Q8 matrix-vector products are
   bound by memory bandwidth in every layout, so `auto` uses the CPU there.
   Decoding faster on that GPU needs fewer bytes per weight.
-- KV cache in float32: every Qwen3 layer is attention, so a token costs
-  about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
-  against about 45 KB for LFM3-1.7B. The default 2048-token context needs
-  about 470 MB; a 16-bit cache would halve it, and with it the bytes a
-  token deep into a conversation reads (Long conversations).
-- Split attention on Vulkan is unchecked on a device, so it is off there.
+- Split attention and the half KV cache are unchecked on a Vulkan
+  device, so Vulkan keeps whole attention and a float32 cache: 230 KB a
+  token, 470 MB at 2,048 tokens (Long conversations).
 - Q4: no Q4_0 rounding keeps Qwen3-0.6B or 1.7B close to float32
   (Validation). Qwen ships Q4_K_M only from Qwen3-4B up, which would need
   K-quant kernels.
