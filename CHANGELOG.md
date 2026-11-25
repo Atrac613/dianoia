@@ -1,3 +1,49 @@
+## 0.6.0
+
+- Qwen3 dense models run for text, tool calling and thinking, alongside
+  LFM3 (Qwen3-0.6B and Qwen3-1.7B checked). `ModelSpec.qwen3_0_6bQ8` and
+  `ModelSpec.qwen3_1_7bQ8` install Qwen's official Q8_0 GGUFs; installing
+  only rearranges their blocks, so nothing is quantized on the device.
+  Qwen3 tool calls parse into the same `ToolCall`s as LFM3's; argument
+  values that are not strings arrive as their JSON text. See
+  `docs/qwen3_support.md`.
+- `LocalModel.chat` and `ChatSession` take `sampling`, a `SamplingParams`
+  (now exported by `package:dianoia/dianoia.dart`) with temperature, top-k,
+  top-p, min-p and an optional seed. Greedy decoding stays the default;
+  `SamplingParams.qwen3Thinking` and `qwen3NonThinking` are Qwen's
+  recommendations. `enableThinking` (off by default) lets the model reason
+  before it answers, and `ChatTurn.reply.reasoning` holds that reasoning.
+- Replies stop on every end token the model declares, including those in
+  `generation_config.json`, which `ModelSpec` installs and `pack` keeps in
+  the bundle when it adds end tokens. LFM3 declares one, so its replies are
+  unchanged.
+- On Android, `InferenceBackend.auto` runs Qwen3 on the CPU kernels, which
+  decode it faster than Vulkan and with less memory;
+  `InferenceBackend.gpu` still uses Vulkan, which prefills long prompts
+  about twice as fast.
+- Conversations on models without conv layers (Qwen3) keep the whole
+  common prefix of the cache when the prompt diverges, instead of
+  re-feeding from the last checkpoint.
+- On Vulkan, the Q8 cache's mapped pages are given back to the OS once the
+  GPU has its copy, so the weights are no longer held twice: on a Pixel 8
+  the Qwen3-1.7B GPU footprint drops from about 3.97 to 2.79 GB. GPU logits
+  are copied out before Dart reads them.
+- Quantized caches are named by architecture (`lfm3-q8.cache`,
+  `qwen3-q8.cache`); `LocalModel.load` and the CLI find either.
+- GGUF headers of files over 1 GiB parse on phones, and mapped views are
+  capped at 1 GiB. Qwen3 GGUF metadata is checked against the config,
+  `ModelSpec` file names are validated before installing, and a config with
+  no end token is rejected with a clear error instead of a `TypeError`.
+- CLI: `import-hf` imports Hugging Face Qwen3 checkpoints (BF16, one file
+  or shards), `import-gguf` takes Qwen's Q8_0 GGUFs, and `ask` takes
+  `--think`, `--temperature`, `--top-k`, `--top-p`, `--min-p` and `--seed`.
+- Lab: `Lfm3Model`, `Lfm3Config` and `Lfm3Tokenizer` are now `TextModel`,
+  `TextModelConfig` and `BpeTokenizer`; the old names remain as typedefs.
+  Prompts render and replies parse through a per-family `ChatFormat`.
+  `packTextBundle` and `buildTextBundle` move from the CLI into the
+  library, and `lab.dart` also exports the sampler, the Hugging Face
+  importer and the Qwen3 chat format.
+
 ## 0.5.0
 
 - Text-to-speech is part of the app API. `package:dianoia/dianoia.dart`
