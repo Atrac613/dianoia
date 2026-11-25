@@ -714,12 +714,14 @@ kernel void attention_merge(device const float* partials [[buffer(0)]],
   }
 }
 
-// dst[i] = half(src[i]), rounded to nearest even: rows of a half KV cache.
+// dst[i] = half(src[i]), clamped to the finite halves (an infinity would
+// become NaN in attention) and rounded to nearest even: rows of a half KV
+// cache.
 kernel void f32_to_f16(device const float* src [[buffer(0)]],
                        device half* dst [[buffer(1)]],
                        constant uint& count [[buffer(2)]],
                        uint i [[thread_position_in_grid]]) {
-  if (i < count) dst[i] = half(src[i]);
+  if (i < count) dst[i] = half(clamp(src[i], -65504.0f, 65504.0f));
 }
 
 // g = silu(g) * u.

@@ -823,17 +823,31 @@ static inline void axpy_hd_f16(float* acc, const uint16_t* v, float w, int64_t h
 }
 #endif
 
-// dst[i] = half(src[i]), rounded to nearest even.
+// The largest finite half: rows are clamped to it rather than becoming
+// infinities, which attention would turn into NaN.
+#define HALF_MAX 65504.0f
+
+#ifdef LAB_NEON
+static inline uint16x4_t to_half4(float32x4_t x) {
+  x = vminq_f32(vmaxq_f32(x, vdupq_n_f32(-HALF_MAX)), vdupq_n_f32(HALF_MAX));
+  return vreinterpret_u16_f16(vcvt_f16_f32(x));
+}
+#else
+static inline __m128i to_half8(__m256 x) {
+  x = _mm256_min_ps(_mm256_max_ps(x, _mm256_set1_ps(-HALF_MAX)), _mm256_set1_ps(HALF_MAX));
+  return _mm256_cvtps_ph(x, _MM_FROUND_TO_NEAREST_INT);
+}
+#endif
+
+// dst[i] = half(src[i]), clamped to the finite halves and rounded to
+// nearest even.
 LAB_EXPORT void lab_f32_to_f16(const float* src, uint16_t* dst, int64_t count) {
   int64_t i = 0;
 #ifdef LAB_NEON
-  for (; i + 4 <= count; i += 4) {
-    vst1_u16(dst + i, vreinterpret_u16_f16(vcvt_f16_f32(vld1q_f32(src + i))));
-  }
+  for (; i + 4 <= count; i += 4) vst1_u16(dst + i, to_half4(vld1q_f32(src + i)));
 #else
   for (; i + 8 <= count; i += 8) {
-    _mm_storeu_si128((__m128i*)(dst + i),
-                     _mm256_cvtps_ph(_mm256_loadu_ps(src + i), _MM_FROUND_TO_NEAREST_INT));
+    _mm_storeu_si128((__m128i*)(dst + i), to_half8(_mm256_loadu_ps(src + i)));
   }
 #endif
   if (i < count) {
@@ -841,10 +855,10 @@ LAB_EXPORT void lab_f32_to_f16(const float* src, uint16_t* dst, int64_t count) {
     uint16_t out[8];
     memcpy(tail, src + i, (size_t)(count - i) * sizeof(float));
 #ifdef LAB_NEON
-    vst1_u16(out, vreinterpret_u16_f16(vcvt_f16_f32(vld1q_f32(tail))));
-    vst1_u16(out + 4, vreinterpret_u16_f16(vcvt_f16_f32(vld1q_f32(tail + 4))));
+    vst1_u16(out, to_half4(vld1q_f32(tail)));
+    vst1_u16(out + 4, to_half4(vld1q_f32(tail + 4)));
 #else
-    _mm_storeu_si128((__m128i*)out, _mm256_cvtps_ph(_mm256_loadu_ps(tail), _MM_FROUND_TO_NEAREST_INT));
+    _mm_storeu_si128((__m128i*)out, to_half8(_mm256_loadu_ps(tail)));
 #endif
     memcpy(dst + i, out, (size_t)(count - i) * sizeof(uint16_t));
   }

@@ -40,7 +40,8 @@ void main() {
         1 + 3 / 2048, // halfway again: up to even
         1 / 16384, // the smallest normal half
         1 / 16777216, // the smallest subnormal half
-        1e6, // overflows to infinity
+        1e6, // clamped to the largest finite half
+        -1e6,
       ]);
       final halves = Uint16List(src.length);
       nativeF32ToF16(src, 0, halves, 0, src.length);
@@ -53,13 +54,14 @@ void main() {
         0x3c02,
         0x0400,
         0x0001,
-        0x7c00,
+        0x7bff,
+        0xfbff,
       ]);
       final back = Float32List(src.length);
       nativeF16ToF32(halves, back);
       expect(back.sublist(0, 4), src.sublist(0, 4));
       expect(back[6], src[6]);
-      expect(back[8], double.infinity);
+      expect(back[8], 65504);
     });
 
     test('converts a range with an odd tail', () {
