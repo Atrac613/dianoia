@@ -129,8 +129,9 @@ final class LayerShard {
     if ((q8Cache != null || q8Built != null) && shards != 1) {
       throw ArgumentError('the Q8 cache holds whole matrices: one shard only');
     }
-    if (kvCache == KvCacheFormat.f16 && !NativeKernels.isLoaded) {
-      throw ArgumentError('a half KV cache needs the native kernels');
+    if (kvCache == KvCacheFormat.f16 &&
+        (!NativeKernels.isLoaded || !NativeKernels.instance.halves)) {
+      throw ArgumentError('a half KV cache needs native kernels that have it');
     }
     TypedData cacheRows(int count) =>
         kvCache == KvCacheFormat.f16 ? Uint16List(count) : Float32List(count);
@@ -388,6 +389,10 @@ final class LayerShard {
   );
   late final Float32List _gate = Float32List(maxChunk * config.numHeads);
   late final Float64List _scores = Float64List(maxSeq);
+
+  // A half cache widened to float32 for the Dart reference attention, made
+  // on first use.
+  Float32List? _widenedKeys, _widenedValues;
   late final Float32List _g = Float32List(maxChunk * config.intermediateSize);
   late final Float32List _u = Float32List(maxChunk * config.intermediateSize);
   late final Float32List _logits = Float32List(_lmHead.rows);
@@ -595,22 +600,26 @@ final class LayerShard {
       return;
     }
 
-    // The Dart reference reads float32 rows: a half cache is widened first.
+    // The Dart reference reads float32 rows: a half cache is widened first,
+    // into scratch every layer shares, from the first row any token sees.
     final Float32List keyRows, valueRows;
     if (keys is Float32List && values is Float32List) {
       keyRows = keys;
       valueRows = values;
     } else {
-      final count = (position + n) * kvDim;
-      keyRows = Float32List(count);
-      valueRows = Float32List(count);
+      final first = att.sliding
+          ? math.max(0, position - c.slidingWindow + 1) * kvDim
+          : 0;
+      final end = (position + n) * kvDim;
+      keyRows = _widenedKeys ??= Float32List(maxSeq * kvDim);
+      valueRows = _widenedValues ??= Float32List(maxSeq * kvDim);
       nativeF16ToF32(
-        Uint16List.sublistView(keys as Uint16List, 0, count),
-        keyRows,
+        Uint16List.sublistView(keys as Uint16List, first, end),
+        Float32List.sublistView(keyRows, first, end),
       );
       nativeF16ToF32(
-        Uint16List.sublistView(values as Uint16List, 0, count),
-        valueRows,
+        Uint16List.sublistView(values as Uint16List, first, end),
+        Float32List.sublistView(valueRows, first, end),
       );
     }
     final group = c.numHeads ~/ c.numKvHeads;
