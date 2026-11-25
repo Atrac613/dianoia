@@ -23,6 +23,7 @@
 library;
 
 import 'dart:ffi';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -513,8 +514,13 @@ final class GpuForward {
   /// shorter passes stay bit-identical to the lab.
   static const attentionSplitTokens = 8;
 
-  /// See [attentionSplitTokens]. 0 turns the split off.
-  static int attentionSplitFrom = 512;
+  /// See [attentionSplitTokens]. 0 turns the split off, the default except
+  /// on macOS. An M2 Max's GPU decodes Qwen3-0.6B at 2048 keys in 6.1 ms a
+  /// token split against 9.9 whole, but an iPhone 15 Pro Max's no faster
+  /// (36.7 against 37.4 ms; 1.7B 67.6 against 68.2): with its few cores, the
+  /// whole kernel already reads the cache near the phone's bandwidth. The
+  /// Vulkan kernels are untested on a device.
+  static int attentionSplitFrom = Platform.isMacOS ? 512 : 0;
 
   /// Keys per block of the split, [minAttentionBlock] to
   /// [maxAttentionBlock].
