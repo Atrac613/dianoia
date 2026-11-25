@@ -1,0 +1,18 @@
+#version 460
+#include "common.glsl"
+
+// Rows into a KV cache of halves: dst word i = halves of src[2i], src[2i+1].
+// count is even.
+layout(local_size_x = 256) in;
+layout(push_constant) uniform Params {
+  Floats src;
+  Uints dst;
+  uint count;
+} p;
+
+void main() {
+  const uint i = gl_GlobalInvocationID.x;
+  if (2u * i < p.count) {
+    p.dst.v[i] = packHalf2x16(vec2(p.src.v[2u * i], p.src.v[2u * i + 1u]));
+  }
+}

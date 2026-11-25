@@ -753,16 +753,125 @@ LAB_EXPORT void lab_attention(const float* q, const float* keys, const float* va
 // than lab_attention's, so results differ in the last bits. Query heads per
 // KV head at most SPLIT_GROUP, hd at most SPLIT_HD, block at most
 // SPLIT_BLOCK, all checked by the caller.
+//
+// The _f16 kernels read a cache of IEEE half-precision bit patterns
+// (lab_f32_to_f16 writes them), widened to float32 as they are read; all
+// arithmetic stays float32.
 
 #define SPLIT_GROUP 8
 #define SPLIT_HD 256
 #define SPLIT_BLOCK 512
 
 typedef struct {
-  const float *q, *keys, *values, *gate;
+  const float* q;
+  const void *keys, *values;  // float, or uint16_t halves with `half`
+  const float* gate;
   float *out, *partials;
-  int64_t n, pos0, heads, kv_heads, hd, window, block, blocks;
+  int64_t n, pos0, heads, kv_heads, hd, window, block, blocks, half;
 } Split;
+
+// Half-precision rows. hd is a multiple of 4.
+#ifdef LAB_NEON
+static inline float32x4_t load4_f16(const uint16_t* p) {
+  return vcvt_f32_f16(vreinterpret_f16_u16(vld1_u16(p)));
+}
+
+// dot_hd's order, with b widened from halves.
+static float dot_hd_f16(const float* a, const uint16_t* b, int64_t hd) {
+  float32x4_t acc0 = vdupq_n_f32(0.0f), acc1 = vdupq_n_f32(0.0f);
+  int64_t d = 0;
+  for (; d + 8 <= hd; d += 8) {
+    acc0 = vfmaq_f32(acc0, vld1q_f32(a + d), load4_f16(b + d));
+    acc1 = vfmaq_f32(acc1, vld1q_f32(a + d + 4), load4_f16(b + d + 4));
+  }
+  for (; d < hd; d += 4) acc0 = vfmaq_f32(acc0, vld1q_f32(a + d), load4_f16(b + d));
+  return lane_sum(vaddq_f32(acc0, acc1));
+}
+
+static inline void axpy_hd_f16(float* acc, const uint16_t* v, float w, int64_t hd) {
+  for (int64_t d = 0; d < hd; d += 4) {
+    vst1q_f32(acc + d, vfmaq_n_f32(vld1q_f32(acc + d), load4_f16(v + d), w));
+  }
+}
+#else
+static inline __m128 load4_f16(const uint16_t* p) {
+  return _mm_cvtph_ps(_mm_loadl_epi64((const __m128i*)p));
+}
+
+static float dot_hd_f16(const float* a, const uint16_t* b, int64_t hd) {
+  __m256 acc = _mm256_setzero_ps();
+  int64_t d = 0;
+  for (; d + 8 <= hd; d += 8) {
+    acc = _mm256_fmadd_ps(_mm256_loadu_ps(a + d),
+                          _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(b + d))), acc);
+  }
+  __m128 low = _mm_add_ps(_mm256_castps256_ps128(acc), _mm256_extractf128_ps(acc, 1));
+  for (; d < hd; d += 4) low = _mm_fmadd_ps(_mm_loadu_ps(a + d), load4_f16(b + d), low);
+  return lane_sum(low);
+}
+
+static inline void axpy_hd_f16(float* acc, const uint16_t* v, float w, int64_t hd) {
+  int64_t d = 0;
+  for (; d + 8 <= hd; d += 8) {
+    _mm256_storeu_ps(acc + d,
+                     _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(v + d))),
+                                     _mm256_set1_ps(w), _mm256_loadu_ps(acc + d)));
+  }
+  for (; d < hd; d += 4) {
+    _mm_storeu_ps(acc + d, _mm_fmadd_ps(load4_f16(v + d), _mm_set1_ps(w), _mm_loadu_ps(acc + d)));
+  }
+}
+#endif
+
+// dst[i] = half(src[i]), rounded to nearest even.
+LAB_EXPORT void lab_f32_to_f16(const float* src, uint16_t* dst, int64_t count) {
+  int64_t i = 0;
+#ifdef LAB_NEON
+  for (; i + 4 <= count; i += 4) {
+    vst1_u16(dst + i, vreinterpret_u16_f16(vcvt_f16_f32(vld1q_f32(src + i))));
+  }
+#else
+  for (; i + 8 <= count; i += 8) {
+    _mm_storeu_si128((__m128i*)(dst + i),
+                     _mm256_cvtps_ph(_mm256_loadu_ps(src + i), _MM_FROUND_TO_NEAREST_INT));
+  }
+#endif
+  if (i < count) {
+    float tail[8] = {0};
+    uint16_t out[8];
+    memcpy(tail, src + i, (size_t)(count - i) * sizeof(float));
+#ifdef LAB_NEON
+    vst1_u16(out, vreinterpret_u16_f16(vcvt_f16_f32(vld1q_f32(tail))));
+    vst1_u16(out + 4, vreinterpret_u16_f16(vcvt_f16_f32(vld1q_f32(tail + 4))));
+#else
+    _mm_storeu_si128((__m128i*)out, _mm256_cvtps_ph(_mm256_loadu_ps(tail), _MM_FROUND_TO_NEAREST_INT));
+#endif
+    memcpy(dst + i, out, (size_t)(count - i) * sizeof(uint16_t));
+  }
+}
+
+// dst[i] = float(src[i]), exactly.
+LAB_EXPORT void lab_f16_to_f32(const uint16_t* src, float* dst, int64_t count) {
+  int64_t i = 0;
+  for (; i + 4 <= count; i += 4) {
+#ifdef LAB_NEON
+    vst1q_f32(dst + i, load4_f16(src + i));
+#else
+    _mm_storeu_ps(dst + i, load4_f16(src + i));
+#endif
+  }
+  if (i < count) {
+    uint16_t tail[4] = {0};
+    float out[4];
+    memcpy(tail, src + i, (size_t)(count - i) * sizeof(uint16_t));
+#ifdef LAB_NEON
+    vst1q_f32(out, load4_f16(tail));
+#else
+    _mm_storeu_ps(out, load4_f16(tail));
+#endif
+    memcpy(dst + i, out, (size_t)(count - i) * sizeof(float));
+  }
+}
 
 // acc[0, hd) += w * v[0, hd)
 static inline void axpy_hd(float* acc, const float* v, float w, int64_t hd) {
@@ -787,6 +896,20 @@ static int64_t split_start(const Split* s, int64_t pos) {
   return s->window > 0 && pos - s->window + 1 > 0 ? pos - s->window + 1 : 0;
 }
 
+// q . keys[row] and acc += w * values[row], `row` in elements.
+static inline float key_dot(const Split* s, const float* q, int64_t row) {
+  return s->half ? dot_hd_f16(q, (const uint16_t*)s->keys + row, s->hd)
+                 : dot_hd(q, (const float*)s->keys + row, s->hd);
+}
+
+static inline void value_axpy(const Split* s, float* acc, int64_t row, float w) {
+  if (s->half) {
+    axpy_hd_f16(acc, (const uint16_t*)s->values + row, w, s->hd);
+  } else {
+    axpy_hd(acc, (const float*)s->values + row, w, s->hd);
+  }
+}
+
 // Task k: token k / (kv_heads * blocks), KV head, block.
 static void split_block(const Split* s, int64_t k) {
   const int64_t b = k % s->blocks, kvh = k / s->blocks % s->kv_heads;
@@ -799,14 +922,13 @@ static void split_block(const Split* s, int64_t k) {
   const int64_t kv_dim = s->kv_heads * hd, part = hd + 2;
   const float scale = 1.0f / sqrtf((float)hd);
   const float* qv = s->q + (t * s->heads + kvh * g) * hd;
-  const float* kr = s->keys + (start + lo) * kv_dim + kvh * hd;
-  const float* vr = s->values + (start + lo) * kv_dim + kvh * hd;
+  const int64_t row0 = (start + lo) * kv_dim + kvh * hd;
   float scores[SPLIT_GROUP][SPLIT_BLOCK];
   float max[SPLIT_GROUP], sum[SPLIT_GROUP];
   for (int64_t j = 0; j < g; j++) max[j] = -INFINITY;
   for (int64_t i = 0; i < here; i++) {
     for (int64_t j = 0; j < g; j++) {
-      const float v = dot_hd(qv + j * hd, kr + i * kv_dim, hd) * scale;
+      const float v = key_dot(s, qv + j * hd, row0 + i * kv_dim) * scale;
       scores[j][i] = v;
       if (v > max[j]) max[j] = v;
     }
@@ -823,7 +945,7 @@ static void split_block(const Split* s, int64_t k) {
   float acc[SPLIT_GROUP][SPLIT_HD];
   for (int64_t j = 0; j < g; j++) memset(acc[j], 0, (size_t)hd * sizeof(float));
   for (int64_t i = 0; i < here; i++) {
-    for (int64_t j = 0; j < g; j++) axpy_hd(acc[j], vr + i * kv_dim, scores[j][i], hd);
+    for (int64_t j = 0; j < g; j++) value_axpy(s, acc[j], row0 + i * kv_dim, scores[j][i]);
   }
   for (int64_t j = 0; j < g; j++) {
     float* p = s->partials + ((t * s->heads + kvh * g + j) * s->blocks + b) * part;
@@ -890,24 +1012,95 @@ static void split_run(const Split* s, SplitTask fn, int64_t tasks, int64_t threa
 #endif
 }
 
-LAB_EXPORT void lab_attention_split(const float* q, const float* keys, const float* values,
-                                    const float* gate, float* out, int64_t n, int64_t pos0,
-                                    int64_t heads, int64_t kv_heads, int64_t hd, int64_t window,
-                                    int64_t block, int64_t threads) {
+// Task k: token k / heads, query head k % heads, over every key it sees,
+// SPLIT_BLOCK keys at a time with a running maximum (online softmax), so
+// that no scores row of the whole context is needed. The whole kernel of a
+// half cache.
+static void whole_f16(const Split* s, int64_t k) {
+  const int64_t t = k / s->heads, h = k % s->heads, hd = s->hd;
+  const int64_t kv_dim = s->kv_heads * hd, kvo = (h / (s->heads / s->kv_heads)) * hd;
+  const int64_t pos = s->pos0 + t, start = split_start(s, pos);
+  const float scale = 1.0f / sqrtf((float)hd);
+  const float* qv = s->q + k * hd;
+  float scores[SPLIT_BLOCK], acc[SPLIT_HD];
+  memset(acc, 0, (size_t)hd * sizeof(float));
+  float m = -INFINITY, sum = 0.0f;
+  for (int64_t lo = start; lo <= pos; lo += SPLIT_BLOCK) {
+    const int64_t here = pos + 1 - lo < SPLIT_BLOCK ? pos + 1 - lo : SPLIT_BLOCK;
+    float bm = m;
+    for (int64_t i = 0; i < here; i++) {
+      scores[i] = key_dot(s, qv, (lo + i) * kv_dim + kvo) * scale;
+      if (scores[i] > bm) bm = scores[i];
+    }
+    if (bm > m) {
+      // Rescale what came before to the new maximum (0 before any key).
+      const float f = expf(m - bm);
+      sum *= f;
+      for (int64_t d = 0; d < hd; d++) acc[d] *= f;
+      m = bm;
+    }
+    for (int64_t i = 0; i < here; i++) {
+      const float e = expf(scores[i] - m);
+      sum += e;
+      value_axpy(s, acc, (lo + i) * kv_dim + kvo, e);
+    }
+  }
+  const float g =
+      s->gate ? 1.0f / (1.0f + expf(-s->gate[t * s->heads + h])) / sum : 1.0f / sum;
+  float* o = s->out + k * hd;
+  for (int64_t d = 0; d < hd; d++) o[d] = acc[d] * g;
+}
+
+// lab_attention over a half cache; hd at most SPLIT_HD.
+LAB_EXPORT void lab_attention_f16(const float* q, const uint16_t* keys, const uint16_t* values,
+                                  const float* gate, float* out, int64_t n, int64_t pos0,
+                                  int64_t heads, int64_t kv_heads, int64_t hd, int64_t window,
+                                  int64_t threads) {
+  const Split s = {q,     keys, values, gate, out, NULL, n, pos0, heads,
+                   kv_heads, hd, window, 0,    0,   1};
+  split_run(&s, whole_f16, n * heads, threads);
+}
+
+static void attention_split(const float* q, const void* keys, const void* values,
+                            const float* gate, float* out, int64_t n, int64_t pos0,
+                            int64_t heads, int64_t kv_heads, int64_t hd, int64_t window,
+                            int64_t block, int64_t threads, int64_t half) {
   const int64_t last = pos0 + n - 1;
   const int64_t seen = window > 0 && last >= window ? window : last + 1;
   const int64_t blocks = (seen + block - 1) / block;
   float* partials = (float*)malloc((size_t)(n * heads * blocks * (hd + 2)) * sizeof(float));
   if (partials == NULL) {
-    // Out of memory: the whole kernel needs only a scores row per thread.
-    lab_attention(q, keys, values, gate, out, n, pos0, heads, kv_heads, hd, window, threads);
+    // Out of memory: the whole kernels need no partials.
+    if (half) {
+      lab_attention_f16(q, keys, values, gate, out, n, pos0, heads, kv_heads, hd, window,
+                        threads);
+    } else {
+      lab_attention(q, keys, values, gate, out, n, pos0, heads, kv_heads, hd, window, threads);
+    }
     return;
   }
-  const Split s = {q,  keys,  values,   gate,     out,    partials, n,
-                   pos0, heads, kv_heads, hd, window, block,  blocks};
+  const Split s = {q,     keys,  values,   gate, out,    partials, n,      pos0,
+                   heads, kv_heads, hd, window, block, blocks,   half};
   split_run(&s, split_block, n * kv_heads * blocks, threads);
   split_run(&s, split_merge, n * heads, threads);
   free(partials);
+}
+
+LAB_EXPORT void lab_attention_split_f16(const float* q, const uint16_t* keys,
+                                        const uint16_t* values, const float* gate, float* out,
+                                        int64_t n, int64_t pos0, int64_t heads, int64_t kv_heads,
+                                        int64_t hd, int64_t window, int64_t block,
+                                        int64_t threads) {
+  attention_split(q, keys, values, gate, out, n, pos0, heads, kv_heads, hd, window, block,
+                  threads, 1);
+}
+
+LAB_EXPORT void lab_attention_split(const float* q, const float* keys, const float* values,
+                                    const float* gate, float* out, int64_t n, int64_t pos0,
+                                    int64_t heads, int64_t kv_heads, int64_t hd, int64_t window,
+                                    int64_t block, int64_t threads) {
+  attention_split(q, keys, values, gate, out, n, pos0, heads, kv_heads, hd, window, block,
+                  threads, 0);
 }
 
 // ------------------------------------------------- Full attention

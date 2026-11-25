@@ -17,10 +17,16 @@ layout(buffer_reference, std430, buffer_reference_align = 4) buffer Floats { flo
 layout(buffer_reference, std430, buffer_reference_align = 16) buffer Vec4s { vec4 v[]; };
 layout(buffer_reference, std430, buffer_reference_align = 4) buffer Uints { uint v[]; };
 layout(buffer_reference, std430, buffer_reference_align = 16) buffer Uvec4s { uvec4 v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 8) buffer Uvec2s { uvec2 v[]; };
 
 // Rows by tokens that one subgroup of a GEMM computes (as in lab_metal.m).
 const uint GEMM_ROWS = 4;
 const uint GEMM_TOKENS = 8;
+
+// Four halves read as two 32-bit words, widened.
+vec4 halves4(uvec2 w) {
+  return vec4(unpackHalf2x16(w.x), unpackHalf2x16(w.y));
+}
 
 // The half at index i of an array of halves read as 32-bit words.
 float half_at(Uints words, uint i) {
