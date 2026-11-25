@@ -15,57 +15,74 @@ void main() {
       ? 'set DIANOIA_QWEN3_DIR to a Qwen3 bundle with qwen3-q8.cache'
       : null;
 
-  test('split attention matches the whole kernel', () async {
-    if (!NativeKernels.isLoaded) NativeKernels.load(null);
-    final model = await TextModel.load(
-      dir!,
-      maxSeq: 1024,
-      weights: WeightFormat.q8,
-      q8CachePath: cache,
-      gpu: true,
-    );
-    final from = GpuForward.attentionSplitFrom;
-    final block = GpuForward.attentionBlock;
-    try {
-      const depth = 700;
-      final prompt = [for (var i = 0; i < depth; i++) 1000 + (7 * i) % 9000];
-      for (var i = 0; i < depth; i += 256) {
-        await model.forward(
-          prompt.sublist(i, math.min(depth, i + 256)),
-          computeLogits: false,
+  for (final kv in KvCacheFormat.values) {
+    test(
+      'split attention matches the whole kernel, ${kv.name} cache',
+      () async {
+        if (!NativeKernels.isLoaded) NativeKernels.load(null);
+        final model = await TextModel.load(
+          dir!,
+          maxSeq: 1024,
+          weights: WeightFormat.q8,
+          q8CachePath: cache,
+          gpu: true,
+          kvCache: kv,
         );
-      }
-      // One token, and a chunk whose tokens see different numbers of keys.
-      Future<List<double>> logits(List<int> tokens) async {
-        await model.restorePromptPrefix([...prompt, 0]);
-        await model.forward(tokens);
-        return List.of(model.logits);
-      }
-
-      for (final tokens in [
-        [5000],
-        [5000, 5001, 5002],
-      ]) {
-        GpuForward.attentionSplitFrom = 0;
-        final whole = await logits(tokens);
-        for (final b in [
-          GpuForward.minAttentionBlock,
-          GpuForward.maxAttentionBlock,
-        ]) {
-          GpuForward.attentionSplitFrom = 512;
-          GpuForward.attentionBlock = b;
-          final split = await logits(tokens);
-          var worst = 0.0;
-          for (var i = 0; i < whole.length; i++) {
-            worst = math.max(worst, (whole[i] - split[i]).abs());
+        final from = GpuForward.attentionSplitFrom;
+        final block = GpuForward.attentionBlock;
+        try {
+          const depth = 700;
+          final prompt = [
+            for (var i = 0; i < depth; i++) 1000 + (7 * i) % 9000,
+          ];
+          for (var i = 0; i < depth; i += 256) {
+            await model.forward(
+              prompt.sublist(i, math.min(depth, i + 256)),
+              computeLogits: false,
+            );
           }
-          expect(worst, lessThan(1e-4), reason: '$tokens, blocks of $b');
+          // One token, and a chunk whose tokens see different numbers of keys.
+          Future<List<double>> logits(List<int> tokens) async {
+            await model.restorePromptPrefix([...prompt, 0]);
+            await model.forward(tokens);
+            return List.of(model.logits);
+          }
+
+          for (final tokens in [
+            [5000],
+            [5000, 5001, 5002],
+          ]) {
+            GpuForward.attentionSplitFrom = 0;
+            final whole = await logits(tokens);
+            for (final b in [
+              GpuForward.minAttentionBlock,
+              GpuForward.maxAttentionBlock,
+            ]) {
+              GpuForward.attentionSplitFrom = 512;
+              GpuForward.attentionBlock = b;
+              final split = await logits(tokens);
+              var worst = 0.0;
+              for (var i = 0; i < whole.length; i++) {
+                worst = math.max(worst, (whole[i] - split[i]).abs());
+              }
+              // A half cache rounds each new K and V row, so a last-bit change
+              // in one layer's attention can move a row of the next by a step
+              // of a half (2^-11 relative): 1e-3 then, not float32's 1e-4.
+              final tolerance = kv == KvCacheFormat.f16 ? 2e-3 : 1e-4;
+              expect(
+                worst,
+                lessThan(tolerance),
+                reason: '$tokens, blocks of $b',
+              );
+            }
+          }
+        } finally {
+          GpuForward.attentionSplitFrom = from;
+          GpuForward.attentionBlock = block;
+          await model.close();
         }
-      }
-    } finally {
-      GpuForward.attentionSplitFrom = from;
-      GpuForward.attentionBlock = block;
-      await model.close();
-    }
-  }, skip: skip);
+      },
+      skip: skip,
+    );
+  }
 }

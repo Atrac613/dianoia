@@ -1,6 +1,7 @@
 // The half KV cache (KvCacheFormat.f16): the float32-to-half rounding, the
 // C attention kernels that read halves, and a tiny synthetic Qwen3 model
 // run with each cache format on the CPU and on the GPU.
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -224,9 +225,61 @@ void main() {
       }, skip: skip);
     }
 
-    test('Qwen3 defaults to a half cache, LFM3 to float32', () {
-      final config = TextModelConfig.load(bundle);
-      expect(KvCacheFormat.defaultFor(config), KvCacheFormat.f16);
-    });
+    test('Qwen3 defaults to a half cache, LFM3 to float32', () async {
+      expect(
+        KvCacheFormat.defaultFor(TextModelConfig.load(bundle)),
+        KvCacheFormat.f16,
+      );
+      final vision =
+          jsonDecode(
+                File('test/fixtures/vision/config.json').readAsStringSync(),
+              )
+              as Map<String, Object?>;
+      final lfm3 = TextModelConfig.fromJson(
+        vision['text_config'] as Map<String, Object?>,
+      );
+      expect(KvCacheFormat.defaultFor(lfm3), KvCacheFormat.f32);
+      // TextModel.load resolves the default: half on the CPU with the
+      // package's kernels.
+      final model = await load(false, null);
+      try {
+        expect(model.kvCache, KvCacheFormat.f16);
+      } finally {
+        await model.close();
+      }
+    }, skip: native ? false : 'native kernels unavailable');
+
+    test('the Dart reference attention reads a half cache', () async {
+      final kernels = NativeKernels.instance;
+      final model = await load(false, KvCacheFormat.f16);
+      final Float32List viaC;
+      try {
+        await model.forward(prompt);
+        viaC = Float32List.fromList(model.logits);
+      } finally {
+        await model.close();
+      }
+      NativeKernels.load(
+        null,
+        threads: kernels.threads,
+        int8Inputs: kernels.int8Inputs,
+        attention: false,
+      );
+      try {
+        final reference = await load(false, KvCacheFormat.f16);
+        try {
+          await reference.forward(prompt);
+          expect(_maxDiff(viaC, reference.logits), lessThan(1e-3));
+        } finally {
+          await reference.close();
+        }
+      } finally {
+        NativeKernels.load(
+          null,
+          threads: kernels.threads,
+          int8Inputs: kernels.int8Inputs,
+        );
+      }
+    }, skip: native ? false : 'native kernels unavailable');
   });
 }
