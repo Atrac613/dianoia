@@ -366,6 +366,53 @@ external void _attention(
   int threads,
 );
 
+@Native<
+  Void Function(
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_attention_split', isLeaf: true)
+external void _attentionSplit(
+  Pointer<Float> q,
+  Pointer<Float> keys,
+  Pointer<Float> values,
+  Pointer<Float> gate,
+  Pointer<Float> out,
+  int n,
+  int position,
+  int heads,
+  int kvHeads,
+  int headDim,
+  int window,
+  int block,
+  int threads,
+);
+
+/// Passes of at most this many tokens attend by blocks of keys
+/// (`lab_attention_split`, [nativeAttentionBlock] keys each) once the last
+/// token sees [nativeAttentionSplitFrom] keys or more. The split reads each
+/// key once per KV head rather than once per query head and spreads one
+/// token over many tasks, but sums in another order, so it starts beyond
+/// the lab's reference prompts: shorter passes stay bit-identical to it.
+const nativeAttentionSplitTokens = 8;
+
+/// See [nativeAttentionSplitTokens]. 0 turns the split off.
+int nativeAttentionSplitFrom = 512;
+
+/// Keys per block of the split, 1 to 512.
+int nativeAttentionBlock = 256;
+
 /// Grouped-query attention of [n] tokens at positions [position], ... in C
 /// (src/c/lab_native.c, `lab_attention`), with an optional per-head
 /// output gate. Shapes as in LayerShard: q and out [n, heads * headDim],
@@ -394,7 +441,54 @@ void nativeAttention(
       headDim % 4 != 0) {
     throw ArgumentError('native attention: bad shapes');
   }
-  final threads = NativeKernels.instance.threads;
+  final kernels = NativeKernels.instance;
+  final threads = kernels.threads;
+  final last = position + n - 1;
+  final seen = window > 0 && last >= window ? window : last + 1;
+  if (kernels.splits &&
+      n <= nativeAttentionSplitTokens &&
+      nativeAttentionSplitFrom > 0 &&
+      seen >= nativeAttentionSplitFrom &&
+      heads ~/ kvHeads <= 8 &&
+      headDim <= 256) {
+    if (nativeAttentionBlock < 1 || nativeAttentionBlock > 512) {
+      throw ArgumentError('attention block of $nativeAttentionBlock keys');
+    }
+    if (gate == null) {
+      _attentionSplit(
+        q.address,
+        keys.address,
+        values.address,
+        nullptr,
+        out.address,
+        n,
+        position,
+        heads,
+        kvHeads,
+        headDim,
+        window,
+        nativeAttentionBlock,
+        threads,
+      );
+    } else {
+      _attentionSplit(
+        q.address,
+        keys.address,
+        values.address,
+        gate.address,
+        out.address,
+        n,
+        position,
+        heads,
+        kvHeads,
+        headDim,
+        window,
+        nativeAttentionBlock,
+        threads,
+      );
+    }
+    return;
+  }
   if (gate == null) {
     _attention(
       q.address,
@@ -497,7 +591,7 @@ void nativeFullAttention(
 
 /// Process-wide settings of the native kernels.
 final class NativeKernels {
-  NativeKernels._(this.threads, this.int8Inputs, this.attention);
+  NativeKernels._(this.threads, this.int8Inputs, this.attention, this.splits);
 
   static NativeKernels? _instance;
 
@@ -529,7 +623,12 @@ final class NativeKernels {
     } else {
       DynamicLibrary.open(path);
     }
-    _instance = NativeKernels._(threads, int8Inputs, attention);
+    // A library from elsewhere (the lab's, for parity checks) may predate
+    // split attention.
+    final splits =
+        path == null ||
+        DynamicLibrary.open(path).providesSymbol('lab_attention_split');
+    _instance = NativeKernels._(threads, int8Inputs, attention, splits);
   }
 
   /// Whether the kernels can be called: built for this platform by the
@@ -573,6 +672,9 @@ final class NativeKernels {
   final int threads;
   final bool int8Inputs;
   final bool attention;
+
+  /// Whether the library has `lab_attention_split` ([nativeAttention]).
+  final bool splits;
 
   // Input-quantization scratch, grown on demand.
   Pointer<Int8> _xq = nullptr;

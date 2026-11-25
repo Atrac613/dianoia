@@ -739,6 +739,177 @@ LAB_EXPORT void lab_attention(const float* q, const float* keys, const float* va
 #endif
 }
 
+// ------------------------------------------------- Split attention
+//
+// lab_attention above gives each (token, query head) one thread that walks
+// every key: a token decoded deep into a conversation is a few long tasks,
+// and the query heads of a KV head each read it. lab_attention_split gives
+// each (token, KV head, block of `block` keys) a task that scores the block
+// against every query head of the group, so each key and value row is read
+// once, and keeps per block and query head the unnormalized weighted sum of
+// values, the block's largest score and the sum of its exponentials. A
+// second pass rescales the blocks to their common largest score (the
+// flash-decoding merge) and applies the gate. The sums run in another order
+// than lab_attention's, so results differ in the last bits. Query heads per
+// KV head at most SPLIT_GROUP, hd at most SPLIT_HD, block at most
+// SPLIT_BLOCK, all checked by the caller.
+
+#define SPLIT_GROUP 8
+#define SPLIT_HD 256
+#define SPLIT_BLOCK 512
+
+typedef struct {
+  const float *q, *keys, *values, *gate;
+  float *out, *partials;
+  int64_t n, pos0, heads, kv_heads, hd, window, block, blocks;
+} Split;
+
+// acc[0, hd) += w * v[0, hd)
+static inline void axpy_hd(float* acc, const float* v, float w, int64_t hd) {
+#ifdef LAB_NEON
+  for (int64_t d = 0; d < hd; d += 4) {
+    vst1q_f32(acc + d, vfmaq_n_f32(vld1q_f32(acc + d), vld1q_f32(v + d), w));
+  }
+#else
+  int64_t d = 0;
+  for (; d + 8 <= hd; d += 8) {
+    _mm256_storeu_ps(acc + d, _mm256_fmadd_ps(_mm256_loadu_ps(v + d), _mm256_set1_ps(w),
+                                              _mm256_loadu_ps(acc + d)));
+  }
+  for (; d < hd; d += 4) {
+    _mm_storeu_ps(acc + d,
+                  _mm_fmadd_ps(_mm_loadu_ps(v + d), _mm_set1_ps(w), _mm_loadu_ps(acc + d)));
+  }
+#endif
+}
+
+static int64_t split_start(const Split* s, int64_t pos) {
+  return s->window > 0 && pos - s->window + 1 > 0 ? pos - s->window + 1 : 0;
+}
+
+// Task k: token k / (kv_heads * blocks), KV head, block.
+static void split_block(const Split* s, int64_t k) {
+  const int64_t b = k % s->blocks, kvh = k / s->blocks % s->kv_heads;
+  const int64_t t = k / s->blocks / s->kv_heads;
+  const int64_t pos = s->pos0 + t, start = split_start(s, pos);
+  const int64_t lo = b * s->block, count = pos - start + 1;
+  if (lo >= count) return;  // past this token's keys: the merge skips it
+  const int64_t here = count - lo < s->block ? count - lo : s->block;
+  const int64_t g = s->heads / s->kv_heads, hd = s->hd;
+  const int64_t kv_dim = s->kv_heads * hd, part = hd + 2;
+  const float scale = 1.0f / sqrtf((float)hd);
+  const float* qv = s->q + (t * s->heads + kvh * g) * hd;
+  const float* kr = s->keys + (start + lo) * kv_dim + kvh * hd;
+  const float* vr = s->values + (start + lo) * kv_dim + kvh * hd;
+  float scores[SPLIT_GROUP][SPLIT_BLOCK];
+  float max[SPLIT_GROUP], sum[SPLIT_GROUP];
+  for (int64_t j = 0; j < g; j++) max[j] = -INFINITY;
+  for (int64_t i = 0; i < here; i++) {
+    for (int64_t j = 0; j < g; j++) {
+      const float v = dot_hd(qv + j * hd, kr + i * kv_dim, hd) * scale;
+      scores[j][i] = v;
+      if (v > max[j]) max[j] = v;
+    }
+  }
+  for (int64_t j = 0; j < g; j++) {
+    float total = 0.0f;
+    for (int64_t i = 0; i < here; i++) {
+      const float e = expf(scores[j][i] - max[j]);
+      scores[j][i] = e;
+      total += e;
+    }
+    sum[j] = total;
+  }
+  float acc[SPLIT_GROUP][SPLIT_HD];
+  for (int64_t j = 0; j < g; j++) memset(acc[j], 0, (size_t)hd * sizeof(float));
+  for (int64_t i = 0; i < here; i++) {
+    for (int64_t j = 0; j < g; j++) axpy_hd(acc[j], vr + i * kv_dim, scores[j][i], hd);
+  }
+  for (int64_t j = 0; j < g; j++) {
+    float* p = s->partials + ((t * s->heads + kvh * g + j) * s->blocks + b) * part;
+    memcpy(p, acc[j], (size_t)hd * sizeof(float));
+    p[hd] = max[j];
+    p[hd + 1] = sum[j];
+  }
+}
+
+// Task k: token k / heads, query head k % heads.
+static void split_merge(const Split* s, int64_t k) {
+  const int64_t t = k / s->heads, h = k % s->heads, hd = s->hd, part = hd + 2;
+  const int64_t pos = s->pos0 + t;
+  const int64_t used = (pos - split_start(s, pos) + s->block) / s->block;
+  const float* p = s->partials + k * s->blocks * part;
+  float m = -INFINITY;
+  for (int64_t b = 0; b < used; b++) {
+    if (p[b * part + hd] > m) m = p[b * part + hd];
+  }
+  float sum = 0.0f;
+  float* o = s->out + k * hd;
+  memset(o, 0, (size_t)hd * sizeof(float));
+  for (int64_t b = 0; b < used; b++) {
+    const float f = expf(p[b * part + hd] - m);
+    sum += p[b * part + hd + 1] * f;
+    axpy_hd(o, p + b * part, f, hd);
+  }
+  const float g =
+      s->gate ? 1.0f / (1.0f + expf(-s->gate[t * s->heads + h])) / sum : 1.0f / sum;
+  for (int64_t d = 0; d < hd; d++) o[d] *= g;
+}
+
+typedef void (*SplitTask)(const Split*, int64_t);
+
+typedef struct {
+  const Split* s;
+  SplitTask fn;
+} SplitJob;
+
+#ifdef _WIN32
+static void split_chunk(const void* job, int64_t c, int64_t chunks) {
+  (void)chunks;
+  const SplitJob* j = (const SplitJob*)job;
+  j->fn(j->s, c);
+}
+#endif
+
+// Runs fn on tasks 0, ..., tasks - 1 over `threads` threads, one task at a
+// time to whichever thread is free.
+static void split_run(const Split* s, SplitTask fn, int64_t tasks, int64_t threads) {
+  const int64_t workers = threads < 1 ? 1 : (threads > tasks ? tasks : threads);
+#ifdef _WIN32
+  const SplitJob j = {s, fn};
+  parallel_chunks(workers, tasks, split_chunk, &j);
+#elif defined(__APPLE__)
+  __block int64_t next = 0;
+  dispatch_apply((size_t)workers, DISPATCH_APPLY_AUTO, ^(size_t w) {
+    (void)w;
+    for (int64_t k; (k = __atomic_fetch_add(&next, 1, __ATOMIC_RELAXED)) < tasks;) fn(s, k);
+  });
+#else
+#pragma omp parallel for num_threads((int)workers) schedule(dynamic, 1)
+  for (int64_t k = 0; k < tasks; k++) fn(s, k);
+#endif
+}
+
+LAB_EXPORT void lab_attention_split(const float* q, const float* keys, const float* values,
+                                    const float* gate, float* out, int64_t n, int64_t pos0,
+                                    int64_t heads, int64_t kv_heads, int64_t hd, int64_t window,
+                                    int64_t block, int64_t threads) {
+  const int64_t last = pos0 + n - 1;
+  const int64_t seen = window > 0 && last >= window ? window : last + 1;
+  const int64_t blocks = (seen + block - 1) / block;
+  float* partials = (float*)malloc((size_t)(n * heads * blocks * (hd + 2)) * sizeof(float));
+  if (partials == NULL) {
+    // Out of memory: the whole kernel needs only a scores row per thread.
+    lab_attention(q, keys, values, gate, out, n, pos0, heads, kv_heads, hd, window, threads);
+    return;
+  }
+  const Split s = {q,  keys,  values,   gate,     out,    partials, n,
+                   pos0, heads, kv_heads, hd, window, block,  blocks};
+  split_run(&s, split_block, n * kv_heads * blocks, threads);
+  split_run(&s, split_merge, n * heads, threads);
+  free(partials);
+}
+
 // ------------------------------------------------- Full attention
 //
 // The vision encoder's attention: every one of n tokens attends to all n,

@@ -1,0 +1,108 @@
+#version 460
+#include "common.glsl"
+
+// The first pass of attention by blocks of keys (attention_split in
+// lab_metal.m): a workgroup per (KV head, block of p.block keys, token)
+// scores the block against every query head of the group, reading each key
+// and value once, and leaves per block and query head the unnormalized
+// weighted sum of values, the block's largest score and the sum of its
+// exponentials:
+//   partials[((token * heads + h) * blocks + b) * (hd + 2) + ...]
+//     [0, hd): sum of exp(score - max) * value; hd: max; hd + 1: sum
+// attention_merge.comp combines the blocks. Workgroups are numbered
+// kv_head * blocks + block along x and by token along y.
+const uint SPLIT_GROUP = 8;   // query heads per KV head, at most
+const uint SPLIT_BLOCK = 256; // keys per block, at most
+
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Vec4s q;
+  Vec4s keys;
+  Floats values;
+  Floats partials;
+  uint position;
+  uint window;
+  uint heads;
+  uint hd;
+  uint kv_dim;
+  uint group;
+  float scale;
+  uint block;
+  uint blocks;
+} p;
+
+shared float scores[SPLIT_GROUP * SPLIT_BLOCK];
+shared float stats[2 * SPLIT_GROUP];
+
+void main() {
+  const uint kvh = gl_WorkGroupID.x / p.blocks, b = gl_WorkGroupID.x % p.blocks;
+  const uint token = gl_WorkGroupID.y;
+  const uint tid = gl_LocalInvocationID.x, threads = gl_WorkGroupSize.x;
+  const uint g = p.group;
+  const uint pos = p.position + token;
+  const uint start = p.window > 0u && pos >= p.window ? pos - p.window + 1u : 0u;
+  const uint count = pos - start + 1u;
+  const uint lo = b * p.block;
+  // A block past this token's keys (an earlier token of the pass), which
+  // attention_merge does not read.
+  if (lo >= count) return;
+  const uint here = min(p.block, count - lo);
+  const uint hd4 = p.hd / 4;
+  const uint q0 = (token * p.heads + kvh * g) * hd4;
+  const uint k0 = ((start + lo) * p.kv_dim + kvh * p.hd) / 4;
+  const uint kv4 = p.kv_dim / 4;
+
+  // Scores: a subgroup per key, lanes across head_dim.
+  for (uint i = gl_SubgroupID; i < here; i += gl_NumSubgroups) {
+    precise float d[SPLIT_GROUP];
+    for (uint j = 0; j < SPLIT_GROUP; j++) d[j] = 0.0;
+    for (uint c = gl_SubgroupInvocationID; c < hd4; c += gl_SubgroupSize) {
+      const vec4 kc = p.keys.v[k0 + i * kv4 + c];
+      for (uint j = 0; j < g; j++) d[j] += dot(p.q.v[q0 + j * hd4 + c], kc);
+    }
+    for (uint j = 0; j < g; j++) {
+      const float s = subgroupAdd(d[j]);
+      if (subgroupElect()) scores[j * p.block + i] = s * p.scale;
+    }
+  }
+  barrier();
+
+  // Each subgroup takes whole query heads: max, exponentials, their sum.
+  for (uint j = gl_SubgroupID; j < g; j += gl_NumSubgroups) {
+    float m = -1.0 / 0.0;
+    for (uint k = gl_SubgroupInvocationID; k < here; k += gl_SubgroupSize) {
+      m = max(m, scores[j * p.block + k]);
+    }
+    m = subgroupMax(m);
+    precise float sum = 0.0;
+    for (uint k = gl_SubgroupInvocationID; k < here; k += gl_SubgroupSize) {
+      const float e = exp(scores[j * p.block + k] - m);
+      scores[j * p.block + k] = e;
+      sum += e;
+    }
+    sum = subgroupAdd(sum);
+    if (subgroupElect()) {
+      stats[j] = m;
+      stats[SPLIT_GROUP + j] = sum;
+    }
+  }
+  barrier();
+
+  // Values: an invocation per dimension, every query head of the group.
+  const uint v0 = (start + lo) * p.kv_dim + kvh * p.hd;
+  const uint stride = p.blocks * (p.hd + 2u);  // between query heads
+  const uint out0 = (token * p.heads + kvh * g) * stride + b * (p.hd + 2u);
+  for (uint d = tid; d < p.hd; d += threads) {
+    precise float acc[SPLIT_GROUP];
+    for (uint j = 0; j < SPLIT_GROUP; j++) acc[j] = 0.0;
+    for (uint k = 0; k < here; k++) {
+      const float value = p.values.v[v0 + k * p.kv_dim + d];
+      for (uint j = 0; j < g; j++) acc[j] += scores[j * p.block + k] * value;
+    }
+    for (uint j = 0; j < g; j++) p.partials.v[out0 + j * stride + d] = acc[j];
+  }
+  if (tid < g) {
+    p.partials.v[out0 + tid * stride + p.hd] = stats[tid];
+    p.partials.v[out0 + tid * stride + p.hd + 1u] = stats[SPLIT_GROUP + tid];
+  }
+}

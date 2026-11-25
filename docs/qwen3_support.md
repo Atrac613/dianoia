@@ -217,6 +217,48 @@ model's 0.7 GB. A draft that costs nearly nothing, such as copying a
 continuation found earlier in the context, would only need 1.35 tokens
 accepted per pass on Metal.
 
+### Long conversations
+
+Every Qwen3 layer is attention, so each token decoded reads the whole KV
+cache: about 230 KB per earlier token, 470 MB at 2,048 tokens, which
+outweighs 0.6B's 0.65 GB of weights before long. The attention kernels
+gave each query head of a token one workgroup (one task on the CPU) that
+walked every key, and each of the two query heads per KV head read it.
+Past 512 keys, passes of up to 8 tokens now attend by blocks of keys: one
+workgroup or task per KV head and block scores every query head of the
+group, reading each key once, and a second pass merges the blocks. The
+sums run in another order: attention outputs and Metal's logits stay
+within 1e-5 of the whole kernels, while on the CPU's int8-input path a
+logit can move by 0.2, as any reordering moves it there (float inputs:
+6e-6). Shorter passes keep the old kernels, so the lab's reference
+prompts are unchanged.
+
+One token deep into the cache, Q8, in ms, whole and split. An M2 Max
+(single-token `TextModel.forward` passes, 4 CPU threads):
+
+| | 64 | 2,048 | 4,000 |
+|---|---:|---:|---:|
+| 0.6B, Metal | 4.5 | 9.9 → 6.1 | 15.2 → 7.8 |
+| 1.7B, Metal | 9.1 | 14.4 → 10.2 | 19.5 → 12.2 |
+| 0.6B, CPU | 15.6 | 40.6 → 33.5 | 77.5 → 57.3 |
+
+An iPhone 15 Pro Max (`CONTEXT_COST=1 tool/device_bench/run_ios_qwen3.sh`,
+whole and split passes alternating, on a phone already warm):
+
+| | 1,024 | 2,048 | 3,000 |
+|---|---:|---:|---:|
+| 0.6B, Metal | 29.8 → 30.0 | 37.4 → 36.7 | 43.5 → 43.4 |
+| 1.7B, Metal | 63.0 → 63.6 | 68.2 → 67.6 | 74.0 → 75.1 |
+| 0.6B, CPU | 62.8 → 45.4 | 109.0 → 67.6 | 186.5 → 108.1 |
+| 1.7B, CPU | 132.2 → 113.0 | 201.9 → 145.5 | 332.6 → 202.1 |
+
+The CPU kernels split everywhere: 1.6 to 1.7 times as fast at 3,000
+tokens on the phone. The phone's GPU gains nothing, since its few cores
+already read the cache near its memory bandwidth, so the GPU splits by
+default on macOS only (`GpuForward.attentionSplitFrom`). The Vulkan
+kernels have not run on a device yet and stay off. What is left on the
+phone's GPU is the cache's bytes.
+
 ## Using it
 
 ```dart
@@ -249,7 +291,9 @@ since `ToolCall.arguments` holds strings for both families.
 - KV cache in float32: every Qwen3 layer is attention, so a token costs
   about 230 KB (0.6B and 1.7B: 28 layers × 2 × 1024 floats × 4 bytes),
   against about 45 KB for LFM3-1.7B. The default 2048-token context needs
-  about 470 MB; a 16-bit cache would halve it.
+  about 470 MB; a 16-bit cache would halve it, and with it the bytes a
+  token deep into a conversation reads (Long conversations).
+- Split attention on Vulkan is unchecked on a device, so it is off there.
 - Q4: no Q4_0 rounding keeps Qwen3-0.6B or 1.7B close to float32
   (Validation). Qwen ships Q4_K_M only from Qwen3-4B up, which would need
   K-quant kernels.

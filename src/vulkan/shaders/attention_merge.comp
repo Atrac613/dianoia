@@ -1,0 +1,45 @@
+#version 460
+#include "common.glsl"
+
+// The second pass of attention by blocks of keys (attention_split.comp): a
+// workgroup per (query head, token) rescales the blocks to their common
+// largest score, sums them and applies the output gate (none when p.gated
+// is 0, and then p.gate is never read).
+layout(local_size_x = 128) in;
+layout(push_constant) uniform Params {
+  Floats partials;
+  Floats gate;
+  Floats out_;
+  uint position;
+  uint window;
+  uint heads;
+  uint hd;
+  uint block;
+  uint blocks;
+  uint gated;
+} p;
+
+void main() {
+  const uint h = gl_WorkGroupID.x, token = gl_WorkGroupID.y;
+  const uint tid = gl_LocalInvocationID.x, threads = gl_WorkGroupSize.x;
+  const uint pos = p.position + token;
+  const uint start = p.window > 0u && pos >= p.window ? pos - p.window + 1u : 0u;
+  const uint used = (pos - start + p.block) / p.block;  // blocks with keys
+  const uint part = p.hd + 2u;
+  const uint base = (token * p.heads + h) * p.blocks * part;
+  float m = -1.0 / 0.0;
+  for (uint b = 0; b < used; b++) m = max(m, p.partials.v[base + b * part + p.hd]);
+  precise float sum = 0.0;
+  for (uint b = 0; b < used; b++) {
+    sum += p.partials.v[base + b * part + p.hd + 1u] *
+           exp(p.partials.v[base + b * part + p.hd] - m);
+  }
+  const float g = p.gated != 0u ? 1.0 / (1.0 + exp(-p.gate.v[token * p.heads + h])) : 1.0;
+  for (uint d = tid; d < p.hd; d += threads) {
+    precise float acc = 0.0;
+    for (uint b = 0; b < used; b++) {
+      acc += p.partials.v[base + b * part + d] * exp(p.partials.v[base + b * part + p.hd] - m);
+    }
+    p.out_.v[(token * p.heads + h) * p.hd + d] = p.gated != 0u ? (acc / sum) * g : acc / sum;
+  }
+}

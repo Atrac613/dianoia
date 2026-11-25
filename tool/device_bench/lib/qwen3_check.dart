@@ -7,6 +7,7 @@
 library;
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
@@ -56,6 +57,15 @@ Future<void> qwen3Check(
 
   // Room for thinking, which took 1,699 tokens on the Mac for 1.7B.
   final contextLength = (config['context_length'] as num?)?.toInt() ?? 3072;
+  if (config['context_cost'] == true) {
+    if (config['verify_cost'] == true || config['gpu_profile'] == true) {
+      throw ArgumentError('context_cost is a run of its own');
+    }
+    final costs = <String, Object?>{};
+    record['context_cost'] = costs;
+    await qwen3ContextCost(bundle, log, into: costs, save: save);
+    return;
+  }
   if (config['verify_cost'] == true) {
     if (config['gpu_profile'] == true) {
       throw ArgumentError('verify_cost and gpu_profile are separate runs');
@@ -281,6 +291,89 @@ Future<Map<String, Object?>> qwen3VerifyCost(
     }
   }
   return result;
+}
+
+/// One-token decode times deeper and deeper into the cache, on the GPU and
+/// on the CPU, with attention split by blocks of keys and without it
+/// (GpuForward.attentionSplitFrom, nativeAttentionSplitFrom): how much a
+/// long conversation slows decoding, and how much of that the split wins
+/// back. Fills [into] row by row, calling [save] after each.
+Future<void> qwen3ContextCost(
+  String bundle,
+  void Function(String) log, {
+  required Map<String, Object?> into,
+  required void Function() save,
+  List<int> positions = const [64, 1024, 2048, 3000],
+  int reps = 10,
+}) async {
+  final result = into;
+  if (!NativeKernels.isLoaded) NativeKernels.load(null, threads: 4);
+  final config = TextModelConfig.load(bundle);
+  final cache = '$bundle/${quantizedCacheName(config, WeightFormat.q8)}';
+  final prompt = [
+    for (var i = 0; i < positions.last; i++) 1000 + (7 * i) % 9000,
+  ];
+  // Split rows split from 512 keys whatever the platform's default is.
+  const splitFrom = 512;
+  final gpuFrom = GpuForward.attentionSplitFrom;
+  final cpuFrom = nativeAttentionSplitFrom;
+  for (final gpu in [true, false]) {
+    final model = await TextModel.load(
+      bundle,
+      maxSeq: positions.last + 64,
+      weights: WeightFormat.q8,
+      q8CachePath: cache,
+      gpu: gpu,
+    );
+    final backend = gpu ? 'gpu' : 'cpu';
+    final times = <String, Object?>{};
+    result[backend] = times;
+    try {
+      var fed = 0;
+      for (final position in positions) {
+        for (var i = fed; i < position; i += 256) {
+          await model.forward(
+            prompt.sublist(i, math.min(position, i + 256)),
+            computeLogits: false,
+          );
+        }
+        fed = position;
+        // Whole and split alternate pass by pass, so that a phone heating
+        // up slows both alike.
+        final watches = [Stopwatch(), Stopwatch()];
+        for (var r = -2; r < reps; r++) {
+          for (final split in [false, true]) {
+            GpuForward.attentionSplitFrom = split ? splitFrom : 0;
+            nativeAttentionSplitFrom = split ? splitFrom : 0;
+            final sw = watches[split ? 1 : 0];
+            if (r == 0 && !split) {
+              for (final w in watches) {
+                w.reset();
+              }
+            }
+            sw.start();
+            await model.forward([5000 + r]);
+            sw.stop();
+            await model.restorePromptPrefix([
+              ...prompt.sublist(0, position),
+              0,
+            ]);
+          }
+        }
+        final row = {
+          'whole_ms': watches[0].elapsedMicroseconds / 1000 / reps,
+          'split_ms': watches[1].elapsedMicroseconds / 1000 / reps,
+        };
+        times['$position'] = row;
+        log('$backend at $position: $row');
+        save();
+      }
+    } finally {
+      GpuForward.attentionSplitFrom = gpuFrom;
+      nativeAttentionSplitFrom = cpuFrom;
+      await model.close();
+    }
+  }
 }
 
 /// The process's memory by kind, in MB, where Linux reports it
