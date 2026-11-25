@@ -16,7 +16,8 @@
 #   VERIFY_COST=1 tool/device_bench/run_android_qwen3.sh # n-token pass times
 #     of 0.6B and 1.7B, for speculative decoding (qwen3VerifyCost)
 #   CONTEXT_COST=1 tool/device_bench/run_android_qwen3.sh # decode times
-#     deep into the cache, attention split and not (qwen3ContextCost)
+#     deep into the cache, float32 and half KV caches (qwen3ContextCost);
+#     CONTEXT_COMPARE=split times attention whole and split instead
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP="$ROOT/tool/device_bench"
@@ -56,8 +57,8 @@ if [[ -n "${CONTEXT_COST:-}" && -n "${VERIFY_COST:-}${GPU_PROFILE:-}${GPU_SHAPES
   echo "CONTEXT_COST is a run of its own: unset VERIFY_COST, GPU_PROFILE and GPU_SHAPES" >&2
   exit 1
 fi
-printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "gpu_profile": %s, "gpu_shapes": %s, "verify_cost": %s, "context_cost": %s, "build": "%s"}\n' \
-  "$SPEC" "${REINSTALL:-false}" "$(flag "${GPU_PROFILE:-}${GPU_SHAPES:-}")" "$(flag "${GPU_SHAPES:-}")" "$(flag "${VERIFY_COST:-}")" "$(flag "${CONTEXT_COST:-}")" \
+printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "gpu_profile": %s, "gpu_shapes": %s, "verify_cost": %s, "context_cost": %s, "context_compare": "%s", "build": "%s"}\n' \
+  "$SPEC" "${REINSTALL:-false}" "$(flag "${GPU_PROFILE:-}${GPU_SHAPES:-}")" "$(flag "${GPU_SHAPES:-}")" "$(flag "${VERIFY_COST:-}")" "$(flag "${CONTEXT_COST:-}")" "${CONTEXT_COMPARE:-kv}" \
   "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
 adb push "$staging/bench_config.json" "$REMOTE/" >/dev/null
 
@@ -75,7 +76,7 @@ mkdir -p "$APP/results"
 if [[ -n "${VERIFY_COST:-}" ]]; then
   out="$APP/results/android_qwen3_verify_cost.json"
 elif [[ -n "${CONTEXT_COST:-}" ]]; then
-  out="$APP/results/android_qwen3_context_cost_$SPEC.json"
+  out="$APP/results/android_qwen3_context_${CONTEXT_COMPARE:-kv}_$SPEC.json"
 else
   out="$APP/results/android_qwen3_$SPEC${GPU_PROFILE:+_profile}${GPU_SHAPES:+_shapes}.json"
 fi

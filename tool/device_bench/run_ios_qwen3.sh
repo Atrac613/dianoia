@@ -11,7 +11,8 @@
 #   VERIFY_COST=1 tool/device_bench/run_ios_qwen3.sh # n-token pass times
 #     of 0.6B and 1.7B, for speculative decoding (qwen3VerifyCost)
 #   CONTEXT_COST=1 tool/device_bench/run_ios_qwen3.sh # decode times deep
-#     into the cache, attention split and not (qwen3ContextCost)
+#     into the cache, float32 and half KV caches (qwen3ContextCost);
+#     CONTEXT_COMPARE=split times attention whole and split instead
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP="$ROOT/tool/device_bench"
@@ -36,8 +37,8 @@ if [[ -n "${VERIFY_COST:-}" && -n "${CONTEXT_COST:-}" ]]; then
   echo "VERIFY_COST and CONTEXT_COST are separate runs" >&2
   exit 1
 fi
-printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "verify_cost": %s, "context_cost": %s, "build": "%s"}\n' \
-  "$SPEC" "${REINSTALL:-false}" "$(flag "${VERIFY_COST:-}")" "$(flag "${CONTEXT_COST:-}")" "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
+printf '{"mode": "qwen3", "spec": "%s", "reinstall": %s, "verify_cost": %s, "context_cost": %s, "context_compare": "%s", "build": "%s"}\n' \
+  "$SPEC" "${REINSTALL:-false}" "$(flag "${VERIFY_COST:-}")" "$(flag "${CONTEXT_COST:-}")" "${CONTEXT_COMPARE:-kv}" "$(git -C "$ROOT" describe --always --dirty)" >"$staging/bench_config.json"
 xcrun devicectl device copy to "${container[@]}" --source "$staging/bench_config.json" \
   --destination Documents/bench_config.json >/dev/null
 
@@ -65,7 +66,7 @@ mkdir -p "$APP/results"
 if [[ -n "${VERIFY_COST:-}" ]]; then
   out="$APP/results/iphone_qwen3_verify_cost.json"
 elif [[ -n "${CONTEXT_COST:-}" ]]; then
-  out="$APP/results/iphone_qwen3_context_cost_$SPEC.json"
+  out="$APP/results/iphone_qwen3_context_${CONTEXT_COMPARE:-kv}_$SPEC.json"
 else
   out="$APP/results/iphone_qwen3_$SPEC.json"
 fi
