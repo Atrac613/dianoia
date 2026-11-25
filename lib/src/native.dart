@@ -809,7 +809,13 @@ void nativeFullAttention(
 
 /// Process-wide settings of the native kernels.
 final class NativeKernels {
-  NativeKernels._(this.threads, this.int8Inputs, this.attention, this.splits);
+  NativeKernels._(
+    this.threads,
+    this.int8Inputs,
+    this.attention,
+    this.splits,
+    this.halves,
+  );
 
   static NativeKernels? _instance;
 
@@ -846,7 +852,11 @@ final class NativeKernels {
     final splits =
         path == null ||
         DynamicLibrary.open(path).providesSymbol('lab_attention_split');
-    _instance = NativeKernels._(threads, int8Inputs, attention, splits);
+    // ...or a half KV cache.
+    final halves =
+        path == null ||
+        DynamicLibrary.open(path).providesSymbol('lab_attention_split_f16');
+    _instance = NativeKernels._(threads, int8Inputs, attention, splits, halves);
   }
 
   /// Whether the kernels can be called: built for this platform by the
@@ -893,6 +903,10 @@ final class NativeKernels {
 
   /// Whether the library has `lab_attention_split` ([nativeAttention]).
   final bool splits;
+
+  /// Whether the library reads and writes a half KV cache
+  /// (KvCacheFormat.f16: `lab_f32_to_f16`, `lab_attention_f16`, ...).
+  final bool halves;
 
   // Input-quantization scratch, grown on demand.
   Pointer<Int8> _xq = nullptr;

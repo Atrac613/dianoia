@@ -65,6 +65,7 @@ final class TextModel {
     this.maxChunk,
     this._cache,
     this._embedFile,
+    this.kvCache,
   );
 
   /// Loads the model.
@@ -87,10 +88,10 @@ final class TextModel {
   /// the library at that path instead of the package's kernels asset.
   ///
   /// [kvCache] stores the KV cache in float32 or half precision; null takes
-  /// [KvCacheFormat.defaultFor] the model where the native kernels are
-  /// loaded, [workers] is 0 and there is no [gpuLib], on the CPU or Metal,
-  /// float32 otherwise. A half cache needs the native kernels and no
-  /// workers.
+  /// [KvCacheFormat.defaultFor] the model where native kernels with a half
+  /// cache are loaded (the package's are), [workers] is 0 and there is no
+  /// [gpuLib], on the CPU or Metal, and float32 otherwise. A half cache
+  /// needs such kernels and no workers.
   static Future<TextModel> load(
     String modelDir, {
     int maxSeq = 4096,
@@ -121,14 +122,18 @@ final class TextModel {
         kvCache ??
         // Vulkan's half kernels have not run on a device yet.
         (NativeKernels.isLoaded &&
+                NativeKernels.instance.halves &&
                 workers == 0 &&
                 gpuLib == null &&
                 (!onGpu || Platform.isMacOS || Platform.isIOS)
             ? KvCacheFormat.defaultFor(c)
             : KvCacheFormat.f32);
-    if (kv == KvCacheFormat.f16 && (!NativeKernels.isLoaded || workers > 0)) {
+    if (kv == KvCacheFormat.f16 &&
+        (!NativeKernels.isLoaded ||
+            !NativeKernels.instance.halves ||
+            workers > 0)) {
       throw ArgumentError(
-        'a half KV cache needs the native kernels and --workers=0',
+        'a half KV cache needs native kernels that have it and --workers=0',
       );
     }
     final h = c.hiddenSize;
@@ -232,6 +237,7 @@ final class TextModel {
           maxChunk,
           cache,
           embedFile,
+          kv,
         );
       }
       final LayerExecutor executor = workers == 0
@@ -271,6 +277,7 @@ final class TextModel {
         maxChunk,
         cache,
         embedFile,
+        kv,
       );
     } catch (_) {
       cache?.close();
@@ -301,6 +308,9 @@ final class TextModel {
 
   final TextModelConfig config;
   final int maxSeq;
+
+  /// How the KV cache stores keys and values.
+  final KvCacheFormat kvCache;
 
   /// Largest number of tokens [forward] pushes through the layers at once.
   final int maxChunk;
