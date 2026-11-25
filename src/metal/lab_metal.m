@@ -820,6 +820,8 @@ int64_t lab_gpu_init(void) {
     gHeadNormRope = pipeline(library, @"head_norm_rope");
     gConv = pipeline(library, @"conv");
     gAttention = pipeline(library, @"attention");
+    // Optional: without them lab_gpu_enc_attention_split falls back to the
+    // whole kernel.
     gAttentionSplit = pipeline(library, @"attention_split");
     gAttentionMerge = pipeline(library, @"attention_merge");
     gSwiglu = pipeline(library, @"swiglu");
@@ -828,8 +830,7 @@ int64_t lab_gpu_init(void) {
     gAdd = pipeline(library, @"add_f32");
     gReady = gGemvQ8Rows[0] && gGemvQ8Rows[1] && gGemvQ4Rows[0] && gGemvQ4Rows[1] && gGemvQ8 &&
              gGemmQ8 && gGemvQ4 && gGemmQ4 && gTouch && gRmsNorm && gHeadNormRope && gConv &&
-             gAttention && gAttentionSplit && gAttentionMerge && gSwiglu && gCopy && gSteer &&
-             gAdd;
+             gAttention && gSwiglu && gCopy && gSteer && gAdd;
     return gReady;
   }
 }
@@ -1317,11 +1318,16 @@ void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate
 // Attention of n tokens by blocks of `block` keys (attention_split, then
 // attention_merge), for few tokens deep into the cache. partials holds
 // n * heads * blocks * (hd + 2) floats, where blocks covers the last token's
-// keys. Query heads per KV head may be at most 8.
+// keys. Query heads per KV head may be at most 8. Without the split's
+// pipelines this is lab_gpu_enc_attention.
 void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t values, int64_t gate,
                                  int64_t out, int64_t partials, int64_t position, int64_t n,
                                  int64_t heads, int64_t kvHeads, int64_t hd, int64_t window,
                                  int64_t block) {
+  if (!gAttentionSplit || !gAttentionMerge) {
+    lab_gpu_enc_attention(q, keys, values, gate, out, position, n, heads, kvHeads, hd, window);
+    return;
+  }
   const int64_t last = position + n - 1;
   const int64_t keysOfLast = window > 0 && last >= window ? window : last + 1;
   const int64_t blocks = (keysOfLast + block - 1) / block;

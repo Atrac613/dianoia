@@ -464,8 +464,10 @@ LAB_EXPORT int64_t lab_gpu_init(void) {
   PIPELINE(gHeadNormRope, kHeadNormRope);
   PIPELINE(gConv, kConv);
   PIPELINE(gAttention, kAttention);
-  PIPELINE(gAttentionSplit, kAttentionSplit);
-  PIPELINE(gAttentionMerge, kAttentionMerge);
+  // Split attention is optional: a driver that rejects its shaders falls
+  // back to the whole kernel (lab_gpu_enc_attention_split).
+  gAttentionSplit = pipeline(kAttentionSplit, sizeof kAttentionSplit);
+  gAttentionMerge = pipeline(kAttentionMerge, sizeof kAttentionMerge);
   PIPELINE(gSwiglu, kSwiglu);
   PIPELINE(gCopy, kCopy);
   PIPELINE(gAdd, kAdd);
@@ -991,10 +993,15 @@ typedef struct {
 // then attention_merge.comp), for few tokens deep into the cache. partials
 // holds n * heads * blocks * (hd + 2) floats, where blocks covers the last
 // token's keys. At most 8 query heads per KV head and 256 keys per block.
+// Without the split's pipelines this is lab_gpu_enc_attention.
 LAB_EXPORT void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t values, int64_t gate,
                                             int64_t out, int64_t partials, int64_t position,
                                             int64_t n, int64_t heads, int64_t kvHeads, int64_t hd,
                                             int64_t window, int64_t block) {
+  if (gAttentionSplit == VK_NULL_HANDLE || gAttentionMerge == VK_NULL_HANDLE) {
+    lab_gpu_enc_attention(q, keys, values, gate, out, position, n, heads, kvHeads, hd, window);
+    return;
+  }
   const int64_t last = position + n - 1;
   const int64_t keysOfLast = window > 0 && last >= window ? window : last + 1;
   const int64_t blocks = (keysOfLast + block - 1) / block;

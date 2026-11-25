@@ -898,6 +898,11 @@ LAB_EXPORT void lab_attention_split(const float* q, const float* keys, const flo
   const int64_t seen = window > 0 && last >= window ? window : last + 1;
   const int64_t blocks = (seen + block - 1) / block;
   float* partials = (float*)malloc((size_t)(n * heads * blocks * (hd + 2)) * sizeof(float));
+  if (partials == NULL) {
+    // Out of memory: the whole kernel needs only a scores row per thread.
+    lab_attention(q, keys, values, gate, out, n, pos0, heads, kv_heads, hd, window, threads);
+    return;
+  }
   const Split s = {q,  keys,  values,   gate,     out,    partials, n,
                    pos0, heads, kv_heads, hd, window, block,  blocks};
   split_run(&s, split_block, n * kv_heads * blocks, threads);
