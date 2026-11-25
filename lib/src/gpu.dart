@@ -977,7 +977,15 @@ final class GpuForward {
 
   late final _Buffer _x, _a, _m, _bcx, _y, _q, _gate, _attnOut, _g, _u;
   late final _Buffer _normed, _logits, _rope, _residualIn, _capture;
-  _Buffer? _partials;
+  // Split attention's per-block results, made on first use (attentionSplitFrom
+  // is 0 by default off macOS): [attentionSplitTokens] tokens of every head,
+  // blocks of at least [minAttentionBlock] keys up to maxSeq.
+  late final _Buffer _partials = _newBuffer(
+    math.min(maxChunk, attentionSplitTokens) *
+        config.numHeads *
+        ((maxSeq + minAttentionBlock - 1) ~/ minAttentionBlock) *
+        (config.headDim + 2),
+  );
   late final Rope _fullRope = Rope(config.fullRope, config.headDim);
   late final Rope _slidingRope = Rope(config.slidingRope, config.headDim);
 
@@ -1128,12 +1136,6 @@ final class GpuForward {
     _q = _newBuffer(rows * heads);
     _gate = _newBuffer(rows * c.numHeads);
     _attnOut = _newBuffer(rows * heads);
-    if (_splits && c.numHeads ~/ c.numKvHeads <= 8) {
-      final blocks = (maxSeq + minAttentionBlock - 1) ~/ minAttentionBlock;
-      _partials = _newBuffer(
-        math.min(rows, attentionSplitTokens) * c.numHeads * blocks * (hd + 2),
-      );
-    }
     _g = _newBuffer(rows * c.intermediateSize);
     _u = _newBuffer(rows * c.intermediateSize);
     _normed = _newBuffer(h);
@@ -1374,7 +1376,8 @@ final class GpuForward {
         final last = position + n - 1;
         final seen = window > 0 && last >= window ? window : last + 1;
         final block = attentionBlock;
-        if (_partials != null &&
+        if (_splits &&
+            c.numHeads ~/ c.numKvHeads <= 8 &&
             n <= attentionSplitTokens &&
             attentionSplitFrom > 0 &&
             seen >= attentionSplitFrom) {
@@ -1387,7 +1390,7 @@ final class GpuForward {
             l.values,
             l.gate == null ? -1 : _gate.handle,
             _attnOut.handle,
-            _partials!.handle,
+            _partials.handle,
             position,
             n,
             c.numHeads,
@@ -1396,6 +1399,7 @@ final class GpuForward {
             window,
             block,
           );
+          dispatched += 2; // the blocks, then their merge
         } else {
           _attention(
             _q.handle,
@@ -1410,8 +1414,8 @@ final class GpuForward {
             hd,
             window,
           );
+          dispatched++;
         }
-        dispatched++;
         matmul(l.o!, _attnOut, _m.handle);
       }
       residual(l.postOperatorNorm);
