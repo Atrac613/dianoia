@@ -1,0 +1,56 @@
+{
+  "started": "2026-11-25T18:50:39.842742",
+  "os": "Version 27.2.1 (Build 24B156)",
+  "build": "v0.5.0-54-g69a23a4",
+  "spec": "qwen3-0.6b-q8-23749fe",
+  "install": {
+    "already_installed": true,
+    "bundle_files": {
+      "model.safetensors": 273432,
+      "config.json": 726,
+      "tokenizer.json": 11422654,
+      "LICENSE": 11343,
+      "generation_config.json": 239,
+      "qwen3-q8.cache": 671531008
+    }
+  },
+  "context_cost": {
+    "gpu": {
+      "64": {
+        "whole_ms": 21.488999999999997,
+        "split_ms": 21.4194
+      },
+      "1024": {
+        "whole_ms": 29.833199999999998,
+        "split_ms": 30.0053
+      },
+      "2048": {
+        "whole_ms": 37.4003,
+        "split_ms": 36.7216
+      },
+      "3000": {
+        "whole_ms": 43.5316,
+        "split_ms": 43.423899999999996
+      }
+    },
+    "cpu": {
+      "64": {
+        "whole_ms": 60.0635,
+        "split_ms": 60.3514
+      },
+      "1024": {
+        "whole_ms": 62.760299999999994,
+        "split_ms": 45.434
+      },
+      "2048": {
+        "whole_ms": 108.9695,
+        "split_ms": 67.5971
+      },
+      "3000": {
+        "whole_ms": 186.5399,
+        "split_ms": 108.0664
+      }
+    }
+  },
+  "finished": true
+}
