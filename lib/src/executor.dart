@@ -70,7 +70,7 @@ abstract interface class LayerExecutor {
 
   /// Views of the state the first [position] tokens left behind (see
   /// [LayerShard.stateBlocks]), or null if it lives elsewhere.
-  List<Float32List>? stateBlocks(int position);
+  List<TypedData>? stateBlocks(int position);
 
   Future<void> close();
 }
@@ -114,7 +114,7 @@ final class LocalExecutor implements LayerExecutor {
   }
 
   @override
-  List<Float32List> stateBlocks(int position) => _shard.stateBlocks(position);
+  List<TypedData> stateBlocks(int position) => _shard.stateBlocks(position);
 
   @override
   Future<void> close() => Future.value();
@@ -326,7 +326,7 @@ final class PooledExecutor implements LayerExecutor {
       throw UnsupportedError('worker isolates do not restore states');
 
   @override
-  List<Float32List>? stateBlocks(int position) => null;
+  List<TypedData>? stateBlocks(int position) => null;
 
   @override
   Future<void> close() async {

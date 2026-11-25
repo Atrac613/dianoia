@@ -84,8 +84,9 @@ final class _AttentionShard {
   final Linear? gate;
   final Float32List qNorm, kNorm;
 
-  /// [maxSeq, (kv1 - kv0) * headDim].
-  final Float32List keys, values;
+  /// [maxSeq, (kv1 - kv0) * headDim]: Float32List, or Uint16List half bit
+  /// patterns (KvCacheFormat.f16).
+  final TypedData keys, values;
   final bool sliding;
 }
 
@@ -123,10 +124,16 @@ final class LayerShard {
     List<String> keepF32 = const [],
     Q8Cache? q8Cache,
     Map<String, NativeMatrix>? q8Built,
+    KvCacheFormat kvCache = KvCacheFormat.f32,
   }) {
     if ((q8Cache != null || q8Built != null) && shards != 1) {
       throw ArgumentError('the Q8 cache holds whole matrices: one shard only');
     }
+    if (kvCache == KvCacheFormat.f16 && !NativeKernels.isLoaded) {
+      throw ArgumentError('a half KV cache needs the native kernels');
+    }
+    TypedData cacheRows(int count) =>
+        kvCache == KvCacheFormat.f16 ? Uint16List(count) : Float32List(count);
     final c = TextModelConfig.load(modelDir);
     final h = c.hiddenSize;
     final hd = c.headDim;
@@ -289,8 +296,8 @@ final class LayerShard {
               ),
               qNorm: st.readF32('${a}q_norm.weight', [hd]),
               kNorm: st.readF32('${a}k_norm.weight', [hd]),
-              keys: Float32List(maxSeq * (kv1 - kv0) * hd),
-              values: Float32List(maxSeq * (kv1 - kv0) * hd),
+              keys: cacheRows(maxSeq * (kv1 - kv0) * hd),
+              values: cacheRows(maxSeq * (kv1 - kv0) * hd),
               sliding: type == LayerType.slidingAttention,
             ),
           );
@@ -413,23 +420,22 @@ final class LayerShard {
   /// histories, then each attention layer's keys and values rows before
   /// [position]. Writing them out and reading them back into another model
   /// on the same backend restores that position (see TextModel.saveState).
-  List<Float32List> stateBlocks(int position) => [
-    for (final conv in _conv)
-      if (conv != null) conv.history,
-    for (final att in _attention)
-      if (att != null) ...[
-        Float32List.sublistView(
-          att.keys,
-          0,
-          position * (att.kv1 - att.kv0) * config.headDim,
-        ),
-        Float32List.sublistView(
-          att.values,
-          0,
-          position * (att.kv1 - att.kv0) * config.headDim,
-        ),
-      ],
-  ];
+  List<TypedData> stateBlocks(int position) {
+    TypedData rows(TypedData cache, int count) => switch (cache) {
+      final Uint16List u => Uint16List.sublistView(u, 0, count),
+      final Float32List f => Float32List.sublistView(f, 0, count),
+      _ => throw StateError('KV cache of ${cache.runtimeType}'),
+    };
+    return [
+      for (final conv in _conv)
+        if (conv != null) conv.history,
+      for (final att in _attention)
+        if (att != null) ...[
+          rows(att.keys, position * (att.kv1 - att.kv0) * config.headDim),
+          rows(att.values, position * (att.kv1 - att.kv0) * config.headDim),
+        ],
+    ];
+  }
 
   /// This shard's partial of layer [layer]'s mixer for the [n] normalized
   /// inputs [a] ([n, H]) at positions [position], [position] + 1, ...
@@ -556,8 +562,14 @@ final class LayerShard {
         rmsNorm(_k, att.kNorm, _k, o, o, hd, c.normEps);
         rope.apply(_k, o);
       }
-      keys.setRange(pos * kvDim, (pos + 1) * kvDim, _k, t * kvDim);
-      values.setRange(pos * kvDim, (pos + 1) * kvDim, _v, t * kvDim);
+      if (keys is Float32List && values is Float32List) {
+        keys.setRange(pos * kvDim, (pos + 1) * kvDim, _k, t * kvDim);
+        values.setRange(pos * kvDim, (pos + 1) * kvDim, _v, t * kvDim);
+      }
+    }
+    if (keys is Uint16List && values is Uint16List) {
+      nativeF32ToF16(_k, 0, keys, position * kvDim, n * kvDim);
+      nativeF32ToF16(_v, 0, values, position * kvDim, n * kvDim);
     }
 
     // With the native kernels loaded, a shard holding every head hands the
@@ -583,6 +595,24 @@ final class LayerShard {
       return;
     }
 
+    // The Dart reference reads float32 rows: a half cache is widened first.
+    final Float32List keyRows, valueRows;
+    if (keys is Float32List && values is Float32List) {
+      keyRows = keys;
+      valueRows = values;
+    } else {
+      final count = (position + n) * kvDim;
+      keyRows = Float32List(count);
+      valueRows = Float32List(count);
+      nativeF16ToF32(
+        Uint16List.sublistView(keys as Uint16List, 0, count),
+        keyRows,
+      );
+      nativeF16ToF32(
+        Uint16List.sublistView(values as Uint16List, 0, count),
+        valueRows,
+      );
+    }
     final group = c.numHeads ~/ c.numKvHeads;
     final scale = 1 / math.sqrt(hd);
     for (var t = 0; t < n; t++) {
@@ -598,7 +628,7 @@ final class LayerShard {
           final ko = s * kvDim + kvo;
           var dot = 0.0;
           for (var d = 0; d < hd; d++) {
-            dot += _q[qo + d] * keys[ko + d];
+            dot += _q[qo + d] * keyRows[ko + d];
           }
           final score = dot * scale;
           _scores[s] = score;
@@ -615,7 +645,7 @@ final class LayerShard {
         for (var d = 0; d < hd; d++) {
           var acc = 0.0;
           for (var s = start; s <= pos; s++) {
-            acc += _scores[s] * values[s * kvDim + kvo + d];
+            acc += _scores[s] * valueRows[s * kvDim + kvo + d];
           }
           _attnOut[qo + d] = acc / sum;
           if (gated) _attnOut[qo + d] = _attnOut[qo + d] * g;

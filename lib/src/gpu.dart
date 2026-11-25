@@ -312,6 +312,83 @@ external void _attentionSplit(
   int block,
 );
 
+@Native<
+  Void Function(
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_gpu_enc_attention_f16', isLeaf: true)
+external void _attentionF16(
+  int q,
+  int keys,
+  int values,
+  int gate,
+  int out,
+  int position,
+  int n,
+  int heads,
+  int kvHeads,
+  int hd,
+  int window,
+);
+
+@Native<
+  Void Function(
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_gpu_enc_attention_split_f16', isLeaf: true)
+external void _attentionSplitF16(
+  int q,
+  int keys,
+  int values,
+  int gate,
+  int out,
+  int partials,
+  int position,
+  int n,
+  int heads,
+  int kvHeads,
+  int hd,
+  int window,
+  int block,
+);
+
+@Native<Void Function(Int64, Int64, Int64, Int64, Int64)>(
+  symbol: 'lab_gpu_enc_f32_to_f16',
+  isLeaf: true,
+)
+external void _f32ToF16(
+  int src,
+  int srcOffset,
+  int dst,
+  int dstOffset,
+  int count,
+);
+
+@Native<Int64 Function()>(symbol: 'lab_gpu_supports_f16', isLeaf: true)
+external int _supportsF16();
+
 @Native<Void Function(Int64, Int64, Int64)>(
   symbol: 'lab_gpu_enc_swiglu',
   isLeaf: true,
@@ -445,6 +522,7 @@ final class GpuForward {
     this.maxChunk,
     this.steers,
     this._splits,
+    this.kvCache,
   );
 
   /// Starts the GPU of the kernels asset, or with [libPath] of the library
@@ -457,9 +535,21 @@ final class GpuForward {
     required Q8Cache cache,
     required int maxSeq,
     required int maxChunk,
+    KvCacheFormat kvCache = KvCacheFormat.f32,
   }) {
     if (libPath != null) DynamicLibrary.open(libPath);
     if (_init() != 1) throw StateError('the GPU is unavailable');
+    if (kvCache == KvCacheFormat.f16) {
+      final has =
+          libPath == null ||
+          DynamicLibrary.open(libPath).providesSymbol('lab_gpu_supports_f16');
+      if (!has || _supportsF16() != 1) {
+        throw UnsupportedError('this GPU library has no half KV cache');
+      }
+      if (config.kvDim.isOdd) {
+        throw UnsupportedError('a half KV cache needs an even KV width');
+      }
+    }
     if (config.convKernel > 16) {
       throw UnsupportedError('the GPU path implements conv kernels up to 16');
     }
@@ -479,7 +569,7 @@ final class GpuForward {
         DynamicLibrary.open(
           libPath,
         ).providesSymbol('lab_gpu_enc_attention_split');
-    final gpu = GpuForward._(config, maxSeq, maxChunk, steers, splits);
+    final gpu = GpuForward._(config, maxSeq, maxChunk, steers, splits, kvCache);
     try {
       gpu._load(modelDir, cache);
     } catch (_) {
@@ -505,6 +595,12 @@ final class GpuForward {
 
   /// Whether the GPU library splits attention by blocks of keys.
   final bool _splits;
+
+  /// How the KV cache stores rows. A half cache is written from float32
+  /// rows ([_kRows], [_vRows]) by a conversion after K's norm and RoPE.
+  final KvCacheFormat kvCache;
+
+  bool get _half => kvCache == KvCacheFormat.f16;
 
   /// Passes of at most this many tokens attend by blocks of keys
   /// ([attentionBlock] each, every block a GPU workgroup) once the last
@@ -977,6 +1073,9 @@ final class GpuForward {
 
   late final _Buffer _x, _a, _m, _bcx, _y, _q, _gate, _attnOut, _g, _u;
   late final _Buffer _normed, _logits, _rope, _residualIn, _capture;
+
+  /// A chunk's K and V rows in float32 before a half cache takes them.
+  late final _Buffer _kRows, _vRows;
   // Split attention's per-block results, made on first use (attentionSplitFrom
   // is 0 by default off macOS): [attentionSplitTokens] tokens of every head,
   // blocks of at least [minAttentionBlock] keys up to maxSeq.
@@ -1028,6 +1127,8 @@ final class GpuForward {
     final h = c.hiddenSize;
     final hd = c.headDim;
     final segmentOf = _wrapWeights(cache);
+    // Each layer's keys or values: maxSeq rows of floats, or of halves.
+    final cacheFloats = _half ? (maxSeq * c.kvDim + 1) ~/ 2 : maxSeq * c.kvDim;
 
     _Matrix matrix(String name, int rows, int cols) {
       final o = cache.offsets(name, rows, cols);
@@ -1093,8 +1194,8 @@ final class GpuForward {
             ..o = matrix('${a}o_proj', h, c.numHeads * hd)
             ..qNorm = place(st.readF32('${a}q_norm.weight', [hd]))
             ..kNorm = place(st.readF32('${a}k_norm.weight', [hd]))
-            ..keys = _newBuffer(maxSeq * c.kvDim).handle
-            ..values = _newBuffer(maxSeq * c.kvDim).handle
+            ..keys = _newBuffer(cacheFloats).handle
+            ..values = _newBuffer(cacheFloats).handle
             ..sliding = c.layerTypes[i] == LayerType.slidingAttention;
         }
         _layers.add(layer);
@@ -1136,6 +1237,10 @@ final class GpuForward {
     _q = _newBuffer(rows * heads);
     _gate = _newBuffer(rows * c.numHeads);
     _attnOut = _newBuffer(rows * heads);
+    if (_half) {
+      _kRows = _newBuffer(rows * c.kvDim);
+      _vRows = _newBuffer(rows * c.kvDim);
+    }
     _g = _newBuffer(rows * c.intermediateSize);
     _u = _newBuffer(rows * c.intermediateSize);
     _normed = _newBuffer(h);
@@ -1219,10 +1324,11 @@ final class GpuForward {
   /// Views of the state the first [position] tokens left behind, in the
   /// order of LayerShard.stateBlocks: conv histories, then each attention
   /// layer's key and value rows before [position].
-  List<Float32List> stateBlocks(int position) {
+  List<TypedData> stateBlocks(int position) {
     final rows = position * config.kvDim;
-    Float32List view(int handle) =>
-        _contents(handle).cast<Float>().asTypedList(rows);
+    TypedData view(int handle) => _half
+        ? _contents(handle).cast<Uint16>().asTypedList(rows)
+        : _contents(handle).cast<Float>().asTypedList(rows);
     return [
       for (final layer in _layers)
         if (layer.history >= 0) _history(layer),
@@ -1356,12 +1462,17 @@ final class GpuForward {
         dispatched++;
         matmul(l.outProj!, _y, _m.handle);
       } else {
-        // K and V go straight into the chunk's cache rows.
-        final rows = position * c.kvDim * 4;
+        // K and V go straight into the chunk's cache rows, or with a half
+        // cache into float32 rows that are rounded into it after K's norm
+        // and RoPE.
         final ropeOffset = (l.sliding ? 2 * pair : 0) * 4;
+        final rows = position * c.kvDim * (_half ? 2 : 4);
+        final (kOut, vOut, kvOffset) = _half
+            ? (_kRows.handle, _vRows.handle, 0)
+            : (l.keys, l.values, rows);
         matmul(l.q!, _a, _q.handle);
-        matmul(l.k!, _a, l.keys, rows);
-        matmul(l.v!, _a, l.values, rows);
+        matmul(l.k!, _a, kOut, kvOffset);
+        matmul(l.v!, _a, vOut, kvOffset);
         if (l.gate case final gate?) matmul(gate, _a, _gate.handle);
         headNormRope(
           _q.handle,
@@ -1371,7 +1482,19 @@ final class GpuForward {
           c.numHeads,
           ropeOffset,
         );
-        headNormRope(l.keys, rows, c.kvDim, l.kNorm, c.numKvHeads, ropeOffset);
+        headNormRope(
+          kOut,
+          kvOffset,
+          c.kvDim,
+          l.kNorm,
+          c.numKvHeads,
+          ropeOffset,
+        );
+        if (_half) {
+          _f32ToF16(_kRows.handle, 0, l.keys, rows, n * c.kvDim);
+          _f32ToF16(_vRows.handle, 0, l.values, rows, n * c.kvDim);
+          dispatched += 2;
+        }
         final window = l.sliding ? c.slidingWindow : 0;
         final last = position + n - 1;
         final seen = window > 0 && last >= window ? window : last + 1;
@@ -1384,36 +1507,70 @@ final class GpuForward {
           if (block < minAttentionBlock || block > maxAttentionBlock) {
             throw ArgumentError('attention block of $block keys');
           }
-          _attentionSplit(
-            _q.handle,
-            l.keys,
-            l.values,
-            l.gate == null ? -1 : _gate.handle,
-            _attnOut.handle,
-            _partials.handle,
-            position,
-            n,
-            c.numHeads,
-            c.numKvHeads,
-            hd,
-            window,
-            block,
-          );
+          if (_half) {
+            _attentionSplitF16(
+              _q.handle,
+              l.keys,
+              l.values,
+              l.gate == null ? -1 : _gate.handle,
+              _attnOut.handle,
+              _partials.handle,
+              position,
+              n,
+              c.numHeads,
+              c.numKvHeads,
+              hd,
+              window,
+              block,
+            );
+          } else {
+            _attentionSplit(
+              _q.handle,
+              l.keys,
+              l.values,
+              l.gate == null ? -1 : _gate.handle,
+              _attnOut.handle,
+              _partials.handle,
+              position,
+              n,
+              c.numHeads,
+              c.numKvHeads,
+              hd,
+              window,
+              block,
+            );
+          }
           dispatched += 2; // the blocks, then their merge
         } else {
-          _attention(
-            _q.handle,
-            l.keys,
-            l.values,
-            l.gate == null ? -1 : _gate.handle,
-            _attnOut.handle,
-            position,
-            n,
-            c.numHeads,
-            c.numKvHeads,
-            hd,
-            window,
-          );
+          if (_half) {
+            _attentionF16(
+              _q.handle,
+              l.keys,
+              l.values,
+              l.gate == null ? -1 : _gate.handle,
+              _attnOut.handle,
+              position,
+              n,
+              c.numHeads,
+              c.numKvHeads,
+              hd,
+              window,
+            );
+          } else {
+            _attention(
+              _q.handle,
+              l.keys,
+              l.values,
+              l.gate == null ? -1 : _gate.handle,
+              _attnOut.handle,
+              position,
+              n,
+              c.numHeads,
+              c.numKvHeads,
+              hd,
+              window,
+            );
+          }
           dispatched++;
         }
         matmul(l.o!, _attnOut, _m.handle);

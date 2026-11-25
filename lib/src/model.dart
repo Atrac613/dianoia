@@ -85,6 +85,12 @@ final class TextModel {
   /// missing), so it needs Q8 or Q4 weights, a cache path and the native
   /// kernels, which map the cache. [gpuLib] does too, with the GPU layer of
   /// the library at that path instead of the package's kernels asset.
+  ///
+  /// [kvCache] stores the KV cache in float32 or half precision; null takes
+  /// [KvCacheFormat.defaultFor] the model where the native kernels are
+  /// loaded, [workers] is 0 and there is no [gpuLib], on the CPU or Metal,
+  /// float32 otherwise. A half cache needs the native kernels and no
+  /// workers.
   static Future<TextModel> load(
     String modelDir, {
     int maxSeq = 4096,
@@ -95,6 +101,7 @@ final class TextModel {
     String? q8CachePath,
     bool gpu = false,
     String? gpuLib,
+    KvCacheFormat? kvCache,
   }) async {
     final onGpu = gpu || gpuLib != null;
     if (onGpu && (!weights.isNative || q8CachePath == null || workers > 0)) {
@@ -110,6 +117,20 @@ final class TextModel {
       );
     }
     final c = TextModelConfig.load(modelDir);
+    final kv =
+        kvCache ??
+        // Vulkan's half kernels have not run on a device yet.
+        (NativeKernels.isLoaded &&
+                workers == 0 &&
+                gpuLib == null &&
+                (!onGpu || Platform.isMacOS || Platform.isIOS)
+            ? KvCacheFormat.defaultFor(c)
+            : KvCacheFormat.f32);
+    if (kv == KvCacheFormat.f16 && (!NativeKernels.isLoaded || workers > 0)) {
+      throw ArgumentError(
+        'a half KV cache needs the native kernels and --workers=0',
+      );
+    }
     final h = c.hiddenSize;
     final st = SafetensorsFile.open('$modelDir/model.safetensors');
     final List<_LayerNorms> norms;
@@ -162,7 +183,8 @@ final class TextModel {
                 ' attention=${native?.attention == true ? 'c' : 'dart'}';
       final stateKey =
           '${Q8Cache.keyFor(modelDir, weights: weights.name)} '
-          '${weights.name} keep=${keepF32.join(',')} $backend';
+          '${weights.name} keep=${keepF32.join(',')} $backend'
+          '${kv == KvCacheFormat.f16 ? ' kv=f16' : ''}';
       NativeQ8Matrix? embedQ8;
       if (embedBf16 == null) {
         embedQ8 = switch (cache?.matrix(_embedName, c.vocabSize, h)) {
@@ -195,6 +217,7 @@ final class TextModel {
           cache: cache,
           maxSeq: maxSeq,
           maxChunk: maxChunk,
+          kvCache: kv,
         );
         return TextModel._(
           c,
@@ -223,6 +246,7 @@ final class TextModel {
                 keepF32: keepF32,
                 q8Cache: cache,
                 q8Built: built,
+                kvCache: kv,
               ),
             )
           : await PooledExecutor.spawn(
@@ -565,7 +589,8 @@ final class TextModel {
   ///
   /// Layout: magic `LFM3ST01`, a little-endian u64 header length, a JSON
   /// header (version, key, tokens, block lengths), zero padding to a
-  /// multiple of 64, then the float blocks of [_stateBlocks] in order.
+  /// multiple of 64, then the blocks of [_stateBlocks] in order: floats,
+  /// and halves for the KV rows of a half cache.
   Future<void> saveState(String path) async {
     _checkOpen();
     final blocks =
@@ -576,7 +601,7 @@ final class TextModel {
         'version': _stateVersion,
         'key': _currentStateKey,
         'tokens': _history,
-        'blocks': [for (final b in blocks) b.length],
+        'blocks': [for (final b in blocks) _elements(b)],
       }),
     );
     final temp = File('$path.partial');
@@ -636,7 +661,7 @@ final class TextModel {
           blocks.length != lengths.length ||
           Iterable.generate(
             blocks.length,
-          ).any((i) => blocks[i].length != lengths[i])) {
+          ).any((i) => _elements(blocks[i]) != lengths[i])) {
         return false;
       }
       input.setPositionSync(16 + headerLength + _padTo64(16 + headerLength));
@@ -670,7 +695,11 @@ final class TextModel {
 
   static int _padTo64(int offset) => (64 - offset % 64) % 64;
 
-  List<Float32List>? _stateBlocks(int position) =>
+  /// Elements of a state block: floats, or halves of a half KV cache.
+  static int _elements(TypedData block) =>
+      block.lengthInBytes ~/ block.elementSizeInBytes;
+
+  List<TypedData>? _stateBlocks(int position) =>
       _gpu?.stateBlocks(position) ?? _executor!.stateBlocks(position);
 
   /// Returns to the state at checkpoint [position] (0: the empty state).
