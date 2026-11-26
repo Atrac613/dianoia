@@ -281,5 +281,7 @@ void main() {
         );
       }
     }, skip: native ? false : 'native kernels unavailable');
-  });
+    // setUpAll builds a Q8 bundle, which needs the kernels even when every
+    // test is skipped.
+  }, skip: native ? false : 'native kernels unavailable');
 }
