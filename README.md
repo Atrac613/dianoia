@@ -330,7 +330,9 @@ Vulkan anyway: it prefills long prompts about twice as fast but decodes
 more slowly.
 
 `send` throws `ContextLengthExceeded` once the prompt outgrows the model context
-(2048 tokens by default), preserving the conversation. `chat.clear()` starts over.
+(by default 4096 tokens for Qwen3 and 2048 for LFM3), preserving the conversation.
+`chat.clear()` starts over. With `enableThinking`, replies may run to the end of the
+context unless `maxNewTokens` says otherwise; without it they stop at 512 tokens.
 The library parses tool calls; the app executes the tools and supplies results.
 
 A large tool catalog need not fill the context. Mark tools with

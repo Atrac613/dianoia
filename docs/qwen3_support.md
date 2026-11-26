@@ -323,6 +323,14 @@ top-k 20) with thinking and `qwen3NonThinking` (0.7, 0.8, 20) without.
 Tool-call argument values that are not strings arrive as their JSON text,
 since `ToolCall.arguments` holds strings for both families.
 
+`LocalModel.load` gives Qwen3 a 4,096-token context unless the app passes
+`contextLength`: thinking runs long (998 tokens for 0.6B and 1,699 for
+1.7B on one question), and the half KV cache holds 4,096 tokens in the
+470 MB that 2,048 took in float32 (on Vulkan, still float32, it takes
+940 MB). With `enableThinking`, `chat` lets a reply run to the end of the
+context unless `maxNewTokens` caps it, since a reply cut inside its
+reasoning has no answer.
+
 ## Known gaps
 
 - NFC normalization of input text (above).
