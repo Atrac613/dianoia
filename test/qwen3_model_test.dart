@@ -73,5 +73,18 @@ void main() {
       'content': 'hi',
     });
     expect(turn.generatedTokens, greaterThan(0));
+    // Thinking replies may run to the end of the context by default.
+    expect(local.chat().maxNew, 512);
+    expect(local.chat(enableThinking: true).maxNew, 64);
+    expect(local.chat(enableThinking: true, maxNewTokens: 9).maxNew, 9);
+
+    // Without a context length, Qwen3 gets 4096 tokens.
+    final defaults = await LocalModel.load(
+      bundle,
+      backend: InferenceBackend.cpu,
+      threads: 2,
+    );
+    addTearDown(defaults.close);
+    expect(defaults.contextLength, 4096);
   }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');
 }
