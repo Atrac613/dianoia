@@ -26,8 +26,18 @@ void ensureNativeKernels(int threads) {
   NativeKernels.load(null, threads: threads);
 }
 
+/// The context a model family gets when the app names none: tokens of
+/// prompt and replies together. Qwen3 thinks at length (1.7B took 1,699
+/// tokens on one question), and its half KV cache holds 4,096 tokens in the
+/// 470 MB that 2,048 float32 tokens took. Where it keeps a float32 cache
+/// ([halfCache] false: Vulkan), 4,096 tokens would take 940 MB, so it gets
+/// 2,048 there, as LFM3 does everywhere.
+int defaultContextLength(TextModelConfig config, {bool halfCache = true}) =>
+    config.architecture == ModelArchitecture.qwen3 && halfCache ? 4096 : 2048;
+
 /// Opens the language bundle in [dir], holding [weights] (see
-/// [bundleWeights]), on [backend]. With [InferenceBackend.auto] a GPU that
+/// [bundleWeights]), on [backend], with [contextLength] tokens or the
+/// family's [defaultContextLength]. With [InferenceBackend.auto] a GPU that
 /// cannot run the model, or one slower than the CPU for it
 /// ([autoPrefersCpu]), leaves it on the CPU kernels; [TextModel.gpu] says
 /// which ran.
@@ -35,12 +45,18 @@ Future<TextModel> openLanguageBundle(
   String dir, {
   required WeightFormat weights,
   required InferenceBackend backend,
-  required int contextLength,
+  int? contextLength,
 }) async {
   final config = TextModelConfig.load(dir);
   Future<TextModel> open({required bool gpu}) => TextModel.load(
     dir,
-    maxSeq: contextLength,
+    // Vulkan keeps a float32 KV cache (TextModel.load's kvCache default).
+    maxSeq:
+        contextLength ??
+        defaultContextLength(
+          config,
+          halfCache: !gpu || Platform.isMacOS || Platform.isIOS,
+        ),
     weights: weights,
     q8CachePath: '$dir/${quantizedCacheName(config, weights)}',
     gpu: gpu,

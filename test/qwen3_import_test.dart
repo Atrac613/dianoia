@@ -3,7 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
-import 'package:dianoia/src/model_loading.dart' show autoPrefersCpu;
+import 'package:dianoia/src/model_loading.dart'
+    show autoPrefersCpu, defaultContextLength;
 import 'package:test/test.dart';
 
 /// Qwen3-0.6B's config.json, shortened to two layers.
@@ -41,6 +42,28 @@ void main() {
     expect(autoPrefersCpu(qwen3, android: true), isTrue);
     expect(autoPrefersCpu(qwen3, android: false), isFalse);
     expect(autoPrefersCpu(lfm3, android: true), isFalse);
+  });
+
+  test('Qwen3 gets 4096 tokens of context by default, LFM3 2048', () {
+    final vision =
+        jsonDecode(File('test/fixtures/vision/config.json').readAsStringSync())
+            as Map<String, Object?>;
+    final lfm3 = TextModelConfig.fromJson(
+      vision['text_config'] as Map<String, Object?>,
+    );
+    expect(
+      defaultContextLength(TextModelConfig.fromJson(_qwen3Config())),
+      4096,
+    );
+    expect(defaultContextLength(lfm3), 2048);
+    // Vulkan keeps Qwen3's cache in float32, twice the size.
+    expect(
+      defaultContextLength(
+        TextModelConfig.fromJson(_qwen3Config()),
+        halfCache: false,
+      ),
+      2048,
+    );
   });
 
   group('Qwen3 config', () {

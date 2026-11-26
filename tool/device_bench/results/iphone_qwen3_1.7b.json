@@ -1,12 +1,10 @@
 {
-  "started": "2026-11-20T21:10:33.368073",
+  "started": "2026-11-26T20:14:29.616052",
   "os": "Version 27.2.1 (Build 24B156)",
-  "build": "b3056ac",
+  "build": "v0.6.0-25-g58f2770",
   "spec": "qwen3-1.7b-q8-90862c4",
   "install": {
-    "download_s": 128.425,
-    "import_s": 5.9739999999999895,
-    "total_s": 134.399,
+    "already_installed": true,
     "bundle_files": {
       "model.safetensors": 506944,
       "config.json": 726,
@@ -17,7 +15,8 @@
     }
   },
   "gpu": {
-    "load_s": 0.854,
+    "load_s": 1.214,
+    "context_length": 4096,
     "greedy": {
       "content": "The capital of Japan is Tokyo.",
       "reasoning_chars": null,
@@ -25,9 +24,9 @@
       "prompt_tokens": 24,
       "reused_tokens": 0,
       "generated_tokens": 7,
-      "prefill_s": 2.499752,
-      "decode_tok_per_s": 17.796082319592216,
-      "footprint_mb": 928,
+      "prefill_s": 2.930094,
+      "decode_tok_per_s": 14.215131804732826,
+      "footprint_mb": 677,
       "passed": true
     },
     "second_turn": {
@@ -37,9 +36,9 @@
       "prompt_tokens": 50,
       "reused_tokens": 20,
       "generated_tokens": 7,
-      "prefill_s": 0.351587,
-      "decode_tok_per_s": 18.07501129688206,
-      "footprint_mb": 898,
+      "prefill_s": 0.361551,
+      "decode_tok_per_s": 15.630547448759716,
+      "footprint_mb": 681,
       "passed": true
     },
     "tool_call": {
@@ -56,9 +55,9 @@
       "prompt_tokens": 169,
       "reused_tokens": 1,
       "generated_tokens": 19,
-      "prefill_s": 2.006751,
-      "decode_tok_per_s": 17.921146953405017,
-      "footprint_mb": 902,
+      "prefill_s": 2.082349,
+      "decode_tok_per_s": 15.93221930783731,
+      "footprint_mb": 685,
       "passed": true
     },
     "thinking": {
@@ -68,15 +67,16 @@
       "prompt_tokens": 18,
       "reused_tokens": 1,
       "generated_tokens": 1699,
-      "prefill_s": 0.222173,
-      "decode_tok_per_s": 14.773378375645223,
-      "footprint_mb": 909,
+      "prefill_s": 0.228755,
+      "decode_tok_per_s": 13.665285834708676,
+      "footprint_mb": 675,
       "passed": true
     }
   },
   "passed": true,
   "cpu": {
-    "load_s": 0.202,
+    "load_s": 0.184,
+    "context_length": 4096,
     "greedy": {
       "content": "The capital of Japan is Tokyo.",
       "reasoning_chars": null,
@@ -84,9 +84,9 @@
       "prompt_tokens": 24,
       "reused_tokens": 0,
       "generated_tokens": 7,
-      "prefill_s": 1.601253,
-      "decode_tok_per_s": 16.136691609381412,
-      "footprint_mb": 171,
+      "prefill_s": 1.868434,
+      "decode_tok_per_s": 11.920676413238763,
+      "footprint_mb": 161,
       "passed": true
     },
     "second_turn": {
@@ -96,9 +96,9 @@
       "prompt_tokens": 50,
       "reused_tokens": 20,
       "generated_tokens": 7,
-      "prefill_s": 1.0956,
-      "decode_tok_per_s": 17.47592691068054,
-      "footprint_mb": 173,
+      "prefill_s": 1.012827,
+      "decode_tok_per_s": 17.676946231780118,
+      "footprint_mb": 162,
       "passed": true
     },
     "tool_call": {
@@ -115,9 +115,9 @@
       "prompt_tokens": 169,
       "reused_tokens": 1,
       "generated_tokens": 19,
-      "prefill_s": 4.971838,
-      "decode_tok_per_s": 18.581380087997506,
-      "footprint_mb": 208,
+      "prefill_s": 4.8423,
+      "decode_tok_per_s": 18.875328455551085,
+      "footprint_mb": 182,
       "passed": true
     }
   },

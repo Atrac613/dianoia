@@ -55,8 +55,8 @@ Future<void> qwen3Check(
   (record['install'] as Map)['bundle_files'] = files;
   save();
 
-  // Room for thinking, which took 1,699 tokens on the Mac for 1.7B.
-  final contextLength = (config['context_length'] as num?)?.toInt() ?? 3072;
+  // LocalModel's default (4096 for Qwen3) unless the config names one.
+  final contextLength = (config['context_length'] as num?)?.toInt();
   if (config['context_cost'] == true) {
     if (config['verify_cost'] == true || config['gpu_profile'] == true) {
       throw ArgumentError('context_cost is a run of its own');
@@ -92,7 +92,7 @@ Future<void> qwen3Check(
     record['gpu_profile'] = await qwen3GpuProfile(
       bundle,
       log,
-      contextLength: contextLength,
+      contextLength: contextLength ?? 4096,
       shapes: config['gpu_shapes'] == true,
     );
     save();
@@ -111,6 +111,7 @@ Future<void> qwen3Check(
       contextLength: contextLength,
     );
     result['load_s'] = sw.elapsedMilliseconds / 1000;
+    result['context_length'] = model.contextLength;
     log('${backend.name}: loaded in ${result['load_s']} s');
     try {
       Map<String, Object?> describe(ChatTurn t) => {
@@ -176,7 +177,7 @@ Future<void> qwen3Check(
       if (backend != InferenceBackend.cpu || config['cpu_thinking'] == true) {
         final thinking = await model
             .chat(
-              maxNewTokens: 3000,
+              // No cap: thinking runs to the end of the context by default.
               enableThinking: true,
               // Qwen3's thinking preset, seeded.
               sampling: const SamplingParams(

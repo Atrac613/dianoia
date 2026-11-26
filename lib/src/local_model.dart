@@ -74,13 +74,18 @@ final class LocalModel {
   /// without the features the kernels need) leaves it on the CPU kernels,
   /// and so does Android for Qwen3, whose decoding is faster there on the
   /// CPU.
-  /// GPU attention keeps a score per key in on-chip memory, so a long
-  /// [contextLength] may not fit on the GPU; 2048 does on the phones
-  /// measured. [threads] native threads share each CPU matrix product.
+  ///
+  /// [contextLength] is the most tokens a conversation holds, prompt and
+  /// replies together: by default 4096 for Qwen3, whose thinking runs
+  /// long, except on Vulkan, where its KV cache stays float32 and twice
+  /// the size, and 2048 for LFM3. GPU attention keeps a score per key in
+  /// on-chip memory, so a much longer context may not fit on the GPU; 4096
+  /// does on the phones measured. [threads] native threads share each CPU
+  /// matrix product.
   static Future<LocalModel> load(
     String dir, {
     InferenceBackend backend = InferenceBackend.auto,
-    int contextLength = 2048,
+    int? contextLength,
     int threads = 4,
   }) async {
     final weights = bundleWeights(dir); // fails before anything loads
@@ -106,10 +111,17 @@ final class LocalModel {
   /// answering; the reasoning arrives in [ChatTurn.reply]. Reasoning models
   /// tend to repeat themselves under greedy decoding, so pair it with
   /// sampling, such as [SamplingParams.qwen3Thinking].
+  ///
+  /// [maxNewTokens] defaults to 512, or with [enableThinking] and sampling
+  /// (a temperature above 0) to the whole [contextLength]: reasoning often
+  /// runs past a thousand tokens (1,699 for Qwen3-1.7B on one question), and
+  /// a reply cut inside it has no answer. Greedy thinking keeps 512, since
+  /// it tends to loop and nothing stops a reply in progress. Replies always
+  /// stop where the context ends.
   ChatSession chat({
     String? system,
     List<Map<String, Object?>>? tools,
-    int maxNewTokens = 512,
+    int? maxNewTokens,
     SamplingParams sampling = SamplingParams.greedy,
     bool enableThinking = false,
   }) => ChatSession(
@@ -117,7 +129,9 @@ final class LocalModel {
     _tokenizer,
     system: system,
     tools: tools,
-    maxNew: maxNewTokens,
+    maxNew:
+        maxNewTokens ??
+        (enableThinking && sampling.temperature > 0 ? contextLength : 512),
     sampling: sampling,
     enableThinking: enableThinking,
   );
