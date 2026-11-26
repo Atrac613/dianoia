@@ -74,13 +74,17 @@ final class LocalModel {
   /// without the features the kernels need) leaves it on the CPU kernels,
   /// and so does Android for Qwen3, whose decoding is faster there on the
   /// CPU.
-  /// GPU attention keeps a score per key in on-chip memory, so a long
-  /// [contextLength] may not fit on the GPU; 2048 does on the phones
-  /// measured. [threads] native threads share each CPU matrix product.
+  ///
+  /// [contextLength] is the most tokens a conversation holds, prompt and
+  /// replies together: by default 4096 for Qwen3, whose thinking runs
+  /// long, and 2048 for LFM3. GPU attention keeps a score per key in
+  /// on-chip memory, so a much longer context may not fit on the GPU; 4096
+  /// does on the phones measured. [threads] native threads share each CPU
+  /// matrix product.
   static Future<LocalModel> load(
     String dir, {
     InferenceBackend backend = InferenceBackend.auto,
-    int contextLength = 2048,
+    int? contextLength,
     int threads = 4,
   }) async {
     final weights = bundleWeights(dir); // fails before anything loads

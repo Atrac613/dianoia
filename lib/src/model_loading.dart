@@ -26,8 +26,16 @@ void ensureNativeKernels(int threads) {
   NativeKernels.load(null, threads: threads);
 }
 
+/// The context a model family gets when the app names none: tokens of
+/// prompt and replies together. Qwen3 thinks at length (1.7B took 1,699
+/// tokens on one question), and its half KV cache holds 4,096 tokens in the
+/// 470 MB that 2,048 float32 tokens took; LFM3 keeps 2,048.
+int defaultContextLength(TextModelConfig config) =>
+    config.architecture == ModelArchitecture.qwen3 ? 4096 : 2048;
+
 /// Opens the language bundle in [dir], holding [weights] (see
-/// [bundleWeights]), on [backend]. With [InferenceBackend.auto] a GPU that
+/// [bundleWeights]), on [backend], with [contextLength] tokens or the
+/// family's [defaultContextLength]. With [InferenceBackend.auto] a GPU that
 /// cannot run the model, or one slower than the CPU for it
 /// ([autoPrefersCpu]), leaves it on the CPU kernels; [TextModel.gpu] says
 /// which ran.
@@ -35,12 +43,13 @@ Future<TextModel> openLanguageBundle(
   String dir, {
   required WeightFormat weights,
   required InferenceBackend backend,
-  required int contextLength,
+  int? contextLength,
 }) async {
   final config = TextModelConfig.load(dir);
+  final maxSeq = contextLength ?? defaultContextLength(config);
   Future<TextModel> open({required bool gpu}) => TextModel.load(
     dir,
-    maxSeq: contextLength,
+    maxSeq: maxSeq,
     weights: weights,
     q8CachePath: '$dir/${quantizedCacheName(config, weights)}',
     gpu: gpu,
