@@ -34,6 +34,8 @@ final class ChatTurn {
     required this.decodeSeconds,
     this.thinkingCut = false,
     this.stoppedOnRepetition = false,
+    this.rejectedLines = 0,
+    this.stoppedOnCheck = false,
   });
 
   /// The generated text, without the end-of-turn token.
@@ -58,6 +60,13 @@ final class ChatTurn {
   /// Whether the reply ended because [ChatSession.repetitionGuard] saw it
   /// repeat itself, outside the reasoning.
   final bool stoppedOnRepetition;
+
+  /// Lines that `checkLine` rejected and the session sampled again.
+  final int rejectedLines;
+
+  /// Whether the reply ended because a line failed `checkLine` on every
+  /// try; the reply then ends at the last line that passed.
+  final bool stoppedOnCheck;
 
   int get newTokens => promptTokens - reusedTokens;
 }
@@ -116,6 +125,28 @@ final class ChatSession {
   /// random sequence across the conversation's replies.
   final SamplingParams sampling;
   final Sampler _sampler;
+
+  /// The samplers for retrying a rejected line, by retry (from 1).
+  final _retrySamplers = <int, Sampler>{};
+
+  /// The sampler for retry [retry] of a line `checkLine` rejected. A retry
+  /// under the same parameters mostly draws the same line again: the
+  /// mistake is what the model is sure of. Each retry samples hotter
+  /// (temperature at least 0.7, plus 0.3 a retry) from more of the
+  /// vocabulary (no top-k or top-p; min-p 0.02 keeps out the tail).
+  Sampler _retrySampler(int retry) => _retrySamplers.putIfAbsent(
+    retry,
+    () => Sampler(
+      SamplingParams(
+        temperature:
+            (sampling.temperature < 0.7 ? 0.7 : sampling.temperature) +
+            0.3 * retry,
+        minP: 0.02,
+        presencePenalty: sampling.presencePenalty,
+        seed: sampling.seed == null ? null : sampling.seed! + 7919 * retry,
+      ),
+    ),
+  );
 
   /// Whether the model may reason before it answers. Off, the prompt asks
   /// for a direct answer (LFM3 and Qwen3 both close an empty think block);
@@ -220,6 +251,17 @@ final class ChatSession {
   /// `<tool_call>` when the caller offers no tools and the model would
   /// otherwise still start a call it cannot run. Decoding picks only
   /// tokens outside the set; end-of-reply tokens are never suppressed. An empty set leaves decoding unchanged.
+  /// [checkLine] verifies the reply line by line: whenever a generated
+  /// token ends a line, it gets the reply up to that line's newline, and
+  /// returning false rejects the line. The session then rewinds the model
+  /// to the start of the line and samples it again, up to [lineRetries]
+  /// times, after which the reply ends at the last line that passed
+  /// ([ChatTurn.stoppedOnCheck]). Rewinding costs a step on attention-only
+  /// models (Qwen3) and a line's worth of tokens on others (LFM3, from the
+  /// checkpoint at the previous line). Each retry samples the line hotter
+  /// than [sampling], even after greedy decoding, since the same
+  /// parameters mostly draw the same mistake again. A rejected line is taken back
+  /// from [onText] too, which then sees shorter text.
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
   /// Observer work, [onText]'s included, counts in the generation timings.
@@ -232,10 +274,22 @@ final class ChatSession {
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
     Set<int> suppressedTokens = const {},
+    bool Function(String reply)? checkLine,
+    int lineRetries = 4,
   }) async {
+    if (lineRetries < 0) {
+      throw ArgumentError.value(lineRetries, 'lineRetries', 'is negative');
+    }
     beginModelUse(model);
     try {
-      return await _send(message, onLogits, onText, suppressedTokens);
+      return await _send(
+        message,
+        onLogits,
+        onText,
+        suppressedTokens,
+        checkLine,
+        lineRetries,
+      );
     } finally {
       endModelUse(model);
     }
@@ -246,6 +300,8 @@ final class ChatSession {
     void Function(Float32List logits)? onLogits,
     FutureOr<bool> Function(String text)? onText,
     Set<int> suppressedTokens,
+    bool Function(String reply)? checkLine,
+    int lineRetries,
   ) async {
     final suppressed = {...suppressedTokens}
       ..removeAll(model.config.eosTokenIds);
@@ -269,34 +325,81 @@ final class ChatSession {
     if (keepPromptLogits) promptLogits = Float32List.fromList(model.logits);
     onLogits?.call(model.logits);
     final gen = <int>[];
+    // Whether each token of [gen] was sampled rather than fed by the
+    // session. Only sampled tokens go into [seen]: the presence penalty
+    // counts what the model chose, not a cutoff the session fed.
+    final sampled = <bool>[];
     final seen = <int>{};
+    Future<bool> report() async =>
+        onText == null || await onText(_complete(tokenizer.decode(gen)));
     // Feeds [token] as part of the reply; false when the caller stops it.
-    // Only sampled tokens go into [seen]: the presence penalty counts what
-    // the model chose, not a cutoff the session fed.
-    Future<bool> feed(int token) async {
+    Future<bool> feed(int token, {bool wasSampled = false}) async {
       gen.add(token);
+      sampled.add(wasSampled);
+      if (wasSampled) seen.add(token);
       await model.step(token);
       onLogits?.call(model.logits);
-      return onText == null || await onText(_complete(tokenizer.decode(gen)));
+      return report();
     }
 
     var thinking = enableThinking;
     var thinkingCut = false;
     var stoppedOnRepetition = false;
+    // The line being written starts at gen[lineStart]; it is retried
+    // [retries] times so far.
+    var lineStart = 0;
+    var thinkingAtLineStart = thinking;
+    var retries = 0;
+    var rejectedLines = 0;
+    var stoppedOnCheck = false;
+    // Takes the reply back to the start of the current line.
+    Future<void> rewindLine() async {
+      gen.length = lineStart;
+      sampled.length = lineStart;
+      seen
+        ..clear()
+        ..addAll([
+          for (var i = 0; i < gen.length; i++)
+            if (sampled[i]) gen[i],
+        ]);
+      thinking = thinkingAtLineStart;
+      await model.prefill(model.history.sublist(0, ids.length + lineStart));
+      onLogits?.call(model.logits);
+    }
+
     sw
       ..reset()
       ..start();
     try {
       decode:
       while (gen.length < maxNew && model.history.length < model.maxSeq) {
-        final next = _sampler.next(
+        final next = (retries == 0 ? _sampler : _retrySampler(retries)).next(
           model.logits,
           suppressed: suppressed,
           seen: seen,
         );
         if (model.config.isEos(next)) break;
-        seen.add(next);
-        if (!await feed(next)) break;
+        if (!await feed(next, wasSampled: true)) break;
+        if (checkLine != null && tokenizer.decode([next]).contains('\n')) {
+          final text = tokenizer.decode(gen);
+          if (checkLine(text.substring(0, text.lastIndexOf('\n') + 1))) {
+            lineStart = gen.length;
+            retries = 0;
+            if (thinking && _closesThinking(gen)) thinking = false;
+            thinkingAtLineStart = thinking;
+            await model.checkpoint();
+          } else {
+            rejectedLines++;
+            await rewindLine();
+            if (retries++ >= lineRetries) {
+              stoppedOnCheck = true;
+              await report();
+              break;
+            }
+            if (!await report()) break;
+            continue;
+          }
+        }
         if (thinking && _closesThinking(gen)) thinking = false;
         final loops = repetitionGuard?.loops(gen) ?? false;
         final budget = thinkingBudget;
@@ -310,6 +413,10 @@ final class ChatSession {
             if (!await feed(token)) break decode;
           }
           thinkingCut = true;
+          // The cutoff is the session's own: lines start after it.
+          lineStart = gen.length;
+          thinkingAtLineStart = false;
+          retries = 0;
         } else if (loops) {
           stoppedOnRepetition = true;
           break;
@@ -334,6 +441,8 @@ final class ChatSession {
       decodeSeconds: decodeSeconds,
       thinkingCut: thinkingCut,
       stoppedOnRepetition: stoppedOnRepetition,
+      rejectedLines: rejectedLines,
+      stoppedOnCheck: stoppedOnCheck,
     );
   }
 

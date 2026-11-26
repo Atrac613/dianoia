@@ -2,6 +2,7 @@
 // Runs on the synthetic backbone of the vision fixture, on the native CPU
 // kernels.
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dianoia/lab.dart';
 import 'package:test/test.dart';
@@ -174,6 +175,88 @@ void main() {
       expect(turn.generatedTokens, 40);
       expect(turn.stoppedOnRepetition, isFalse);
       expect(ids.toSet(), hasLength(ids.length));
+    });
+    group('checkLine', () {
+      // Only 'B' and newline allowed: greedy replies of several short lines.
+      Set<int> lines() => {
+        for (var i = 0; i < model.config.vocabSize; i++)
+          if (i != 66 && i != 10) i,
+      };
+
+      test('rewinding a line restores the state at its start', () async {
+        final logits = <Float32List>[];
+        var calls = 0;
+        int? lineStart;
+        int? rewound;
+        final session = ChatSession(model, tokenizer, maxNew: 30);
+        final turn = await session.send(
+          hi,
+          suppressedTokens: lines(),
+          onLogits: (l) => logits.add(Float32List.fromList(l)),
+          // Accepts the first line and rejects the second once.
+          checkLine: (reply) {
+            calls++;
+            if (calls == 1) lineStart = logits.length - 1;
+            if (calls == 2) rewound = logits.length;
+            return calls != 2;
+          },
+        );
+        expect(turn.rejectedLines, 1);
+        expect(turn.stoppedOnCheck, isFalse);
+        // The logits right after the rewind are those the line began with.
+        expect(logits[rewound!], orderedEquals(logits[lineStart!]));
+        expect(model.history.length, turn.promptTokens + turn.generatedTokens);
+      });
+
+      test('a line that fails with no retries left ends the reply', () async {
+        final session = ChatSession(model, tokenizer, maxNew: 30);
+        final seen = <String>[];
+        final turn = await session.send(
+          hi,
+          suppressedTokens: lines(),
+          checkLine: (_) => false,
+          lineRetries: 0,
+          onText: (text) {
+            seen.add(text);
+            return true;
+          },
+        );
+        expect(turn.stoppedOnCheck, isTrue);
+        expect(turn.rejectedLines, 1);
+        expect(turn.text, isEmpty);
+        expect(seen.last, isEmpty);
+        expect(model.history.length, turn.promptTokens);
+      });
+
+      test('sampled retries keep only lines that pass', () async {
+        final session = ChatSession(
+          model,
+          tokenizer,
+          maxNew: 40,
+          sampling: const SamplingParams(temperature: 1, seed: 3),
+        );
+        bool short(String reply) =>
+            reply.trimRight().split('\n').every((l) => l.length <= 1);
+        final turn = await session.send(
+          hi,
+          suppressedTokens: lines(),
+          checkLine: short,
+          lineRetries: 20,
+        );
+        expect(turn.rejectedLines, greaterThan(0));
+        final complete = turn.text.substring(
+          0,
+          turn.text.lastIndexOf('\n') + 1,
+        );
+        expect(short(complete), isTrue);
+      });
+
+      test('a negative retry count is refused', () {
+        expect(
+          () => ChatSession(model, tokenizer).send(hi, lineRetries: -1),
+          throwsArgumentError,
+        );
+      });
     });
   }, skip: NativeKernels.isAvailable ? false : 'requires native kernels');
 }
