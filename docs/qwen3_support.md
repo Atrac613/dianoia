@@ -326,10 +326,11 @@ since `ToolCall.arguments` holds strings for both families.
 `LocalModel.load` gives Qwen3 a 4,096-token context unless the app passes
 `contextLength`: thinking runs long (998 tokens for 0.6B and 1,699 for
 1.7B on one question), and the half KV cache holds 4,096 tokens in the
-470 MB that 2,048 took in float32 (on Vulkan, still float32, it takes
-940 MB). With `enableThinking`, `chat` lets a reply run to the end of the
-context unless `maxNewTokens` caps it, since a reply cut inside its
-reasoning has no answer. On the iPhone 15 Pro Max at these defaults,
+470 MB that 2,048 took in float32. On Vulkan, whose cache is still
+float32, the default stays 2,048. With `enableThinking` and a sampling
+temperature above 0, `chat` lets a reply run to the end of the context
+unless `maxNewTokens` caps it, since a reply cut inside its reasoning has
+no answer; greedy thinking, which tends to loop, keeps the 512-token cap. On the iPhone 15 Pro Max at these defaults,
 Qwen3-1.7B on Metal answered after 1,699 tokens of thinking at 13.7 tok/s,
 the process footprint at 675 to 685 MB on Metal and 160 to 180 MB on the
 CPU.
