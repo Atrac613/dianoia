@@ -112,10 +112,12 @@ final class LocalModel {
   /// tend to repeat themselves under greedy decoding, so pair it with
   /// sampling, such as [SamplingParams.qwen3Thinking].
   ///
-  /// [maxNewTokens] defaults to 512, or with [enableThinking] to the whole
-  /// [contextLength]: reasoning often runs past a thousand tokens (1,699 for
-  /// Qwen3-1.7B on one question), and a reply cut inside it has no answer.
-  /// Replies always stop where the context ends.
+  /// [maxNewTokens] defaults to 512, or with [enableThinking] and sampling
+  /// (a temperature above 0) to the whole [contextLength]: reasoning often
+  /// runs past a thousand tokens (1,699 for Qwen3-1.7B on one question), and
+  /// a reply cut inside it has no answer. Greedy thinking keeps 512, since
+  /// it tends to loop and nothing stops a reply in progress. Replies always
+  /// stop where the context ends.
   ChatSession chat({
     String? system,
     List<Map<String, Object?>>? tools,
@@ -127,7 +129,9 @@ final class LocalModel {
     _tokenizer,
     system: system,
     tools: tools,
-    maxNew: maxNewTokens ?? (enableThinking ? contextLength : 512),
+    maxNew:
+        maxNewTokens ??
+        (enableThinking && sampling.temperature > 0 ? contextLength : 512),
     sampling: sampling,
     enableThinking: enableThinking,
   );

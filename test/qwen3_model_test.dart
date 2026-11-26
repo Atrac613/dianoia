@@ -73,10 +73,19 @@ void main() {
       'content': 'hi',
     });
     expect(turn.generatedTokens, greaterThan(0));
-    // Thinking replies may run to the end of the context by default.
+    // Sampled thinking replies may run to the end of the context by
+    // default; greedy ones, which tend to loop, keep 512.
+    const sampled = SamplingParams(temperature: 0.6, topK: 20, seed: 7);
     expect(local.chat().maxNew, 512);
-    expect(local.chat(enableThinking: true).maxNew, 64);
+    expect(local.chat(enableThinking: true).maxNew, 512);
+    expect(local.chat(enableThinking: true, sampling: sampled).maxNew, 64);
     expect(local.chat(enableThinking: true, maxNewTokens: 9).maxNew, 9);
+
+    // Such a reply stops where the context ends instead of failing.
+    final long = await local.chat(enableThinking: true, sampling: sampled).send(
+      {'role': 'user', 'content': 'hi'},
+    );
+    expect(long.promptTokens + long.generatedTokens, lessThanOrEqualTo(64));
 
     // Without a context length, Qwen3 gets 4096 tokens.
     final defaults = await LocalModel.load(
