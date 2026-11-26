@@ -56,6 +56,14 @@ void main() {
       4096,
     );
     expect(defaultContextLength(lfm3), 2048);
+    // Vulkan keeps Qwen3's cache in float32, twice the size.
+    expect(
+      defaultContextLength(
+        TextModelConfig.fromJson(_qwen3Config()),
+        halfCache: false,
+      ),
+      2048,
+    );
   });
 
   group('Qwen3 config', () {

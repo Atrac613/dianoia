@@ -77,7 +77,8 @@ final class LocalModel {
   ///
   /// [contextLength] is the most tokens a conversation holds, prompt and
   /// replies together: by default 4096 for Qwen3, whose thinking runs
-  /// long, and 2048 for LFM3. GPU attention keeps a score per key in
+  /// long, except on Vulkan, where its KV cache stays float32 and twice
+  /// the size, and 2048 for LFM3. GPU attention keeps a score per key in
   /// on-chip memory, so a much longer context may not fit on the GPU; 4096
   /// does on the phones measured. [threads] native threads share each CPU
   /// matrix product.
