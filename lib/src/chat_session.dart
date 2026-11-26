@@ -17,6 +17,7 @@ import 'dart:typed_data';
 import 'chat_format.dart';
 import 'model.dart';
 import 'model_use.dart';
+import 'repetition.dart';
 import 'sampler.dart';
 import 'tokenizer.dart';
 import 'tool_calls.dart';
@@ -31,6 +32,8 @@ final class ChatTurn {
     required this.prefillSeconds,
     required this.generatedTokens,
     required this.decodeSeconds,
+    this.thinkingCut = false,
+    this.stoppedOnRepetition = false,
   });
 
   /// The generated text, without the end-of-turn token.
@@ -45,6 +48,16 @@ final class ChatTurn {
   final double prefillSeconds;
   final int generatedTokens;
   final double decodeSeconds;
+
+  /// Whether the session closed the reasoning itself, with
+  /// [ChatSession.thinkingCutoff], because it reached
+  /// [ChatSession.thinkingBudget] or started to repeat itself. The
+  /// answer then rests on reasoning that did not finish.
+  final bool thinkingCut;
+
+  /// Whether the reply ended because [ChatSession.repetitionGuard] saw it
+  /// repeat itself, outside the reasoning.
+  final bool stoppedOnRepetition;
 
   int get newTokens => promptTokens - reusedTokens;
 }
@@ -73,9 +86,21 @@ final class ChatSession {
     ChatFormat? format,
     this.sampling = SamplingParams.greedy,
     this.enableThinking = false,
+    this.thinkingBudget,
+    this.thinkingCutoff = defaultThinkingCutoff,
+    this.repetitionGuard,
   }) : _system = system,
        format = format ?? chatFormatFor(model.config),
-       _sampler = Sampler(sampling);
+       _sampler = Sampler(sampling) {
+    final budget = thinkingBudget;
+    if (budget != null && (budget < 1 || budget >= maxNew)) {
+      throw ArgumentError.value(
+        budget,
+        'thinkingBudget',
+        'must be at least 1 and below maxNew ($maxNew)',
+      );
+    }
+  }
 
   final TextModel model;
   final BpeTokenizer tokenizer;
@@ -97,6 +122,31 @@ final class ChatSession {
   /// on, the reply starts with its reasoning, which [ChatTurn.reply]
   /// separates.
   final bool enableThinking;
+
+  /// With [enableThinking], the most tokens the reply may generate before
+  /// its reasoning closes: counted from the start of the reply, so they
+  /// include an opening `<think>` only where the family generates it
+  /// (Qwen3, not LFM3, whose prompt ends in it). A reply that reaches it
+  /// without closing its reasoning gets [thinkingCutoff] fed as if
+  /// generated, and answers from there. Null lets the reasoning run up to
+  /// [maxNew]. Small models rarely reason better for reasoning longer, and
+  /// a cut keeps room in the context for the answer. It must be below
+  /// [maxNew]; the cutoff is fed whole, even past [maxNew], so [maxNew]
+  /// should leave room past the budget for it and the answer.
+  final int? thinkingBudget;
+
+  /// The text that closes cut reasoning, ending in `</think>`.
+  final String thinkingCutoff;
+
+  /// Qwen's suggested wording for closing reasoning early.
+  static const defaultThinkingCutoff =
+      '\n\nConsidering the limited time, I have to give the answer based '
+      'on the thinking so far.\n</think>\n\n';
+
+  /// Watches each reply for a loop; null watches nothing. A loop inside
+  /// the reasoning (with [enableThinking]) closes it as [thinkingBudget]
+  /// does; a loop in the answer ends the reply there.
+  final RepetitionGuard? repetitionGuard;
 
   /// The conversation so far, after the system prompt.
   final messages = <Map<String, Object?>>[];
@@ -156,7 +206,11 @@ final class ChatSession {
 
   /// Adds [message] (a user or tool message) and generates the reply
   /// under [sampling], up to [maxNew] tokens or the end of the model's context
-  /// (`maxSeq`).
+  /// (`maxSeq`), with [thinkingBudget] and [repetitionGuard] closing
+  /// reasoning that runs long or loops ([ChatTurn.thinkingCut]) and
+  /// [repetitionGuard] ending an answer that loops
+  /// ([ChatTurn.stoppedOnRepetition]). [SamplingParams.presencePenalty]
+  /// counts the tokens this reply has generated.
   /// [onText] streams the reply: after each generated token it gets the
   /// text so far, without an incomplete UTF-8 sequence at the end.
   /// Returning false ends the reply there, which is then stored as it
@@ -215,17 +269,49 @@ final class ChatSession {
     if (keepPromptLogits) promptLogits = Float32List.fromList(model.logits);
     onLogits?.call(model.logits);
     final gen = <int>[];
+    final seen = <int>{};
+    // Feeds [token] as part of the reply; false when the caller stops it.
+    // Only sampled tokens go into [seen]: the presence penalty counts what
+    // the model chose, not a cutoff the session fed.
+    Future<bool> feed(int token) async {
+      gen.add(token);
+      await model.step(token);
+      onLogits?.call(model.logits);
+      return onText == null || await onText(_complete(tokenizer.decode(gen)));
+    }
+
+    var thinking = enableThinking;
+    var thinkingCut = false;
+    var stoppedOnRepetition = false;
     sw
       ..reset()
       ..start();
     try {
+      decode:
       while (gen.length < maxNew && model.history.length < model.maxSeq) {
-        final next = _sampler.next(model.logits, suppressed: suppressed);
+        final next = _sampler.next(
+          model.logits,
+          suppressed: suppressed,
+          seen: seen,
+        );
         if (model.config.isEos(next)) break;
-        gen.add(next);
-        await model.step(next);
-        onLogits?.call(model.logits);
-        if (onText != null && !await onText(_complete(tokenizer.decode(gen)))) {
+        seen.add(next);
+        if (!await feed(next)) break;
+        if (thinking && _closesThinking(gen)) thinking = false;
+        final loops = repetitionGuard?.loops(gen) ?? false;
+        final budget = thinkingBudget;
+        if (thinking && (loops || (budget != null && gen.length >= budget))) {
+          thinking = false;
+          final cutoff = tokenizer.encode(thinkingCutoff);
+          // Without room for the cutoff and an answer, the reasoning ends
+          // where the context does, unclosed.
+          if (model.history.length + cutoff.length >= model.maxSeq) break;
+          for (final token in cutoff) {
+            if (!await feed(token)) break decode;
+          }
+          thinkingCut = true;
+        } else if (loops) {
+          stoppedOnRepetition = true;
           break;
         }
       }
@@ -246,6 +332,8 @@ final class ChatSession {
       prefillSeconds: prefillSeconds,
       generatedTokens: gen.length,
       decodeSeconds: decodeSeconds,
+      thinkingCut: thinkingCut,
+      stoppedOnRepetition: stoppedOnRepetition,
     );
   }
 
@@ -253,6 +341,16 @@ final class ChatSession {
   /// sequence cut short by the last token decodes to.
   static String _complete(String text) =>
       text.endsWith('\uFFFD') ? text.substring(0, text.length - 1) : text;
+
+  /// Whether the end of [gen] spells `</think>`, however the model split
+  /// it into tokens. Checked after every token while the reasoning is
+  /// open, so the first match is the token that closed it. Decodes only
+  /// the tail: the eight bytes of `</think>` span at most eight tokens.
+  bool _closesThinking(List<int> gen) {
+    const end = '</think>';
+    final from = gen.length > end.length ? gen.length - end.length : 0;
+    return tokenizer.decode(gen.sublist(from)).contains(end);
+  }
 
   static bool _startsWith(List<int> ids, List<int> prefix) {
     if (ids.length < prefix.length) return false;

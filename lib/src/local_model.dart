@@ -8,6 +8,7 @@ import 'model.dart';
 import 'model_loading.dart';
 import 'model_use.dart';
 import 'native.dart';
+import 'repetition.dart';
 import 'sampler.dart';
 import 'tokenizer.dart';
 import 'vision_backbone.dart';
@@ -116,14 +117,25 @@ final class LocalModel {
   /// (a temperature above 0) to the whole [contextLength]: reasoning often
   /// runs past a thousand tokens (1,699 for Qwen3-1.7B on one question), and
   /// a reply cut inside it has no answer. Greedy thinking keeps 512, since
-  /// it tends to loop and nothing stops a reply in progress. Replies always
-  /// stop where the context ends.
+  /// it tends to loop and nothing stops a reply in progress by default.
+  /// Replies always stop where the context ends.
+  ///
+  /// For long reasoning on a small model, [thinkingBudget] caps the
+  /// reasoning and has the model answer from what it has so far, and
+  /// [repetitionGuard] cuts reasoning that loops short the same way and
+  /// ends an answer that loops; [SamplingParams.presencePenalty] makes a
+  /// loop less likely to start. A [thinkingBudget] bounds the reasoning
+  /// itself, so with one [maxNewTokens] defaults to the whole
+  /// [contextLength] even under greedy decoding, and must exceed the
+  /// budget when given. See [ChatSession.thinkingBudget].
   ChatSession chat({
     String? system,
     List<Map<String, Object?>>? tools,
     int? maxNewTokens,
     SamplingParams sampling = SamplingParams.greedy,
     bool enableThinking = false,
+    int? thinkingBudget,
+    RepetitionGuard? repetitionGuard,
   }) => ChatSession(
     _model,
     _tokenizer,
@@ -131,9 +143,13 @@ final class LocalModel {
     tools: tools,
     maxNew:
         maxNewTokens ??
-        (enableThinking && sampling.temperature > 0 ? contextLength : 512),
+        (enableThinking && (sampling.temperature > 0 || thinkingBudget != null)
+            ? contextLength
+            : 512),
     sampling: sampling,
     enableThinking: enableThinking,
+    thinkingBudget: thinkingBudget,
+    repetitionGuard: repetitionGuard,
   );
 }
 
