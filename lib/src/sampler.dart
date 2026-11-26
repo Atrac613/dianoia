@@ -2,7 +2,9 @@
 ///
 /// Sampling follows the order of Hugging Face's logits processors:
 /// temperature, then top-k, then top-p, then min-p, and a draw from what
-/// is left, renormalized. Tokens whose probability is below 1e-9 of the
+/// is left, renormalized. A presence penalty, applied first, lowers the
+/// logit of every token the reply has already generated, as vLLM's
+/// `presence_penalty` does. Tokens whose probability is below 1e-9 of the
 /// most likely one are never drawn: leaving them out spares sorting the
 /// whole vocabulary on every step and changes no draw a caller could tell.
 library;
@@ -18,8 +20,10 @@ final class SamplingParams {
     this.topK = 0,
     this.topP = 1,
     this.minP = 0,
+    this.presencePenalty = 0,
     this.seed,
   }) : assert(temperature >= 0),
+       assert(presencePenalty >= 0),
        assert(topK >= 0),
        assert(topP > 0 && topP <= 1),
        assert(minP >= 0 && minP <= 1);
@@ -53,6 +57,12 @@ final class SamplingParams {
   /// Drops tokens less likely than [minP] times the most likely one.
   final double minP;
 
+  /// Subtracted once from the logit of each token already in the reply,
+  /// however often it appeared: 0 leaves the logits as they are. Qwen
+  /// suggests values up to 2 against endless repetition; high values can
+  /// make a reply switch languages. It applies to greedy decoding too.
+  final double presencePenalty;
+
   /// Seeds the random draws, for reproducible replies; null seeds them
   /// from the clock.
   final int? seed;
@@ -72,8 +82,34 @@ final class Sampler {
   /// most likely token.
   static final double _floor = math.log(1e-9);
 
-  /// The next token from [logits], never one in [suppressed].
-  int next(Float32List logits, {Set<int> suppressed = const {}}) {
+  /// The next token from [logits], never one in [suppressed]. [seen] are
+  /// the tokens the reply has generated so far, which
+  /// [SamplingParams.presencePenalty] counts against. [logits] are
+  /// penalized in place while the token is chosen and restored before
+  /// this returns.
+  int next(
+    Float32List logits, {
+    Set<int> suppressed = const {},
+    Set<int> seen = const {},
+  }) {
+    final penalty = params.presencePenalty;
+    if (penalty == 0 || seen.isEmpty) return _next(logits, suppressed);
+    final ids = seen.toList(growable: false);
+    final saved = Float32List(ids.length);
+    for (var i = 0; i < ids.length; i++) {
+      saved[i] = logits[ids[i]];
+      logits[ids[i]] = saved[i] - penalty;
+    }
+    try {
+      return _next(logits, suppressed);
+    } finally {
+      for (var i = 0; i < ids.length; i++) {
+        logits[ids[i]] = saved[i];
+      }
+    }
+  }
+
+  int _next(Float32List logits, Set<int> suppressed) {
     if (params.isGreedy) return argmaxToken(logits, suppressed: suppressed);
     final t = params.temperature;
     // The vocabulary is scanned twice per token, so the loops stay plain:
