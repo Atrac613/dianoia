@@ -15,6 +15,23 @@ enum LayerType { conv, fullAttention, slidingAttention }
 /// The checkpoint families the engine reads.
 enum ModelArchitecture { lfm3, qwen3 }
 
+/// How the KV cache stores keys and values. Attention reads every cached
+/// row for each token, so deep into a conversation a token reads more of
+/// the cache than of the weights where every layer is attention (Qwen3).
+enum KvCacheFormat {
+  /// float32, as the lab computes: LFM3's default, whose cache is small.
+  f32,
+
+  /// IEEE half precision, rounded to nearest even as rows are written and
+  /// widened to float32 as they are read: half the memory and the bytes
+  /// read. Qwen3's default.
+  f16;
+
+  /// The default for [config]'s family.
+  static KvCacheFormat defaultFor(TextModelConfig config) =>
+      config.architecture == ModelArchitecture.qwen3 ? f16 : f32;
+}
+
 final class RopeSpec {
   const RopeSpec(this.theta, this.partialRotaryFactor);
 

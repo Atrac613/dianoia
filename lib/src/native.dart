@@ -399,6 +399,200 @@ external void _attentionSplit(
   int threads,
 );
 
+@Native<
+  Void Function(
+    Pointer<Float>,
+    Pointer<Uint16>,
+    Pointer<Uint16>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_attention_f16', isLeaf: true)
+external void _attentionF16(
+  Pointer<Float> q,
+  Pointer<Uint16> keys,
+  Pointer<Uint16> values,
+  Pointer<Float> gate,
+  Pointer<Float> out,
+  int n,
+  int position,
+  int heads,
+  int kvHeads,
+  int headDim,
+  int window,
+  int threads,
+);
+
+@Native<
+  Void Function(
+    Pointer<Float>,
+    Pointer<Uint16>,
+    Pointer<Uint16>,
+    Pointer<Float>,
+    Pointer<Float>,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+    Int64,
+  )
+>(symbol: 'lab_attention_split_f16', isLeaf: true)
+external void _attentionSplitF16(
+  Pointer<Float> q,
+  Pointer<Uint16> keys,
+  Pointer<Uint16> values,
+  Pointer<Float> gate,
+  Pointer<Float> out,
+  int n,
+  int position,
+  int heads,
+  int kvHeads,
+  int headDim,
+  int window,
+  int block,
+  int threads,
+);
+
+@Native<Void Function(Pointer<Float>, Pointer<Uint16>, Int64)>(
+  symbol: 'lab_f32_to_f16',
+  isLeaf: true,
+)
+external void _f32ToF16(Pointer<Float> src, Pointer<Uint16> dst, int count);
+
+@Native<Void Function(Pointer<Uint16>, Pointer<Float>, Int64)>(
+  symbol: 'lab_f16_to_f32',
+  isLeaf: true,
+)
+external void _f16ToF32(Pointer<Uint16> src, Pointer<Float> dst, int count);
+
+/// dst[dstOffset + i] = half(src[srcOffset + i]) for i < [count], as IEEE
+/// half-precision bit patterns rounded to nearest even (lab_f32_to_f16).
+void nativeF32ToF16(
+  Float32List src,
+  int srcOffset,
+  Uint16List dst,
+  int dstOffset,
+  int count,
+) {
+  if (count == 0) return;
+  RangeError.checkValidRange(srcOffset, srcOffset + count, src.length);
+  RangeError.checkValidRange(dstOffset, dstOffset + count, dst.length);
+  _f32ToF16(
+    Float32List.sublistView(src, srcOffset, srcOffset + count).address,
+    Uint16List.sublistView(dst, dstOffset, dstOffset + count).address,
+    count,
+  );
+}
+
+/// dst[i] = the float of half bit pattern src[i], for i < src.length.
+void nativeF16ToF32(Uint16List src, Float32List dst) {
+  if (dst.length < src.length) throw ArgumentError('destination too short');
+  if (src.isEmpty) return;
+  _f16ToF32(src.address, dst.address, src.length);
+}
+
+/// [nativeAttention] over a cache of half bit patterns, whole or [split].
+void _attendHalf(
+  Float32List q,
+  Uint16List keys,
+  Uint16List values,
+  Float32List? gate,
+  Float32List out, {
+  required int n,
+  required int position,
+  required int heads,
+  required int kvHeads,
+  required int headDim,
+  required int window,
+  required bool split,
+}) {
+  if (heads ~/ kvHeads > 8 || headDim > 256) {
+    throw ArgumentError(
+      'a half KV cache needs at most 8 query heads per KV '
+      'head and head_dim 256',
+    );
+  }
+  final threads = NativeKernels.instance.threads;
+  final block = nativeAttentionBlock;
+  if (split && (block < 1 || block > 512)) {
+    throw ArgumentError('attention block of $block keys');
+  }
+  switch ((split, gate)) {
+    case (true, null):
+      _attentionSplitF16(
+        q.address,
+        keys.address,
+        values.address,
+        nullptr,
+        out.address,
+        n,
+        position,
+        heads,
+        kvHeads,
+        headDim,
+        window,
+        block,
+        threads,
+      );
+    case (true, final Float32List g):
+      _attentionSplitF16(
+        q.address,
+        keys.address,
+        values.address,
+        g.address,
+        out.address,
+        n,
+        position,
+        heads,
+        kvHeads,
+        headDim,
+        window,
+        block,
+        threads,
+      );
+    case (false, null):
+      _attentionF16(
+        q.address,
+        keys.address,
+        values.address,
+        nullptr,
+        out.address,
+        n,
+        position,
+        heads,
+        kvHeads,
+        headDim,
+        window,
+        threads,
+      );
+    case (false, final Float32List g):
+      _attentionF16(
+        q.address,
+        keys.address,
+        values.address,
+        g.address,
+        out.address,
+        n,
+        position,
+        heads,
+        kvHeads,
+        headDim,
+        window,
+        threads,
+      );
+  }
+}
+
 /// Passes of at most this many tokens attend by blocks of keys
 /// (`lab_attention_split`, [nativeAttentionBlock] keys each) once the last
 /// token sees [nativeAttentionSplitFrom] keys or more. The split reads each
@@ -420,8 +614,8 @@ int nativeAttentionBlock = 256;
 /// gate [n, heads] before the sigmoid. [window] 0 is full attention.
 void nativeAttention(
   Float32List q,
-  Float32List keys,
-  Float32List values,
+  TypedData keys,
+  TypedData values,
   Float32List? gate,
   Float32List out, {
   required int n,
@@ -432,11 +626,12 @@ void nativeAttention(
   required int window,
 }) {
   final kvDim = kvHeads * headDim;
+  int lengthOf(TypedData d) => d.lengthInBytes ~/ d.elementSizeInBytes;
   if (q.length < n * heads * headDim ||
       out.length < n * heads * headDim ||
       (gate != null && gate.length < n * heads) ||
-      keys.length < (position + n) * kvDim ||
-      values.length < (position + n) * kvDim ||
+      lengthOf(keys) < (position + n) * kvDim ||
+      lengthOf(values) < (position + n) * kvDim ||
       heads % kvHeads != 0 ||
       headDim % 4 != 0) {
     throw ArgumentError('native attention: bad shapes');
@@ -445,6 +640,29 @@ void nativeAttention(
   final threads = kernels.threads;
   final last = position + n - 1;
   final seen = window > 0 && last >= window ? window : last + 1;
+  if (keys is Uint16List && values is Uint16List) {
+    _attendHalf(
+      q,
+      keys,
+      values,
+      gate,
+      out,
+      n: n,
+      position: position,
+      heads: heads,
+      kvHeads: kvHeads,
+      headDim: headDim,
+      window: window,
+      split:
+          n <= nativeAttentionSplitTokens &&
+          nativeAttentionSplitFrom > 0 &&
+          seen >= nativeAttentionSplitFrom,
+    );
+    return;
+  }
+  if (keys is! Float32List || values is! Float32List) {
+    throw ArgumentError('native attention: keys and values of another type');
+  }
   if (kernels.splits &&
       n <= nativeAttentionSplitTokens &&
       nativeAttentionSplitFrom > 0 &&
@@ -591,7 +809,13 @@ void nativeFullAttention(
 
 /// Process-wide settings of the native kernels.
 final class NativeKernels {
-  NativeKernels._(this.threads, this.int8Inputs, this.attention, this.splits);
+  NativeKernels._(
+    this.threads,
+    this.int8Inputs,
+    this.attention,
+    this.splits,
+    this.halves,
+  );
 
   static NativeKernels? _instance;
 
@@ -628,7 +852,11 @@ final class NativeKernels {
     final splits =
         path == null ||
         DynamicLibrary.open(path).providesSymbol('lab_attention_split');
-    _instance = NativeKernels._(threads, int8Inputs, attention, splits);
+    // ...or a half KV cache.
+    final halves =
+        path == null ||
+        DynamicLibrary.open(path).providesSymbol('lab_attention_split_f16');
+    _instance = NativeKernels._(threads, int8Inputs, attention, splits, halves);
   }
 
   /// Whether the kernels can be called: built for this platform by the
@@ -675,6 +903,10 @@ final class NativeKernels {
 
   /// Whether the library has `lab_attention_split` ([nativeAttention]).
   final bool splits;
+
+  /// Whether the library reads and writes a half KV cache
+  /// (KvCacheFormat.f16: `lab_f32_to_f16`, `lab_attention_f16`, ...).
+  final bool halves;
 
   // Input-quantization scratch, grown on demand.
   Pointer<Int8> _xq = nullptr;

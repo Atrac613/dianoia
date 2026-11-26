@@ -1,0 +1,9 @@
+#version 460
+#include "common.glsl"
+
+// Attention over a KV cache of halves (attention.glsl), widened as read.
+#define KEYS Uvec2s
+#define VALUES Uints
+#define KEY4(i) halves4(p.keys.v[i])
+#define VALUE(i) half_at(p.values, i)
+#include "attention.glsl"

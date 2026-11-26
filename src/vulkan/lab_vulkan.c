@@ -134,6 +134,15 @@ static const uint32_t kAttentionSplit[] =
 static const uint32_t kAttentionMerge[] =
 #include "attention_merge.inc"
     ;
+static const uint32_t kAttentionF16[] =
+#include "attention_f16.inc"
+    ;
+static const uint32_t kAttentionSplitF16[] =
+#include "attention_split_f16.inc"
+    ;
+static const uint32_t kF32ToF16[] =
+#include "f32_to_f16.inc"
+    ;
 static const uint32_t kSwiglu[] =
 #include "swiglu.inc"
     ;
@@ -203,7 +212,7 @@ static VkDeviceSize gMaxBuffer, gHeapSize;
 static VkPipelineLayout gLayout;
 static VkPipeline gGemvQ8, gGemmQ8, gGemvQ4, gGemmQ4, gRmsNorm, gHeadNormRope, gConv,
     gAttention, gAttentionSplit, gAttentionMerge, gSwiglu, gCopy, gAdd, gSteer, gQuantize,
-    gGemmQ8I8, gGemmQ4I8;
+    gGemmQ8I8, gGemmQ4I8, gAttentionF16, gAttentionSplitF16, gF32ToF16;
 static const uint32_t kDecodeRows[] = {1, 2, 4};
 static VkPipeline gGemvQ4I8[3], gGemvQ8I8[3][3];
 static VkPipeline gGemvQ8I8Vec[3][3];
@@ -468,6 +477,10 @@ LAB_EXPORT int64_t lab_gpu_init(void) {
   // back to the whole kernel (lab_gpu_enc_attention_split).
   gAttentionSplit = pipeline(kAttentionSplit, sizeof kAttentionSplit);
   gAttentionMerge = pipeline(kAttentionMerge, sizeof kAttentionMerge);
+  gAttentionSplitF16 = pipeline(kAttentionSplitF16, sizeof kAttentionSplitF16);
+  // A half KV cache (lab_gpu_supports_f16) needs these two.
+  gAttentionF16 = pipeline(kAttentionF16, sizeof kAttentionF16);
+  gF32ToF16 = pipeline(kF32ToF16, sizeof kF32ToF16);
   PIPELINE(gSwiglu, kSwiglu);
   PIPELINE(gCopy, kCopy);
   PIPELINE(gAdd, kAdd);
@@ -957,9 +970,10 @@ typedef struct {
 } AttentionParams;
 
 // A negative `gate` leaves heads ungated; the shader then never reads it.
-LAB_EXPORT void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate,
-                                      int64_t out, int64_t position, int64_t n, int64_t heads,
-                                      int64_t kvHeads, int64_t hd, int64_t window) {
+// With `half`, keys and values hold halves (attention_f16.comp).
+static void encode_attention(int half, int64_t q, int64_t keys, int64_t values, int64_t gate,
+                             int64_t out, int64_t position, int64_t n, int64_t heads,
+                             int64_t kvHeads, int64_t hd, int64_t window) {
   const AttentionParams p = {at(q, 0),
                              at(keys, 0),
                              at(values, 0),
@@ -973,8 +987,42 @@ LAB_EXPORT void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, i
                              (uint32_t)(heads / kvHeads),
                              (float)(1.0 / sqrt((double)hd)),
                              gate >= 0 ? 1u : 0u};
-  dispatch(kKindAttention, gAttention, &p, sizeof p, (uint32_t)heads, (uint32_t)n);
+  dispatch(kKindAttention, half ? gAttentionF16 : gAttention, &p, sizeof p, (uint32_t)heads,
+           (uint32_t)n);
   wrote(out);
+}
+
+LAB_EXPORT void lab_gpu_enc_attention(int64_t q, int64_t keys, int64_t values, int64_t gate,
+                                      int64_t out, int64_t position, int64_t n, int64_t heads,
+                                      int64_t kvHeads, int64_t hd, int64_t window) {
+  encode_attention(0, q, keys, values, gate, out, position, n, heads, kvHeads, hd, window);
+}
+
+// lab_gpu_enc_attention over a cache of halves (lab_gpu_enc_f32_to_f16).
+LAB_EXPORT void lab_gpu_enc_attention_f16(int64_t q, int64_t keys, int64_t values, int64_t gate,
+                                          int64_t out, int64_t position, int64_t n,
+                                          int64_t heads, int64_t kvHeads, int64_t hd,
+                                          int64_t window) {
+  encode_attention(1, q, keys, values, gate, out, position, n, heads, kvHeads, hd, window);
+}
+
+// Whether a half KV cache can be used.
+LAB_EXPORT int64_t lab_gpu_supports_f16(void) {
+  return gAttentionF16 != VK_NULL_HANDLE && gF32ToF16 != VK_NULL_HANDLE ? 1 : 0;
+}
+
+typedef struct {
+  uint64_t src, dst;
+  uint32_t count, pad;
+} F32ToF16Params;
+
+// count floats of src from byte srcOffset to halves of dst from byte
+// dstOffset (a multiple of 4); count is even.
+LAB_EXPORT void lab_gpu_enc_f32_to_f16(int64_t src, int64_t srcOffset, int64_t dst,
+                                       int64_t dstOffset, int64_t count) {
+  const F32ToF16Params p = {at(src, srcOffset), at(dst, dstOffset), (uint32_t)count, 0};
+  dispatch(kKindCopy, gF32ToF16, &p, sizeof p, groups(count / 2, 256), 1);
+  wrote(dst);
 }
 
 typedef struct {
@@ -994,12 +1042,13 @@ typedef struct {
 // holds n * heads * blocks * (hd + 2) floats, where blocks covers the last
 // token's keys. At most 8 query heads per KV head and 256 keys per block.
 // Without the split's pipelines this is lab_gpu_enc_attention.
-LAB_EXPORT void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t values, int64_t gate,
-                                            int64_t out, int64_t partials, int64_t position,
-                                            int64_t n, int64_t heads, int64_t kvHeads, int64_t hd,
-                                            int64_t window, int64_t block) {
-  if (gAttentionSplit == VK_NULL_HANDLE || gAttentionMerge == VK_NULL_HANDLE) {
-    lab_gpu_enc_attention(q, keys, values, gate, out, position, n, heads, kvHeads, hd, window);
+static void encode_attention_split(int half, int64_t q, int64_t keys, int64_t values,
+                                   int64_t gate, int64_t out, int64_t partials,
+                                   int64_t position, int64_t n, int64_t heads, int64_t kvHeads,
+                                   int64_t hd, int64_t window, int64_t block) {
+  const VkPipeline split = half ? gAttentionSplitF16 : gAttentionSplit;
+  if (split == VK_NULL_HANDLE || gAttentionMerge == VK_NULL_HANDLE) {
+    encode_attention(half, q, keys, values, gate, out, position, n, heads, kvHeads, hd, window);
     return;
   }
   const int64_t last = position + n - 1;
@@ -1018,8 +1067,7 @@ LAB_EXPORT void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t val
                                   (float)(1.0 / sqrt((double)hd)),
                                   (uint32_t)block,
                                   (uint32_t)blocks};
-  dispatch(kKindAttention, gAttentionSplit, &s, sizeof s, (uint32_t)(kvHeads * blocks),
-           (uint32_t)n);
+  dispatch(kKindAttention, split, &s, sizeof s, (uint32_t)(kvHeads * blocks), (uint32_t)n);
   wrote(partials);
   const AttentionMergeParams m = {at(partials, 0),
                                   gate >= 0 ? at(gate, 0) : 0,
@@ -1033,6 +1081,24 @@ LAB_EXPORT void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t val
                                   gate >= 0 ? 1u : 0u};
   dispatch(kKindAttention, gAttentionMerge, &m, sizeof m, (uint32_t)heads, (uint32_t)n);
   wrote(out);
+}
+
+LAB_EXPORT void lab_gpu_enc_attention_split(int64_t q, int64_t keys, int64_t values, int64_t gate,
+                                            int64_t out, int64_t partials, int64_t position,
+                                            int64_t n, int64_t heads, int64_t kvHeads, int64_t hd,
+                                            int64_t window, int64_t block) {
+  encode_attention_split(0, q, keys, values, gate, out, partials, position, n, heads, kvHeads,
+                         hd, window, block);
+}
+
+// lab_gpu_enc_attention_split over a cache of halves.
+LAB_EXPORT void lab_gpu_enc_attention_split_f16(int64_t q, int64_t keys, int64_t values,
+                                                int64_t gate, int64_t out, int64_t partials,
+                                                int64_t position, int64_t n, int64_t heads,
+                                                int64_t kvHeads, int64_t hd, int64_t window,
+                                                int64_t block) {
+  encode_attention_split(1, q, keys, values, gate, out, partials, position, n, heads, kvHeads,
+                         hd, window, block);
 }
 
 typedef struct {

@@ -63,7 +63,13 @@ Future<void> qwen3Check(
     }
     final costs = <String, Object?>{};
     record['context_cost'] = costs;
-    await qwen3ContextCost(bundle, log, into: costs, save: save);
+    await qwen3ContextCost(
+      bundle,
+      log,
+      into: costs,
+      save: save,
+      compare: config['context_compare'] as String? ?? 'kv',
+    );
     return;
   }
   if (config['verify_cost'] == true) {
@@ -294,66 +300,87 @@ Future<Map<String, Object?>> qwen3VerifyCost(
 }
 
 /// One-token decode times deeper and deeper into the cache, on the GPU and
-/// on the CPU, with attention split by blocks of keys and without it
-/// (GpuForward.attentionSplitFrom, nativeAttentionSplitFrom): how much a
-/// long conversation slows decoding, and how much of that the split wins
-/// back. Fills [into] row by row, calling [save] after each.
+/// on the CPU: how much a long conversation slows decoding. [compare]
+/// `kv` times a float32 and a half KV cache (KvCacheFormat), with each
+/// backend's default split; `split` times float32 attention whole and split
+/// by blocks of keys (GpuForward.attentionSplitFrom,
+/// nativeAttentionSplitFrom). The variants alternate pass by pass, so that
+/// a phone heating up slows them alike. Fills [into] row by row, calling
+/// [save] after each.
 Future<void> qwen3ContextCost(
   String bundle,
   void Function(String) log, {
   required Map<String, Object?> into,
   required void Function() save,
+  String compare = 'kv',
   List<int> positions = const [64, 1024, 2048, 3000],
   int reps = 10,
 }) async {
-  final result = into;
   if (!NativeKernels.isLoaded) NativeKernels.load(null, threads: 4);
   final config = TextModelConfig.load(bundle);
   final cache = '$bundle/${quantizedCacheName(config, WeightFormat.q8)}';
   final prompt = [
     for (var i = 0; i < positions.last; i++) 1000 + (7 * i) % 9000,
   ];
-  // Split rows split from 512 keys whatever the platform's default is.
-  const splitFrom = 512;
+  // name, cache format, and where attention splits (null: the default).
+  final variants = switch (compare) {
+    'kv' => [
+      ('f32', KvCacheFormat.f32, null),
+      ('f16', KvCacheFormat.f16, null),
+    ],
+    'split' => [
+      ('whole', KvCacheFormat.f32, 0),
+      ('split', KvCacheFormat.f32, 512),
+    ],
+    _ => throw ArgumentError('context_compare: kv or split, not $compare'),
+  };
+  into['compare'] = compare;
   final gpuFrom = GpuForward.attentionSplitFrom;
   final cpuFrom = nativeAttentionSplitFrom;
   for (final gpu in [true, false]) {
-    final model = await TextModel.load(
-      bundle,
-      maxSeq: positions.last + 64,
-      weights: WeightFormat.q8,
-      q8CachePath: cache,
-      gpu: gpu,
-    );
+    final models = <KvCacheFormat, TextModel>{};
+    final fed = <KvCacheFormat, int>{};
     final backend = gpu ? 'gpu' : 'cpu';
     final times = <String, Object?>{};
-    result[backend] = times;
+    into[backend] = times;
     try {
-      var fed = 0;
+      for (final (_, kv, _) in variants) {
+        if (models.containsKey(kv)) continue;
+        models[kv] = await TextModel.load(
+          bundle,
+          maxSeq: positions.last + 64,
+          weights: WeightFormat.q8,
+          q8CachePath: cache,
+          gpu: gpu,
+          kvCache: kv,
+        );
+        fed[kv] = 0;
+      }
       for (final position in positions) {
-        for (var i = fed; i < position; i += 256) {
-          await model.forward(
-            prompt.sublist(i, math.min(position, i + 256)),
-            computeLogits: false,
-          );
+        for (final MapEntry(key: kv, value: model) in models.entries) {
+          for (var i = fed[kv]!; i < position; i += 256) {
+            await model.forward(
+              prompt.sublist(i, math.min(position, i + 256)),
+              computeLogits: false,
+            );
+          }
+          fed[kv] = position;
         }
-        fed = position;
-        // Whole and split alternate pass by pass, so that a phone heating
-        // up slows both alike.
-        final watches = [Stopwatch(), Stopwatch()];
+        final watches = [for (final _ in variants) Stopwatch()];
         for (var r = -2; r < reps; r++) {
-          for (final split in [false, true]) {
-            GpuForward.attentionSplitFrom = split ? splitFrom : 0;
-            nativeAttentionSplitFrom = split ? splitFrom : 0;
-            final sw = watches[split ? 1 : 0];
-            if (r == 0 && !split) {
-              for (final w in watches) {
-                w.reset();
-              }
+          if (r == 0) {
+            for (final w in watches) {
+              w.reset();
             }
-            sw.start();
+          }
+          for (var v = 0; v < variants.length; v++) {
+            final (_, kv, splitFrom) = variants[v];
+            GpuForward.attentionSplitFrom = splitFrom ?? gpuFrom;
+            nativeAttentionSplitFrom = splitFrom ?? cpuFrom;
+            final model = models[kv]!;
+            watches[v].start();
             await model.forward([5000 + r]);
-            sw.stop();
+            watches[v].stop();
             await model.restorePromptPrefix([
               ...prompt.sublist(0, position),
               0,
@@ -361,8 +388,9 @@ Future<void> qwen3ContextCost(
           }
         }
         final row = {
-          'whole_ms': watches[0].elapsedMicroseconds / 1000 / reps,
-          'split_ms': watches[1].elapsedMicroseconds / 1000 / reps,
+          for (var v = 0; v < variants.length; v++)
+            '${variants[v].$1}_ms':
+                watches[v].elapsedMicroseconds / 1000 / reps,
         };
         times['$position'] = row;
         log('$backend at $position: $row');
@@ -371,7 +399,9 @@ Future<void> qwen3ContextCost(
     } finally {
       GpuForward.attentionSplitFrom = gpuFrom;
       nativeAttentionSplitFrom = cpuFrom;
-      await model.close();
+      for (final model in models.values) {
+        await model.close();
+      }
     }
   }
 }
