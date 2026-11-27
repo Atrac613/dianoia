@@ -322,6 +322,10 @@ reasoning: `SamplingParams.qwen3Thinking` (temperature 0.6, top-p 0.95,
 top-k 20) with thinking and `qwen3NonThinking` (0.7, 0.8, 20) without.
 Tool-call argument values that are not strings arrive as their JSON text,
 since `ToolCall.arguments` holds strings for both families.
+For reasoning that runs long, `thinkingBudget`, `repetitionGuard`,
+`SamplingParams.presencePenalty` and `ChatSession.send`'s `checkLine` and
+`insert` keep it in bounds and on track; docs/long_reasoning.md measures
+how long 0.6B and 1.7B stay right with each.
 
 `LocalModel.load` gives Qwen3 a 4,096-token context unless the app passes
 `contextLength`: thinking runs long (998 tokens for 0.6B and 1,699 for

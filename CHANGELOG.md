@@ -1,3 +1,23 @@
+## Unreleased
+
+- For long reasoning on small models: `SamplingParams.presencePenalty`
+  discourages tokens the reply has already sampled;
+  `ChatSession.thinkingBudget` (also on `LocalModel.chat`) closes
+  reasoning that runs long with `thinkingCutoff`; and a `RepetitionGuard`
+  (exported) closes reasoning that loops, or ends an answer that does.
+  `ChatTurn.thinkingCut` and `stoppedOnRepetition` report which happened.
+  With thinking on and a budget, `chat` lets the reply run to the end of
+  the context.
+- `ChatSession.send` takes `checkLine`, which checks each line as it ends
+  and has a rejected one rewound and sampled again, hotter, up to
+  `lineRetries` times (`ChatTurn.rejectedLines`, `stoppedOnCheck`), and
+  `insert`, which lets a tool such as a calculator write part of the
+  reply (`ChatTurn.insertedTokens`).
+- Lab: `tool/reasoning_canary.dart` measures how many steps of a long
+  running sum a model gets right, live. With the inputs numbered and the
+  sums written by a calculator, Qwen3-1.7B got all 200 steps right in
+  every round. See `docs/long_reasoning.md`.
+
 ## 0.6.0
 
 - Qwen3 dense models run for text, tool calling and thinking, alongside
