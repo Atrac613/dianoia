@@ -41,6 +41,7 @@ export 'src/chat_session.dart'
 export 'src/local_model.dart'
     hide LocalModelControlVector, LocalVisionModelControlVector;
 export 'src/model_store.dart';
+export 'src/repetition.dart';
 export 'src/sampler.dart' show SamplingParams;
 export 'src/tool_calls.dart';
 export 'src/vision_session.dart'

@@ -100,4 +100,45 @@ void main() {
       expect(sampler.next(logits, suppressed: {0}), isNot(0));
     }
   });
+
+  group('presence penalty', () {
+    test('lowers each seen token once and restores the logits', () {
+      final before = Float32List.fromList(logits);
+      final sampler = Sampler(const SamplingParams(presencePenalty: 2));
+      // log 0.6 - 2 < log 0.3: token 0 loses to token 1.
+      expect(sampler.next(logits, seen: {0}), 1);
+      expect(logits, orderedEquals(before));
+      // log 0.6 - 2 and log 0.3 - 2 are both under log 0.1.
+      expect(sampler.next(logits, seen: {0, 1}), 2);
+      expect(logits, orderedEquals(before));
+    });
+
+    test('changes nothing at zero or with nothing seen', () {
+      expect(Sampler(SamplingParams.greedy).next(logits, seen: {0}), 0);
+      expect(Sampler(const SamplingParams(presencePenalty: 2)).next(logits), 0);
+    });
+
+    test('shifts sampled draws away from seen tokens', () {
+      final sampler = Sampler(
+        const SamplingParams(temperature: 1, presencePenalty: 1, seed: 9),
+      );
+      final counts = List.filled(3, 0);
+      for (var i = 0; i < 5000; i++) {
+        counts[sampler.next(logits, seen: {0})]++;
+      }
+      // Weights 0.6/e, 0.3, 0.1 renormalized: about 0.36, 0.48, 0.16.
+      expect(counts[0] / 5000, closeTo(0.36, 0.03));
+      expect(counts[1] / 5000, closeTo(0.48, 0.03));
+    });
+
+    test('restores the logits when every token is suppressed', () {
+      final before = Float32List.fromList(logits);
+      final sampler = Sampler(const SamplingParams(presencePenalty: 1));
+      expect(
+        () => sampler.next(logits, suppressed: {0, 1, 2}, seen: {0}),
+        throwsStateError,
+      );
+      expect(logits, orderedEquals(before));
+    });
+  });
 }
