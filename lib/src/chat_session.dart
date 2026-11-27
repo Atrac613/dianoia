@@ -36,6 +36,7 @@ final class ChatTurn {
     this.stoppedOnRepetition = false,
     this.rejectedLines = 0,
     this.stoppedOnCheck = false,
+    this.insertedTokens = 0,
   });
 
   /// The generated text, without the end-of-turn token.
@@ -67,6 +68,10 @@ final class ChatTurn {
   /// Whether the reply ended because a line failed `checkLine` on every
   /// try; the reply then ends at the last line that passed.
   final bool stoppedOnCheck;
+
+  /// Tokens that `insert` wrote rather than the model, those of rejected
+  /// lines included.
+  final int insertedTokens;
 
   int get newTokens => promptTokens - reusedTokens;
 }
@@ -262,6 +267,15 @@ final class ChatSession {
   /// than [sampling], even after greedy decoding, since the same
   /// parameters mostly draw the same mistake again. A rejected line is taken back
   /// from [onText] too, which then sees shorter text.
+  /// [insert] lets a tool write part of the reply: after each generated
+  /// token it gets the reply so far, and text it returns is fed as if the
+  /// model had generated it, for example a calculator that writes the sum
+  /// once the model has written `a + b =`. The model then continues from
+  /// the inserted text, which [checkLine] checks with the line it ends,
+  /// and which a rejected line takes back with the rest. Inserted text is
+  /// tokenized on its own, so a later prompt may tokenize the reply
+  /// differently and reuse less of the model's state. The reply ends
+  /// where the context does when the text does not fit.
   /// [onLogits] observes the prompt and each decode step synchronously.
   /// Do not modify the view; copy it before retaining it across model calls.
   /// Observer work, [onText]'s included, counts in the generation timings.
@@ -276,6 +290,7 @@ final class ChatSession {
     Set<int> suppressedTokens = const {},
     bool Function(String reply)? checkLine,
     int lineRetries = 4,
+    String? Function(String reply)? insert,
   }) async {
     if (lineRetries < 0) {
       throw ArgumentError.value(lineRetries, 'lineRetries', 'is negative');
@@ -289,6 +304,7 @@ final class ChatSession {
         suppressedTokens,
         checkLine,
         lineRetries,
+        insert,
       );
     } finally {
       endModelUse(model);
@@ -302,6 +318,7 @@ final class ChatSession {
     Set<int> suppressedTokens,
     bool Function(String reply)? checkLine,
     int lineRetries,
+    String? Function(String reply)? insert,
   ) async {
     final suppressed = {...suppressedTokens}
       ..removeAll(model.config.eosTokenIds);
@@ -352,6 +369,7 @@ final class ChatSession {
     var retries = 0;
     var rejectedLines = 0;
     var stoppedOnCheck = false;
+    var insertedTokens = 0;
     // Takes the reply back to the start of the current line.
     Future<void> rewindLine() async {
       gen.length = lineStart;
@@ -380,7 +398,18 @@ final class ChatSession {
         );
         if (model.config.isEos(next)) break;
         if (!await feed(next, wasSampled: true)) break;
-        if (checkLine != null && tokenizer.decode([next]).contains('\n')) {
+        var endsLine = tokenizer.decode([next]).contains('\n');
+        final inserted = insert?.call(_complete(tokenizer.decode(gen)));
+        if (inserted != null && inserted.isNotEmpty) {
+          final tokens = tokenizer.encode(inserted);
+          if (model.history.length + tokens.length > model.maxSeq) break;
+          for (final token in tokens) {
+            if (!await feed(token)) break decode;
+          }
+          insertedTokens += tokens.length;
+          endsLine = endsLine || inserted.contains('\n');
+        }
+        if (checkLine != null && endsLine) {
           final text = tokenizer.decode(gen);
           if (checkLine(text.substring(0, text.lastIndexOf('\n') + 1))) {
             lineStart = gen.length;
@@ -443,6 +472,7 @@ final class ChatSession {
       stoppedOnRepetition: stoppedOnRepetition,
       rejectedLines: rejectedLines,
       stoppedOnCheck: stoppedOnCheck,
+      insertedTokens: insertedTokens,
     );
   }
 

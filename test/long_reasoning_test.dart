@@ -251,6 +251,47 @@ void main() {
         expect(short(complete), isTrue);
       });
 
+      test('inserted text is fed as part of the reply', () async {
+        final logits = <Float32List>[];
+        final session = ChatSession(model, tokenizer, maxNew: 20);
+        final turn = await session.send(
+          hi,
+          suppressedTokens: lines(),
+          onLogits: (l) => logits.add(Float32List.fromList(l)),
+          insert: (reply) => reply.endsWith('B') ? '=+' : null,
+        );
+        final plus = tokenizer.encode('=+').length;
+        expect(turn.text, matches(RegExp(r'^(B=\+|\n)*(B|B=|B=\+)?$')));
+        expect(turn.text, contains('B=+'));
+        expect(turn.insertedTokens, '=+'.allMatches(turn.text).length * plus);
+        // One onLogits per token fed, after the prompt's.
+        expect(logits, hasLength(1 + turn.generatedTokens));
+        expect(model.history.length, turn.promptTokens + turn.generatedTokens);
+      });
+
+      test('a line ended by inserted text is checked and rewound', () async {
+        var calls = 0;
+        final checked = <String>[];
+        final session = ChatSession(model, tokenizer, maxNew: 30);
+        final turn = await session.send(
+          hi,
+          suppressedTokens: lines(),
+          insert: (reply) => reply.endsWith('B') ? '=\n' : null,
+          // Rejects the second line once.
+          checkLine: (reply) {
+            checked.add(reply);
+            return ++calls != 2;
+          },
+        );
+        expect(checked, everyElement(endsWith('\n')));
+        expect(turn.rejectedLines, 1);
+        expect(turn.text, isNot(contains('\n\n')));
+        // The retry is sampled and may end the reply; the first line stays.
+        expect(checked, hasLength(greaterThanOrEqualTo(2)));
+        expect(turn.text, startsWith('B=\n'));
+        expect(model.history.length, turn.promptTokens + turn.generatedTokens);
+      });
+
       test('a negative retry count is refused', () {
         expect(
           () => ChatSession(model, tokenizer).send(hi, lineRetries: -1),
