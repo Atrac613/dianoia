@@ -9,6 +9,7 @@
 /// ([CanaryError.operand]), carrying its own last result forward
 /// ([CanaryError.carry]) and adding ([CanaryError.arithmetic]). The
 /// numbers come from a seed, so a run can be repeated exactly.
+/// [RunningSumTask.completeSum] can take the adding off the model.
 library;
 
 import 'dart:math' as math;
@@ -78,6 +79,21 @@ final class RunningSumTask {
   static final _line = RegExp(
     r'^\s*(\d+)\s*:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)',
   );
+
+  static final _unfinishedSum = RegExp(r'(\d+)\s*\+\s*(\d+)\s*=(\s*)$');
+
+  /// A calculator for ChatSession.send's `insert`: once the reply's last
+  /// line ends in `a + b =`, the rest of it, ` sum` and a newline. It adds
+  /// the model's own two numbers, right or wrong, so the model still has
+  /// to keep count, find each number and carry each total; only the
+  /// adding is taken off it.
+  static String? completeSum(String reply) {
+    final line = reply.substring(reply.lastIndexOf('\n') + 1);
+    final match = _unfinishedSum.firstMatch(line);
+    if (match == null) return null;
+    final sum = int.parse(match.group(1)!) + int.parse(match.group(2)!);
+    return '${match.group(3)!.isEmpty ? ' ' : ''}$sum\n';
+  }
 
   /// Grades the complete lines of [text], the reply so far: a last line
   /// without its newline counts only when [finished]. Wrapping that larger

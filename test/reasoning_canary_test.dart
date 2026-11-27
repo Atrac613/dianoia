@@ -93,4 +93,17 @@ void main() {
     expect(indexed.prompt, contains('1) ${n[0]}, 2) ${n[1]}, 3) ${n[2]}'));
     expect(task.prompt, isNot(contains('1) ')));
   });
+
+  test('completeSum adds the numbers of an unfinished last line', () {
+    expect(RunningSumTask.completeSum('1: 0 + 34 ='), ' 34\n');
+    expect(
+      RunningSumTask.completeSum('1: 0 + 34 = 34\n2: 34 + 71 = '),
+      '105\n',
+    );
+    // The model's own numbers, even a wrong carry.
+    expect(RunningSumTask.completeSum('2: 30 + 71 ='), ' 101\n');
+    expect(RunningSumTask.completeSum('2: 34 + 71'), isNull);
+    expect(RunningSumTask.completeSum('2: 34 + 71 = 1'), isNull);
+    expect(RunningSumTask.completeSum('2: 34 + 71 =\n'), isNull);
+  });
 }

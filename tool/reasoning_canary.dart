@@ -9,6 +9,7 @@
 ///        `[--presence-penalty=0] [--guard=off|on]`
 ///        `[--thinking=off|on] [--budget=N] [--stop-on-error=off|on]`
 ///        `[--verify=off|on] [--retries=4] [--indexed=off|on]`
+///        `[--calculator=off|on]`
 ///        `[--out=canary.jsonl] [--keep-text=off|on]`
 ///
 /// Rounds walk the --steps ladder, skipping lengths whose prompt and
@@ -19,7 +20,9 @@
 /// is written and a wrong one is rewound and sampled again, up to
 /// --retries times (ChatSession.send's checkLine); the round then ends at
 /// the last right line. --indexed=on labels each number in the prompt
-/// with its step (RunningSumTask.indexed). Each finished round prints a line and,
+/// with its step (RunningSumTask.indexed). --calculator=on writes each
+/// sum for the model once it has written `a + b =`
+/// (RunningSumTask.completeSum), leaving it the rest of the task. Each finished round prints a line and,
 /// with --out, appends a JSON record (with the reply's text under
 /// --keep-text=on); Ctrl-C ends the round in progress
 /// and prints a summary per length.
@@ -37,7 +40,7 @@ const _usage =
     '[--rounds=0] [--seed=1] [--temperature=0.7] [--top-k=20] [--top-p=0.8] '
     '[--presence-penalty=0] [--guard=off|on] [--thinking=off|on] '
     '[--budget=N] [--stop-on-error=off|on] [--verify=off|on] [--retries=4] '
-    '[--indexed=off|on] '
+    '[--indexed=off|on] [--calculator=off|on] '
     '[--out=canary.jsonl] [--keep-text=off|on]';
 
 Never _fail(String message) {
@@ -75,6 +78,7 @@ Future<void> main(List<String> args) async {
     'verify',
     'retries',
     'indexed',
+    'calculator',
     'out',
     'keep-text',
   };
@@ -118,6 +122,7 @@ Future<void> main(List<String> args) async {
   final stopOnError = flag('stop-on-error');
   final verify = flag('verify');
   final indexed = flag('indexed');
+  final calculator = flag('calculator');
   final retries = parse('retries', '4', int.tryParse);
   if (retries < 0) _fail('--retries must not be negative');
   final out = options['out'] == null ? null : File(options['out']!);
@@ -148,6 +153,7 @@ Future<void> main(List<String> args) async {
     'budget': budget,
     'verify': verify,
     'indexed': indexed,
+    'calculator': calculator,
     if (verify) 'retries': retries,
   };
   stdout.writeln(
@@ -198,6 +204,7 @@ Future<void> main(List<String> args) async {
         stopOnError: stopOnError,
         verify: verify,
         retries: retries,
+        calculator: calculator,
         keepText: keepText,
         stopping: () => stopping,
       );
@@ -232,6 +239,7 @@ Future<Map<String, Object?>> _round(
   required bool stopOnError,
   required bool verify,
   required int retries,
+  required bool calculator,
   required bool keepText,
   required bool Function() stopping,
 }) async {
@@ -288,6 +296,7 @@ Future<Map<String, Object?>> _round(
           }
         : null,
     lineRetries: retries,
+    insert: calculator ? RunningSumTask.completeSum : null,
     onText: (text) async {
       tokens++;
       if (session.enableThinking &&
@@ -350,6 +359,7 @@ Future<Map<String, Object?>> _round(
     'thinking_tokens': answerFrom,
     'thinking_cut': turn.thinkingCut,
     'rejected_lines': turn.rejectedLines,
+    'inserted_tokens': turn.insertedTokens,
     // With --verify, every token fed, rejected lines included.
     'work_tokens': tokens,
     'seconds': seconds,
